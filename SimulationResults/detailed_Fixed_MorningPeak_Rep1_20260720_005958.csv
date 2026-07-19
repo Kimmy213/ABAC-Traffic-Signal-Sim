@@ -1,0 +1,5 @@
+ControllerType,Scenario,Timestamp,Lane,DriverType,WaitTime
+Fixed,MorningPeak_Rep1,14.93,A,Normal,6.82
+Fixed,MorningPeak_Rep1,16.79,A,Cautious,7.48
+Fixed,MorningPeak_Rep1,17.33,B,Cautious,9.58
+Fixed,MorningPeak_Rep1,18.77,B,Cautious,8.14

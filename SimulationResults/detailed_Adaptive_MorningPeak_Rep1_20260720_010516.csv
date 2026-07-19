@@ -1,0 +1,5 @@
+ControllerType,Scenario,Timestamp,Lane,DriverType,WaitTime
+Adaptive,MorningPeak_Rep1,15.96,A,Normal,7.80
+Adaptive,MorningPeak_Rep1,17.36,A,Cautious,8.02
+Adaptive,MorningPeak_Rep1,17.54,B,Cautious,9.92
+Adaptive,MorningPeak_Rep1,18.92,B,Cautious,8.42

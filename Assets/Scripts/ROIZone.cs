@@ -3,6 +3,10 @@ using System.Collections.Generic;
 
 public class ROIZone : MonoBehaviour
 {
+    public void ClearAll()
+    {
+        carsInZone.Clear();
+    }
     [Header("Lane Identity")]
     public string laneName = "A";
 

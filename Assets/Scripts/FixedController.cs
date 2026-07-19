@@ -7,18 +7,34 @@ public class FixedController : MonoBehaviour
     public TrafficLight lightB;
     public TrafficLight lightC;
 
-    [Header("Timing (วินาที)")]
-    public float greenDuration = 15f;
+    [Header("Timing (วินาที) — อ้างอิง DOH Thailand (2019), 120s/cycle")]
+    public float greenDuration = 35f;
     public float yellowDuration = 3f;
     public float allRedDuration = 2f;   // ช่วงไฟแดงทั้งหมด กันชนตอนเปลี่ยนเฟส
 
     private TrafficLight[] lights;
     private int currentIndex = 0;
 
-    void Start()
+    // ===== Awake() ทำงานทันทีตอนโหลด ไม่ต้องรอ enable ต่างจาก Start() =====
+    void Awake()
     {
         lights = new TrafficLight[] { lightA, lightB, lightC };
+    }
+    public void ForceStop()
+    {
+        StopAllCoroutines();
+        SetAllRed();
+    }
+    public void RestartCycle()
+    {
+        StopAllCoroutines();
+        currentIndex = 0;
+        SetAllRed();
+        StartCoroutine(RunCycle());
+    }
 
+    void Start()
+    {
         // เริ่มต้น: ทุกไฟแดงหมดก่อน
         SetAllRed();
 

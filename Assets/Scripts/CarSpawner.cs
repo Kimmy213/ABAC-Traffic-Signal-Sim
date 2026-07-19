@@ -1,8 +1,10 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class CarSpawner : MonoBehaviour
 {
+    
     [Header("Prefab & Spawn Point")]
     public GameObject carPrefab;
     public Transform spawnPoint;
@@ -25,7 +27,33 @@ public class CarSpawner : MonoBehaviour
 
     [Header("Cleanup")]
     public float despawnDistance = 80f; // ระยะจาก spawn point ที่จะลบรถทิ้ง
+    // ===== เพิ่มสำหรับ Batch Run =====
+    private List<GameObject> spawnedCars = new List<GameObject>();
+    // ===== นับจำนวนรถที่ spawn ทั้งหมด (ไม่ reset เองอัตโนมัติ) =====
+    public int totalSpawned = 0;
 
+    public void ResetSpawnCount()
+    {
+        totalSpawned = 0;
+    }
+    public void SetArrivalRate(float meanInterval)
+    {
+        meanArrivalInterval = meanInterval;
+    }
+
+    public void ClearAllCars()
+    {
+        foreach (GameObject car in spawnedCars)
+        {
+            if (car != null)
+            {
+                CarAgent agent = car.GetComponent<CarAgent>();
+                if (agent != null && assignedLight != null) assignedLight.UnregisterCar(agent);
+                Destroy(car);
+            }
+        }
+        spawnedCars.Clear();
+    }
     void Start()
     {
         StartCoroutine(SpawnLoop());
@@ -47,6 +75,8 @@ public class CarSpawner : MonoBehaviour
     void SpawnCar()
     {
         GameObject newCar = Instantiate(carPrefab, spawnPoint.position, Quaternion.Euler(0, spawnRotationY, 0));
+        spawnedCars.Add(newCar); 
+        totalSpawned++;
         CarAgent agent = newCar.GetComponent<CarAgent>();
 
         agent.driverType = RandomDriverType();
@@ -83,4 +113,6 @@ public class CarSpawner : MonoBehaviour
             yield return new WaitForSeconds(0.5f); // เช็คทุกครึ่งวิ ไม่ต้องเช็คทุกเฟรม (ประหยัด performance)
         }
     }
+
+    
 }

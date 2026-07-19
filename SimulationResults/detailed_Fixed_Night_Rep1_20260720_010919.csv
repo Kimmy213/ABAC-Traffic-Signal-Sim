@@ -1,0 +1,3 @@
+ControllerType,Scenario,Timestamp,Lane,DriverType,WaitTime
+Fixed,Night_Rep1,12.63,A,Normal,6.80
+Fixed,Night_Rep1,17.53,C,Aggressive,8.66

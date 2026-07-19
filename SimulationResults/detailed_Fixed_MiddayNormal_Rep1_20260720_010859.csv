@@ -1,0 +1,3 @@
+ControllerType,Scenario,Timestamp,Lane,DriverType,WaitTime
+Fixed,MiddayNormal_Rep1,16.80,A,Normal,6.80
+Fixed,MiddayNormal_Rep1,18.52,B,Normal,12.24

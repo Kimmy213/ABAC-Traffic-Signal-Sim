@@ -27,7 +27,14 @@ public class DataLogger : MonoBehaviour
     private List<VehicleRecord> records = new List<VehicleRecord>();
     private int starvationEventCount = 0;
     private float runStartTime;
+    private int totalSpawnedCount = 0;
 
+    public void SetTotalSpawned(int count)
+    {
+        totalSpawnedCount = count;
+    }
+
+    public int GetTotalSpawned() => totalSpawnedCount;
     void Awake()
     {
         Instance = this;
@@ -117,11 +124,11 @@ public class DataLogger : MonoBehaviour
 
         if (!fileExists)
         {
-            sb.AppendLine("ControllerType,Scenario,RunTimestamp,TotalVehicles,AvgWaitTime,MaxWaitTime,StarvationEvents");
+            sb.AppendLine("ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents");
         }
 
         sb.AppendLine($"{controllerType},{scenarioName},{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}," +
-                       $"{GetVehicleCount()},{GetAverageWaitTime():F2},{GetMaxWaitTime():F2},{GetStarvationCount()}");
+                       $"{totalSpawnedCount},{GetVehicleCount()},{GetAverageWaitTime():F2},{GetMaxWaitTime():F2},{GetStarvationCount()}");
 
         File.AppendAllText(path, sb.ToString());
         Debug.Log($"[DataLogger] Appended summary to: {path}");
@@ -141,9 +148,10 @@ public class DataLogger : MonoBehaviour
         if (!showDebugGUI || !Application.isPlaying) return;
 
         float boxWidth = 250;
-        GUI.Box(new Rect(10, Screen.height - 140, boxWidth, 130), "");
-        GUI.Label(new Rect(20, Screen.height - 135, boxWidth - 20, 20), $"[{controllerType}] {scenarioName}");
-        GUI.Label(new Rect(20, Screen.height - 115, boxWidth - 20, 20), $"Vehicles logged: {GetVehicleCount()}");
+        GUI.Box(new Rect(10, Screen.height - 160, boxWidth, 150), "");
+        GUI.Label(new Rect(20, Screen.height - 155, boxWidth - 20, 20), $"[{controllerType}] {scenarioName}");
+        GUI.Label(new Rect(20, Screen.height - 135, boxWidth - 20, 20), $"Total spawned: {totalSpawnedCount}");
+        GUI.Label(new Rect(20, Screen.height - 115, boxWidth - 20, 20), $"Vehicles cleared: {GetVehicleCount()}");
         GUI.Label(new Rect(20, Screen.height - 95, boxWidth - 20, 20), $"Avg wait: {GetAverageWaitTime():F1}s");
         GUI.Label(new Rect(20, Screen.height - 75, boxWidth - 20, 20), $"Max wait: {GetMaxWaitTime():F1}s");
         GUI.Label(new Rect(20, Screen.height - 55, boxWidth - 20, 20), $"Starvation events: {GetStarvationCount()}");

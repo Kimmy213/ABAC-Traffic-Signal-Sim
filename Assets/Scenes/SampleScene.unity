@@ -267,10 +267,11 @@ MonoBehaviour:
   assignedLight: {fileID: 501255444}
   spawnRotationY: 90
   laneName: A
-  meanArrivalInterval: 4
+  meanArrivalInterval: 15
   aggressivePercent: 25
   normalPercent: 60
   despawnDistance: 300
+  totalSpawned: 0
 --- !u!4 &239361991
 Transform:
   m_ObjectHideFlags: 0
@@ -1892,10 +1893,11 @@ MonoBehaviour:
   assignedLight: {fileID: 686202311}
   spawnRotationY: 180
   laneName: C
-  meanArrivalInterval: 4
+  meanArrivalInterval: 15
   aggressivePercent: 25
   normalPercent: 60
   despawnDistance: 300
+  totalSpawned: 0
 --- !u!4 &1369458989
 Transform:
   m_ObjectHideFlags: 0
@@ -2034,6 +2036,8 @@ GameObject:
   - component: {fileID: 1501129892}
   - component: {fileID: 1501129891}
   - component: {fileID: 1501129893}
+  - component: {fileID: 1501129894}
+  - component: {fileID: 1501129895}
   m_Layer: 0
   m_Name: GameController
   m_TagString: Untagged
@@ -2056,7 +2060,7 @@ MonoBehaviour:
   lightA: {fileID: 501255444}
   lightB: {fileID: 1173222523}
   lightC: {fileID: 686202311}
-  greenDuration: 15
+  greenDuration: 35
   yellowDuration: 3
   allRedDuration: 2
 --- !u!4 &1501129892
@@ -2107,6 +2111,51 @@ MonoBehaviour:
   starvationSelectThreshold: 0.95
   starvationInterruptThreshold: 0.9
   showDebugGUI: 1
+--- !u!114 &1501129894
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1501129890}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a788ce3f308ff624388e2a26c8f1bf82, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DataLogger
+  controllerType: 1
+  scenarioName: Scenario1
+  showDebugGUI: 1
+--- !u!114 &1501129895
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1501129890}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b201c0366ce04fb478b8eb331f3f0788, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ScenarioManager
+  spawnerA: {fileID: 239361990}
+  spawnerB: {fileID: 1976685764}
+  spawnerC: {fileID: 1369458988}
+  roiA: {fileID: 1307751670}
+  roiB: {fileID: 1362598440}
+  roiC: {fileID: 1622409340}
+  fixedController: {fileID: 1501129891}
+  adaptiveController: {fileID: 1501129893}
+  dataLogger: {fileID: 1501129894}
+  runDuration: 1800
+  repetitionsPerScenario: 1
+  simulationSpeed: 2
+  disableGUIDuringBatch: 1
+  veryHigh: 1.5
+  high: 2.5
+  medium: 4
+  low: 7
+  veryLow: 15
 --- !u!1 &1616790537
 GameObject:
   m_ObjectHideFlags: 0
@@ -2473,10 +2522,11 @@ MonoBehaviour:
   assignedLight: {fileID: 1173222523}
   spawnRotationY: -90
   laneName: B
-  meanArrivalInterval: 4
+  meanArrivalInterval: 15
   aggressivePercent: 25
   normalPercent: 60
   despawnDistance: 300
+  totalSpawned: 0
 --- !u!4 &1976685765
 Transform:
   m_ObjectHideFlags: 0

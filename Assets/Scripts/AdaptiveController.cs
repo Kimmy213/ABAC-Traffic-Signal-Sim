@@ -34,9 +34,9 @@ public class AdaptiveController : MonoBehaviour
     [Tooltip("ต้องเขียวอย่างน้อยเท่านี้ก่อนจะโดนตัดสั้นได้ (กันไฟสั้นเกินระบายไม่ทัน)")]
     public float minGreenBeforeInterrupt = 20f;
     [Tooltip("สัดส่วนของ maxWaitTime ที่จะบังคับเลือกเป็นเฟสถัดไป (ทางออกฉุกเฉิน)")]
-    public float starvationSelectThreshold = 0.95f; // 42.75s จาก 45
+    public float starvationSelectThreshold = 0.95f;
     [Tooltip("สัดส่วนของ maxWaitTime ที่จะตัดจบเฟสปัจจุบันก่อนเวลา")]
-    public float starvationInterruptThreshold = 0.90f; // 40.5s จาก 45
+    public float starvationInterruptThreshold = 0.90f;
 
     [Header("Debug Display")]
     public bool showDebugGUI = true;
@@ -50,14 +50,31 @@ public class AdaptiveController : MonoBehaviour
     private float phaseTimeRemaining = 0f;
     private string statusText = "Idle";
 
-    void Start()
+    // ===== Awake() ทำงานทันทีตอนโหลด ไม่ต้องรอ enable ต่างจาก Start() =====
+    void Awake()
     {
         lights = new TrafficLight[] { lightA, lightB, lightC };
         rois = new ROIZone[] { roiA, roiB, roiC };
         currentPhaseState = new TrafficLight.LightState[] {
             TrafficLight.LightState.Red, TrafficLight.LightState.Red, TrafficLight.LightState.Red
         };
+    }
+    public void ForceStop()
+    {
+        StopAllCoroutines();
+        activeLaneIndex = -1;
+        SetAllRed();
+    }
+    public void RestartCycle()
+    {
+        StopAllCoroutines();
+        activeLaneIndex = -1;
+        SetAllRed();
+        StartCoroutine(RunAdaptiveCycle());
+    }
 
+    void Start()
+    {
         SetAllRed();
         StartCoroutine(RunAdaptiveCycle());
     }
@@ -81,7 +98,6 @@ public class AdaptiveController : MonoBehaviour
                 yield return new WaitForSeconds(0.5f);
             }
 
-            // ===== เช็ค starvation ก่อนเสมอ: มีเลนไหนใกล้ครบ maxWaitTime จริง ๆ ไหม (ทางออกฉุกเฉิน) =====
             int starvingLane = FindStarvingLane(starvationSelectThreshold);
             int candidateLane = starvingLane != -1 ? starvingLane : ChooseNextLaneFCFS();
             int candidateDemand = rois[candidateLane].GetVehicleCount();
@@ -128,7 +144,6 @@ public class AdaptiveController : MonoBehaviour
         }
     }
 
-    // threshold = สัดส่วนของ maxWaitTime (0-1) ที่จะถือว่า "starve"
     int FindStarvingLane(float thresholdRatio)
     {
         float threshold = maxWaitTime * thresholdRatio;
@@ -159,7 +174,6 @@ public class AdaptiveController : MonoBehaviour
             elapsed += dt;
             phaseTimeRemaining = maxGreenTime - elapsed;
 
-            // กรณี 1: Gap-out — เลนตัวเองว่างจากรถ (ไม่มี floor เพราะไม่มีรถให้ระบายอยู่แล้ว)
             if (enableGapOut)
             {
                 int currentCount = rois[laneIndex].GetVehicleCount();
@@ -178,8 +192,6 @@ public class AdaptiveController : MonoBehaviour
                 }
             }
 
-            // กรณี 2: เลนอื่น starve ระหว่างที่เลนนี้เขียวอยู่ → ตัดจบเร็วขึ้น
-            // ===== ต้องผ่าน floor ขั้นต่ำก่อนเสมอ กันไฟสั้นเกินจนระบายรถไม่ทัน =====
             if (elapsed >= minGreenBeforeInterrupt)
             {
                 int starvingOther = FindStarvingLane(starvationInterruptThreshold);
