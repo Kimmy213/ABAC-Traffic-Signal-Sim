@@ -1,0 +1,2 @@
+ControllerType,Scenario,RunTimestamp,TotalVehicles,AvgWaitTime,MaxWaitTime,StarvationEvents
+Adaptive,Scenario1,2026-07-20 00:08:25,3,9.60,11.10,0

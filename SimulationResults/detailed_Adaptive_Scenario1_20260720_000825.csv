@@ -1,0 +1,4 @@
+ControllerType,Scenario,Timestamp,Lane,DriverType,WaitTime
+Adaptive,Scenario1,18.62,C,Normal,10.90
+Adaptive,Scenario1,19.52,C,Aggressive,11.10
+Adaptive,Scenario1,22.88,C,Normal,6.80
