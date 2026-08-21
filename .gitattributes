@@ -1,0 +1,65 @@
+# ===== ค่าเริ่มต้น =====
+# ให้ git จัดการ line ending อัตโนมัติ: เก็บใน repo เป็น LF
+# แล้วแปลงเป็น CRLF ตอน checkout บน Windows
+* text=auto
+
+# ===== ไฟล์ข้อความทั่วไป =====
+*.cs   text diff=csharp
+*.md   text
+*.py   text
+*.csv  text
+*.json text
+*.txt  text
+*.shader text
+
+# ===== ไฟล์ Unity serialized (YAML) =====
+# -text        = ห้าม git แปลง line ending  (Unity เขียน LF เสมอ ทั้ง Windows และ Mac)
+# merge=binary = ห้าม git auto-merge เด็ดขาด
+#
+# ⚠️ ข้อ merge=binary สำคัญที่สุด
+# ไฟล์ .unity เป็น YAML ที่อ้าง fileID กันไปมา ถ้า git ลอง merge เอง
+# จะได้ไฟล์ที่ "ไม่ error แต่พัง" — เปิดใน Unity แล้ว object หาย หรือ reference หลุด
+# ตั้งเป็น binary แล้ว git จะบังคับให้เลือกว่าจะเอาฝั่งไหน แก้ง่ายกว่ามาก
+*.unity          -text merge=binary
+*.prefab         -text merge=binary
+*.asset          -text merge=binary
+*.mat            -text merge=binary
+*.meta           -text merge=binary
+*.anim           -text merge=binary
+*.controller     -text merge=binary
+*.overrideController -text merge=binary
+*.physicMaterial -text merge=binary
+*.physicsMaterial2D -text merge=binary
+*.playable       -text merge=binary
+*.mask           -text merge=binary
+*.brush          -text merge=binary
+*.flare          -text merge=binary
+*.fontsettings   -text merge=binary
+*.guiskin        -text merge=binary
+*.giparams       -text merge=binary
+*.renderTexture  -text merge=binary
+*.spriteatlas    -text merge=binary
+*.terrainlayer   -text merge=binary
+*.mixer          -text merge=binary
+*.uss            -text merge=binary
+*.uxml           -text merge=binary
+*.inputactions   -text merge=binary
+
+# ===== ไฟล์ binary จริง ๆ =====
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.psd  binary
+*.tga  binary
+*.tif  binary
+*.fbx  binary
+*.obj  binary
+*.blend binary
+*.wav  binary
+*.mp3  binary
+*.ogg  binary
+*.mp4  binary
+*.dll  binary
+*.pdf  binary
+*.zip  binary
