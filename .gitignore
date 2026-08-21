@@ -33,3 +33,5 @@ Thumbs.db
 # ===== Unity Crash Reports =====
 sysinfo.txt
 *.stackdump
+
+*.slnx
