@@ -37,8 +37,34 @@ public class CarAgent : MonoBehaviour
     public Transform stopLineTarget;
     private float signedDistToStopPoint;
 
+    [Header("Turning Path (ตั้งค่าตอน Spawn — เว้นว่าง = วิ่งตรงเหมือนเดิม)")]
+    [Tooltip("จุดนำทางหลังผ่านเส้นหยุด ใช้กับเลนเลี้ยว Ax / Bx / CB / CA")]
+    public Transform[] pathWaypoints;
+    [Tooltip("อัตราการหมุนพวงมาลัย องศา/วินาที")]
+    public float steerRate = 55f;
+    [Tooltip("รัศมีวงเลี้ยวเป้าหมาย (เมตร) — ยิ่งเล็กวงยิ่งแคบ แต่รถต้องชะลอมากขึ้น")]
+    public float turnRadius = 7f;
+    [Tooltip("เลี้ยวเกินกี่องศาถึงจะเริ่มชะลอ")]
+    public float turnSlowAngle = 12f;
+    [Tooltip("ช้าสุดตอนเลี้ยว (เมตร/วินาที) กันรถคลานจนแทบไม่ขยับ")]
+    public float minTurnSpeed = 3f;
+    [Tooltip("ระยะเผื่อเพิ่มจากระยะเบรกจริง (เมตร) ก่อนถึงจุดหักเลี้ยว")]
+    public float turnBrakeMargin = 4f;
+    [Tooltip("เข้าใกล้ waypoint เท่านี้ถือว่าถึงแล้ว")]
+    public float waypointReachRadius = 2f;
+
+    private int waypointIndex = 0;
+    /// <summary>true = วิ่งจนสุดเส้นทางที่กำหนดแล้ว (CarSpawner ใช้ตัดสินใจลบรถทิ้ง)</summary>
+    public bool reachedEndOfPath { get; private set; }
+
+    [Header("Traffic Light (ตั้งค่าตอน Spawn — เว้นว่างถ้าเป็นเลนไหลอิสระ)")]
+    [Tooltip("รถอ่านสถานะไฟจากตัวนี้เองทุกเฟรม เป็นตัวสำรองกรณีทะเบียนใน TrafficLight หลุด")]
+    public TrafficLight assignedLight;
+
     private bool lightIsGreen = false;
     private float reactionTimer = 0f;
+    private TrafficLight.LightState lastSeenLight = TrafficLight.LightState.Red;
+    private bool lightInitialized = false;
 
     void OnEnable()  { allCars.Add(this); }
     void OnDisable() { allCars.Remove(this); }
@@ -94,6 +120,8 @@ public class CarAgent : MonoBehaviour
 
     void Update()
     {
+        SyncLightState();
+
         if (stopLineTarget != null && !hasCleared)
         {
             Vector3 frontPos = GetFrontPosition();
@@ -102,7 +130,60 @@ public class CarAgent : MonoBehaviour
         }
 
         DecideSpeed();
+        Steer();
         MoveForward();
+    }
+
+    // ===== อ่านสถานะไฟเองทุกเฟรม =====
+    // เดิมพึ่ง TrafficLight.NotifyCars() อย่างเดียว ถ้าทะเบียนหลุด (เช่นโดน ClearRegistrations
+    // หลัง spawn) รถจะไม่มีทางรู้ว่าไฟเขียวแล้ว จอดแช่ตลอดกาล
+    // ตอนนี้ push กับ poll ทำงานคู่กัน อันไหนมาก่อนก็ได้ ผลเหมือนกัน
+    void SyncLightState()
+    {
+        if (assignedLight == null) return;
+
+        TrafficLight.LightState st = assignedLight.currentState;
+        if (!lightInitialized || st != lastSeenLight)
+        {
+            OnLightStateChanged(st);
+        }
+    }
+
+    // ===== เลี้ยวตาม waypoint หลังผ่านเส้นหยุดแล้ว =====
+    // ก่อนถึงเส้นหยุดยังวิ่งตรงเสมอ เพื่อให้ signedDistToStopPoint และ ROI ทำงานเหมือนเดิม
+    void Steer()
+    {
+        if (pathWaypoints == null || pathWaypoints.Length == 0) return;
+        if (stopLineTarget != null && !hasCleared) return;
+        if (reachedEndOfPath) return;
+
+        // ข้าม waypoint ที่เป็น null หรือถูกลบไปแล้ว
+        while (waypointIndex < pathWaypoints.Length && pathWaypoints[waypointIndex] == null)
+            waypointIndex++;
+
+        if (waypointIndex >= pathWaypoints.Length)
+        {
+            reachedEndOfPath = true;
+            return;
+        }
+
+        Vector3 toTarget = pathWaypoints[waypointIndex].position - transform.position;
+        toTarget.y = 0f;
+
+        // ผ่านไปแล้ว (อยู่ข้างหลังรถ) ก็นับว่าถึงเหมือนกัน
+        // กันเคสรถเลี้ยวกว้างเกินจนไม่เคยเข้าใกล้ waypoint ในรัศมี แล้ววนเป็นวงกลมไม่จบ
+        bool reached = toTarget.magnitude <= waypointReachRadius
+                       || Vector3.Dot(toTarget, transform.forward) < 0f;
+
+        if (reached)
+        {
+            waypointIndex++;
+            return;
+        }
+
+        Quaternion desired = Quaternion.LookRotation(toTarget.normalized, Vector3.up);
+        transform.rotation = Quaternion.RotateTowards(
+            transform.rotation, desired, steerRate * Time.deltaTime);
     }
 
     float ComputeDesiredSpeed()
@@ -156,9 +237,67 @@ public class CarAgent : MonoBehaviour
         }
     }
 
+    // ===== ความเร็วสูงสุดที่ยังเลี้ยวอยู่ในวงที่กำหนดได้ =====
+    // รัศมีวงเลี้ยว R = v / ω  (ω = อัตราหมุนพวงมาลัย)
+    // ถ้าอยากได้วงแคบ R ตามที่ตั้งไว้ ก็ต้องจำกัด v ≤ ω × R
+    // ไม่มีข้อนี้ รถวิ่ง 15 m/s จะกวาดวงเลี้ยวกว้างเกิน 25 เมตร → หลุดออกนอกเลนไปทับเลนอื่น
+    float TurnSpeedLimit()
+    {
+        if (pathWaypoints == null || pathWaypoints.Length == 0) return Mathf.Infinity;
+        if (reachedEndOfPath) return Mathf.Infinity;
+        if (stopLineTarget != null && !hasCleared) return Mathf.Infinity;  // ยังไม่ถึงเส้นหยุด วิ่งปกติ
+        if (waypointIndex >= pathWaypoints.Length) return Mathf.Infinity;
+
+        Transform wp = pathWaypoints[waypointIndex];
+        if (wp == null) return Mathf.Infinity;
+
+        Vector3 toTarget = wp.position - transform.position;
+        toTarget.y = 0f;
+        if (toTarget.magnitude < 0.5f) return Mathf.Infinity;
+
+        float omega = steerRate * Mathf.Deg2Rad;            // เรเดียน/วินาที
+        if (omega <= 0.001f) return Mathf.Infinity;
+        float cornerSpeed = Mathf.Max(minTurnSpeed, omega * turnRadius);
+
+        // 1) กำลังหักเลี้ยวอยู่ตอนนี้
+        float angle = Vector3.Angle(transform.forward, toTarget);
+        if (angle >= turnSlowAngle) return cornerSpeed;
+
+        // 2) มองล่วงหน้าไป waypoint ถัดไป — ถ้าช่วงหน้าหักแรงและใกล้จะถึงแล้ว ให้เริ่มชะลอตั้งแต่ตอนนี้
+        //    ⚠️ ขาดข้อนี้ไม่ได้: รถจะพุ่งเข้าโค้งด้วยความเร็วเต็ม 15 m/s แล้วกวาดวงกว้าง
+        //    ออกไปทับเลนข้าง ๆ ก่อนที่จะทันชะลอ
+        // ระยะที่ต้องใช้เบรกจาก v ปัจจุบัน ลงมาเหลือ cornerSpeed ตาม decelRate ของ profile นี้
+        // ⚠️ ใช้ค่าคงที่ไม่ได้ เพราะคนขับแบบ Cautious เบรกช้ากว่า Aggressive ถึง 7 เท่า
+        //    (decelRate 3 vs 22) ถ้าตั้งตายตัวคนขับระวังจะเข้าโค้งเร็วเกินแล้วกวาดออกนอกเลน
+        float brakeDist = currentSpeed > cornerSpeed
+            ? (currentSpeed * currentSpeed - cornerSpeed * cornerSpeed) / (2f * Mathf.Max(0.1f, decelRate))
+            : 0f;
+
+        if (waypointIndex + 1 < pathWaypoints.Length
+            && pathWaypoints[waypointIndex + 1] != null
+            && toTarget.magnitude <= brakeDist + turnBrakeMargin)
+        {
+            Vector3 nextSeg = pathWaypoints[waypointIndex + 1].position - wp.position;
+            nextSeg.y = 0f;
+            if (nextSeg.magnitude > 0.1f && Vector3.Angle(toTarget, nextSeg) >= turnSlowAngle)
+                return cornerSpeed;
+        }
+
+        return Mathf.Infinity;   // ทางตรง วิ่งเต็มสปีดได้
+    }
+
     void DecideSpeed()
     {
         float desiredSpeed = ComputeDesiredSpeed();
+
+        // ---- ชะลอก่อนเข้าโค้ง ----
+        float turnCap = TurnSpeedLimit();
+        if (desiredSpeed > turnCap)
+        {
+            // ค่อย ๆ ลดตาม decelRate ไม่ใช่ตัดความเร็วทันที จะได้ดูเป็นธรรมชาติ
+            float eased = Mathf.Max(turnCap, currentSpeed - decelRate * Time.deltaTime);
+            desiredSpeed = Mathf.Min(desiredSpeed, eased);
+        }
 
         float gapAhead;
         CarAgent carAhead = GetCarAhead(out gapAhead);
@@ -222,6 +361,9 @@ public class CarAgent : MonoBehaviour
     // ===== เรียกจาก TrafficLight ตอนไฟเปลี่ยนสถานะ =====
     public void OnLightStateChanged(TrafficLight.LightState state)
     {
+        lastSeenLight = state;
+        lightInitialized = true;
+
         if (hasCleared) return; // ผ่านไปแล้ว ไม่สนไฟอีก
 
         if (state == TrafficLight.LightState.Green)

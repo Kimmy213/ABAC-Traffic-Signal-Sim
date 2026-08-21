@@ -112,20 +112,63 @@ public class DataLogger : MonoBehaviour
         Debug.Log($"[DataLogger] Exported {records.Count} records to: {path}");
     }
 
+    // ===== หัวตารางปัจจุบันของ summary CSV =====
+    // ⚠️ ถ้าแก้บรรทัดนี้เมื่อไหร่ ไฟล์เก่าจะถูกย้ายไปเก็บอัตโนมัติ ไม่ append ปนกัน
+    const string SUMMARY_HEADER =
+        "ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents";
+
     [ContextMenu("Export Summary CSV (Append)")]
     public void ExportSummaryCSV()
     {
         string folder = GetExportFolder();
-        string fileName = "summary_all_runs.csv";
-        string path = Path.Combine(folder, fileName);
+        string path = Path.Combine(folder, "summary_all_runs.csv");
 
-        bool fileExists = File.Exists(path);
-        StringBuilder sb = new StringBuilder();
+        // ===== กันไฟล์สคีมาปนกัน =====
+        // เดิม: ถ้าไฟล์มีอยู่แล้วจะ append เลยโดยไม่ดูหัวตาราง
+        // พอมีการเพิ่ม/ลดคอลัมน์ทีหลัง แถวใหม่จะมีจำนวนคอลัมน์ไม่ตรงหัว -> pandas อ่านไม่ออก
+        // ตอนนี้: ถ้าหัวตารางไม่ตรง ย้ายไฟล์เก่าไปเก็บไว้แล้วเริ่มไฟล์ใหม่
+        bool needHeader = true;
 
-        if (!fileExists)
+        if (File.Exists(path))
         {
-            sb.AppendLine("ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents");
+            string existingHeader = "";
+            try
+            {
+                using (StreamReader reader = new StreamReader(path))
+                {
+                    existingHeader = reader.ReadLine() ?? "";
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[DataLogger] อ่านหัวตารางเดิมไม่ได้: {e.Message}");
+            }
+
+            if (existingHeader.Trim() == SUMMARY_HEADER)
+            {
+                needHeader = false;
+            }
+            else
+            {
+                string backup = Path.Combine(folder,
+                    $"summary_all_runs_OLD_{System.DateTime.Now:yyyyMMdd_HHmmss}.csv");
+                try
+                {
+                    File.Move(path, backup);
+                    Debug.LogWarning($"[DataLogger] หัวตารางของ summary เดิมไม่ตรงกับรูปแบบปัจจุบัน " +
+                                     $"— ย้ายไฟล์เก่าไปที่ {Path.GetFileName(backup)} แล้วเริ่มไฟล์ใหม่");
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"[DataLogger] ย้ายไฟล์เก่าไม่สำเร็จ ({e.Message}) — " +
+                                   $"ข้อมูลอาจปนกัน ให้ลบ summary_all_runs.csv เองก่อนรันใหม่");
+                    needHeader = false;
+                }
+            }
         }
+
+        StringBuilder sb = new StringBuilder();
+        if (needHeader) sb.AppendLine(SUMMARY_HEADER);
 
         sb.AppendLine($"{controllerType},{scenarioName},{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}," +
                        $"{totalSpawnedCount},{GetVehicleCount()},{GetAverageWaitTime():F2},{GetMaxWaitTime():F2},{GetStarvationCount()}");

@@ -1,17 +1,17 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
+/// <summary>
+/// Adaptive controller: FCFS เลือกเลนที่มีรถรอนานที่สุดเป็น "leader"
+/// แล้วรวมเลนอื่นที่ไม่ conflict เข้าเป็นกลุ่มเดียวกัน (concurrent phase)
+/// เวลาไฟเขียวคำนวณด้วยสูตร HCM: G = startupLostTime + D x saturationHeadway
+/// พร้อม gap-out, counting window และ anti-starvation
+/// </summary>
 public class AdaptiveController : MonoBehaviour
 {
-    [Header("Traffic Lights")]
-    public TrafficLight lightA;
-    public TrafficLight lightB;
-    public TrafficLight lightC;
-
-    [Header("ROI Zones (ใช้ข้อมูลตัดสินใจ)")]
-    public ROIZone roiA;
-    public ROIZone roiB;
-    public ROIZone roiC;
+    [Header("Intersection")]
+    public IntersectionConfig config;
 
     [Header("Timing Formula (HCM-based)")]
     public float gMin = 8f;
@@ -20,6 +20,15 @@ public class AdaptiveController : MonoBehaviour
     public float allRedDuration = 2f;
     public float startupLostTime = 3f;
     public float saturationHeadway = 2.5f;
+
+    [Tooltip("เขียวต่อเนื่องกลุ่มเดิมได้นานสุดกี่วินาที ก่อนบังคับปล่อยเฟส (max green ตามมาตรฐาน)")]
+    public float maxContinuousGreen = 90f;
+
+    [Header("Concurrent Phase")]
+    [Tooltip("true = รวมเลนที่ไม่ conflict ให้เขียวพร้อมกัน (แนะนำ) / false = ปล่อยทีละเลน")]
+    public bool enableConcurrentPhases = true;
+    [Tooltip("เลนที่จะถูกรวมเข้ากลุ่มต้องมีรถอย่างน้อยกี่คัน")]
+    public int minDemandToJoinGroup = 1;
 
     [Header("Counting Window")]
     public float countingWindow = 4f;
@@ -40,130 +49,195 @@ public class AdaptiveController : MonoBehaviour
 
     [Header("Debug Display")]
     public bool showDebugGUI = true;
+    public bool verboseLog = false;
 
-    private TrafficLight[] lights;
-    private ROIZone[] rois;
-    private string[] laneNames = { "A", "B", "C" };
-
-    private int activeLaneIndex = -1;
-    private TrafficLight.LightState[] currentPhaseState;
+    // ===== runtime =====
+    private List<int> activeGroup = new List<int>();
     private float phaseTimeRemaining = 0f;
+    private float continuousGreenTimer = 0f;
+    private bool forcePhaseChange = false;
     private string statusText = "Idle";
 
-    // ===== Awake() ทำงานทันทีตอนโหลด ไม่ต้องรอ enable ต่างจาก Start() =====
     void Awake()
     {
-        lights = new TrafficLight[] { lightA, lightB, lightC };
-        rois = new ROIZone[] { roiA, roiB, roiC };
-        currentPhaseState = new TrafficLight.LightState[] {
-            TrafficLight.LightState.Red, TrafficLight.LightState.Red, TrafficLight.LightState.Red
-        };
+        if (config == null) config = FindFirstObjectByType<IntersectionConfig>();
+        if (config == null)
+        {
+            Debug.LogError("[AdaptiveController] ไม่พบ IntersectionConfig ในซีน");
+            return;
+        }
+        config.EnsureBuilt();
     }
+
     public void ForceStop()
     {
         StopAllCoroutines();
-        activeLaneIndex = -1;
+        activeGroup.Clear();
+        continuousGreenTimer = 0f;
         SetAllRed();
+        statusText = "Stopped";
     }
+
     public void RestartCycle()
     {
         StopAllCoroutines();
-        activeLaneIndex = -1;
+        activeGroup.Clear();
+        continuousGreenTimer = 0f;
         SetAllRed();
         StartCoroutine(RunAdaptiveCycle());
     }
 
     void Start()
     {
+        if (config == null) return;
         SetAllRed();
         StartCoroutine(RunAdaptiveCycle());
     }
 
     void SetAllRed()
     {
-        for (int i = 0; i < lights.Length; i++)
+        if (config == null) return;
+        for (int s = 0; s < config.SignalCount; s++)
         {
-            if (lights[i] != null) lights[i].SetState(TrafficLight.LightState.Red);
-            currentPhaseState[i] = TrafficLight.LightState.Red;
+            TrafficLight light = config.SignalLight(s);
+            if (light != null) light.SetState(TrafficLight.LightState.Red);
         }
     }
+
+    void SetGroupState(List<int> group, TrafficLight.LightState state)
+    {
+        foreach (int s in group)
+        {
+            TrafficLight light = config.SignalLight(s);
+            if (light != null) light.SetState(state);
+        }
+    }
+
+    // ===================== Main loop =====================
 
     IEnumerator RunAdaptiveCycle()
     {
         while (true)
         {
-            statusText = "Waiting for any demand...";
-            while (ChooseNextLaneFCFS() == -1)
+            // กันลูปหมุนฟรีในเฟรมเดียว (เช่นตอนโดน max-green ตัดติด ๆ กัน)
+            yield return null;
+
+            // ---------- 1. รอจนกว่าจะมี demand ที่ไหนสักแห่ง ----------
+            statusText = "Waiting for demand...";
+            while (!AnyDemand())
             {
+                // ไม่มีรถเลย -> ปล่อยเลนที่เขียวอยู่ให้เขียวต่อ (rest in green ไม่มีใครเสียหาย)
                 yield return new WaitForSeconds(0.5f);
             }
 
-            int starvingLane = FindStarvingLane(starvationSelectThreshold);
-            int candidateLane = starvingLane != -1 ? starvingLane : ChooseNextLaneFCFS();
-            int candidateDemand = rois[candidateLane].GetVehicleCount();
+            // ถ้าเพิ่งโดน max-green ตัด ให้ห้ามเลือก leader จากกลุ่มเดิม
+            List<int> banned = forcePhaseChange ? new List<int>(activeGroup) : null;
 
-            if (starvingLane != -1)
+            // ---------- 2. เลือก leader lane ----------
+            int leader = FindStarvingLane(starvationSelectThreshold, activeGroup);
+            bool starvationDriven = leader != -1;
+
+            if (starvationDriven)
             {
-                statusText = $"STARVATION OVERRIDE — Lane {laneNames[starvingLane]} forced";
-                Debug.Log($"[Adaptive] STARVATION: Lane {laneNames[starvingLane]} waited too long, forcing green.");
-                if (DataLogger.Instance != null) DataLogger.Instance.LogStarvationEvent(laneNames[starvingLane]);
-            }
-            else if (candidateDemand < demandThresholdSkipWait)
-            {
-                statusText = $"Counting window ({countingWindow}s)...";
-                yield return new WaitForSeconds(countingWindow);
+                statusText = $"STARVATION OVERRIDE — {config.SignalName(leader)}";
+                Debug.Log($"[Adaptive] STARVATION: Lane {config.SignalName(leader)} waited too long, forcing green.");
+                if (DataLogger.Instance != null) DataLogger.Instance.LogStarvationEvent(config.SignalName(leader));
             }
             else
             {
-                statusText = $"Demand clear ({candidateDemand} cars) — skip wait";
+                leader = ChooseLeaderFCFS(banned);
+                if (leader == -1) leader = ChooseLeaderFCFS(null);
+                if (leader == -1) continue;
+
+                int demand = DemandOf(leader);
+                if (demand < demandThresholdSkipWait)
+                {
+                    // ---------- 3. Counting window: รอสะสมดีมานด์อีกนิด ----------
+                    statusText = $"Counting window ({countingWindow}s)...";
+                    yield return new WaitForSeconds(countingWindow);
+
+                    leader = FindStarvingLane(starvationSelectThreshold, activeGroup);
+                    if (leader == -1) leader = ChooseLeaderFCFS(banned);
+                    if (leader == -1) leader = ChooseLeaderFCFS(null);
+                    if (leader == -1) continue;
+                }
+                else
+                {
+                    statusText = $"Demand clear ({demand} cars) — skip wait";
+                }
             }
+            forcePhaseChange = false;
 
-            int nextLane = FindStarvingLane(starvationSelectThreshold);
-            if (nextLane == -1) nextLane = ChooseNextLaneFCFS();
-            if (nextLane == -1) continue;
+            // ---------- 4. สร้างกลุ่มเลนที่เขียวพร้อมกันได้ ----------
+            List<int> nextGroup = BuildCompatibleGroup(leader);
 
-            activeLaneIndex = nextLane;
-            float greenTime = CalculateGreenDuration(nextLane);
-
-            Debug.Log($"[Adaptive] Lane {laneNames[nextLane]} selected. " +
-                      $"Demand={rois[nextLane].GetVehicleCount()}, GreenTime={greenTime:F1}s");
-
-            statusText = "Green";
-            SetLaneState(nextLane, TrafficLight.LightState.Green);
-            yield return StartCoroutine(GreenPhaseWithInterrupts(nextLane, greenTime));
-
-            statusText = "Yellow";
-            SetLaneState(nextLane, TrafficLight.LightState.Yellow);
-            yield return StartCoroutine(CountdownPhase(yellowDuration));
-
-            statusText = "All-Red";
-            SetLaneState(nextLane, TrafficLight.LightState.Red);
-            yield return StartCoroutine(CountdownPhase(allRedDuration));
-
-            activeLaneIndex = -1;
-        }
-    }
-
-    int FindStarvingLane(float thresholdRatio)
-    {
-        float threshold = maxWaitTime * thresholdRatio;
-
-        for (int i = 0; i < rois.Length; i++)
-        {
-            if (rois[i] == null) continue;
-            if (i == activeLaneIndex) continue;
-            if (rois[i].GetVehicleCount() == 0) continue;
-
-            float waitTime = rois[i].GetLongestWaitTime();
-            if (waitTime >= threshold)
+            // ---------- 5. ช่วง clearance: ตัดเฉพาะเลนที่ต้องเปลี่ยนเป็นแดง ----------
+            List<int> dropping = Except(activeGroup, nextGroup);
+            if (dropping.Count > 0)
             {
-                return i;
+                statusText = $"Yellow — {config.DescribeGroup(dropping)}";
+                SetGroupState(dropping, TrafficLight.LightState.Yellow);
+                yield return StartCoroutine(CountdownPhase(yellowDuration));
+
+                statusText = "All-Red clearance";
+                SetGroupState(dropping, TrafficLight.LightState.Red);
+                activeGroup = Except(activeGroup, dropping);
+                yield return StartCoroutine(CountdownPhase(allRedDuration));
             }
+
+            // ---------- 6. เปิดเขียวเลนใหม่ ----------
+            List<int> turningOn = Except(nextGroup, activeGroup);
+            // มีเลนเปลี่ยนสถานะ = เริ่มเฟสใหม่ -> รีเซ็ตตัวจับ max green
+            // ถ้ากลุ่มเดิมเป๊ะ ๆ แต่ timer เต็มแล้ว ก็ต้องรีเซ็ตด้วย ไม่งั้นจะวนตัดไม่จบ
+            if (turningOn.Count > 0 || dropping.Count > 0 || continuousGreenTimer >= maxContinuousGreen)
+                continuousGreenTimer = 0f;
+            SetGroupState(turningOn, TrafficLight.LightState.Green);
+            activeGroup = new List<int>(nextGroup);
+
+            float greenTime = CalculateGreenDuration(activeGroup);
+
+            if (verboseLog || turningOn.Count > 0)
+            {
+                Debug.Log($"[Adaptive] Phase {config.DescribeGroup(activeGroup)} selected. " +
+                          $"Demand={DescribeDemand(activeGroup)}, GreenTime={greenTime:F1}s");
+            }
+
+            statusText = $"Green — {config.DescribeGroup(activeGroup)}";
+            yield return StartCoroutine(GreenPhaseWithInterrupts(activeGroup, greenTime));
         }
-        return -1;
     }
 
-    IEnumerator GreenPhaseWithInterrupts(int laneIndex, float maxGreenTime)
+    // ===================== Group building =====================
+
+    /// <summary>
+    /// เริ่มจาก leader แล้วไล่เพิ่มเลนที่ (ก) มีรถรอ (ข) ไม่ conflict กับทุกตัวในกลุ่ม
+    /// เรียงตามลำดับ FCFS (รถที่รอนานกว่าได้สิทธิ์ก่อน) เพื่อให้ยังเป็นระบบ first-come-first-served
+    /// </summary>
+    List<int> BuildCompatibleGroup(int leader)
+    {
+        List<int> group = new List<int> { leader };
+        if (!enableConcurrentPhases) return group;
+
+        // เรียง candidate ตามเวลาที่รถคันแรกเข้ามารอ (เก่าสุดก่อน)
+        List<int> candidates = new List<int>();
+        for (int s = 0; s < config.SignalCount; s++)
+        {
+            if (s == leader) continue;
+            if (DemandOf(s) < minDemandToJoinGroup) continue;
+            candidates.Add(s);
+        }
+        candidates.Sort((a, b) => OldestArrivalOf(a).CompareTo(OldestArrivalOf(b)));
+
+        foreach (int c in candidates)
+        {
+            if (config.IsCompatibleWithGroup(c, group)) group.Add(c);
+        }
+        return group;
+    }
+
+    // ===================== Green phase =====================
+
+    IEnumerator GreenPhaseWithInterrupts(List<int> group, float maxGreenTime)
     {
         float elapsed = 0f;
         float emptyTimer = 0f;
@@ -172,17 +246,28 @@ public class AdaptiveController : MonoBehaviour
         {
             float dt = Time.deltaTime;
             elapsed += dt;
+            continuousGreenTimer += dt;
             phaseTimeRemaining = maxGreenTime - elapsed;
 
+            // ---- Max green: กันเลนเดิมเขียวยาวไม่จบ ----
+            if (continuousGreenTimer >= maxContinuousGreen && AnyDemandOutside(group))
+            {
+                Debug.Log($"[Adaptive] Max green {maxContinuousGreen}s reached on " +
+                          $"{config.DescribeGroup(group)} — forcing phase change");
+                forcePhaseChange = true;
+                yield break;
+            }
+
+            // ---- Gap-out: ทุกเลนในกลุ่มว่างพร้อมกันนานพอ ----
             if (enableGapOut)
             {
-                int currentCount = rois[laneIndex].GetVehicleCount();
-                if (currentCount == 0)
+                if (GroupIsEmpty(group))
                 {
                     emptyTimer += dt;
                     if (emptyTimer >= gapOutDelay)
                     {
-                        Debug.Log($"[Adaptive] Lane {laneNames[laneIndex]} gap-out at {elapsed:F1}s");
+                        if (verboseLog)
+                            Debug.Log($"[Adaptive] {config.DescribeGroup(group)} gap-out at {elapsed:F1}s");
                         yield break;
                     }
                 }
@@ -192,16 +277,18 @@ public class AdaptiveController : MonoBehaviour
                 }
             }
 
+            // ---- Anti-starvation: ตัดเฟสสั้นถ้ามีเลนอื่นรอนานเกิน ----
             if (elapsed >= minGreenBeforeInterrupt)
             {
-                int starvingOther = FindStarvingLane(starvationInterruptThreshold);
-                if (starvingOther != -1 && starvingOther != laneIndex)
+                int starving = FindStarvingLane(starvationInterruptThreshold, group);
+                if (starving != -1)
                 {
-                    float otherWait = rois[starvingOther].GetLongestWaitTime();
-                    Debug.Log($"[Adaptive] Cutting Lane {laneNames[laneIndex]} short at {elapsed:F1}s " +
-                              $"(after min {minGreenBeforeInterrupt}s served) to prevent Lane {laneNames[starvingOther]} " +
-                              $"starvation (waited {otherWait:F1}s)");
-                    if (DataLogger.Instance != null) DataLogger.Instance.LogStarvationEvent(laneNames[starvingOther]);
+                    float otherWait = OldestWaitOf(starving);
+                    Debug.Log($"[Adaptive] Cutting {config.DescribeGroup(group)} short at {elapsed:F1}s " +
+                              $"(after min {minGreenBeforeInterrupt}s served) to prevent Lane " +
+                              $"{config.SignalName(starving)} starvation (waited {otherWait:F1}s)");
+                    if (DataLogger.Instance != null)
+                        DataLogger.Instance.LogStarvationEvent(config.SignalName(starving));
                     yield break;
                 }
             }
@@ -222,75 +309,173 @@ public class AdaptiveController : MonoBehaviour
         phaseTimeRemaining = 0f;
     }
 
-    void SetLaneState(int laneIndex, TrafficLight.LightState state)
+    // ===================== Decision helpers =====================
+
+    int DemandOf(int signalIndex)
     {
-        lights[laneIndex].SetState(state);
-        currentPhaseState[laneIndex] = state;
+        ROIZone roi = config.SignalRoi(signalIndex);
+        return roi != null ? roi.GetVehicleCount() : 0;
     }
 
-    int ChooseNextLaneFCFS()
+    float OldestArrivalOf(int signalIndex)
     {
-        int bestLane = -1;
-        float oldestTime = Mathf.Infinity;
+        ROIZone roi = config.SignalRoi(signalIndex);
+        return roi != null ? roi.GetOldestArrivalTime() : Mathf.Infinity;
+    }
 
-        for (int i = 0; i < rois.Length; i++)
+    float OldestWaitOf(int signalIndex)
+    {
+        ROIZone roi = config.SignalRoi(signalIndex);
+        return roi != null ? roi.GetLongestWaitTime() : 0f;
+    }
+
+    bool AnyDemand()
+    {
+        for (int s = 0; s < config.SignalCount; s++)
         {
-            if (rois[i] == null) continue;
-            if (rois[i].GetVehicleCount() == 0) continue;
+            if (DemandOf(s) > 0) return true;
+        }
+        return false;
+    }
 
-            float arrivalTime = rois[i].GetOldestArrivalTime();
-            if (arrivalTime < oldestTime)
+    bool AnyDemandOutside(List<int> group)
+    {
+        for (int s = 0; s < config.SignalCount; s++)
+        {
+            if (group.Contains(s)) continue;
+            if (DemandOf(s) > 0) return true;
+        }
+        return false;
+    }
+
+    bool GroupIsEmpty(List<int> group)
+    {
+        foreach (int s in group)
+        {
+            if (DemandOf(s) > 0) return false;
+        }
+        return true;
+    }
+
+    /// <summary>เลนที่มีรถรอนานที่สุดและเกิน threshold — ไม่นับเลนที่กำลังเขียวอยู่</summary>
+    int FindStarvingLane(float thresholdRatio, List<int> excludeGroup)
+    {
+        float threshold = maxWaitTime * thresholdRatio;
+        int worst = -1;
+        float worstWait = threshold;
+
+        for (int s = 0; s < config.SignalCount; s++)
+        {
+            if (excludeGroup != null && excludeGroup.Contains(s)) continue;
+            if (DemandOf(s) == 0) continue;
+
+            float wait = OldestWaitOf(s);
+            if (wait >= worstWait)
             {
-                oldestTime = arrivalTime;
-                bestLane = i;
+                worstWait = wait;
+                worst = s;
             }
         }
-        return bestLane;
+        return worst;
     }
 
-    float CalculateGreenDuration(int laneIndex)
+    /// <summary>FCFS: เลนที่รถคันแรกเข้ามารอนานที่สุด (banned = เลนที่ห้ามเลือกรอบนี้)</summary>
+    int ChooseLeaderFCFS(List<int> banned = null)
     {
-        float d_i = rois[laneIndex].GetVehicleCount();
-        if (d_i <= 0f) return gMin;
+        int best = -1;
+        float oldest = Mathf.Infinity;
 
-        float neededTime = startupLostTime + d_i * saturationHeadway;
-        return Mathf.Clamp(neededTime, gMin, gMax);
+        for (int s = 0; s < config.SignalCount; s++)
+        {
+            if (DemandOf(s) == 0) continue;
+            if (banned != null && banned.Contains(s)) continue;
+
+            float arrival = OldestArrivalOf(s);
+            if (arrival < oldest)
+            {
+                oldest = arrival;
+                best = s;
+            }
+        }
+        return best;
     }
+
+    /// <summary>
+    /// สูตร HCM: G = startupLostTime + D x saturationHeadway
+    /// สำหรับเฟสที่เปิดหลายเลน ใช้เลนที่มีคิวยาวสุดเป็นตัวกำหนด (critical lane)
+    /// เพราะทุกเลนในกลุ่มระบายขนานกัน
+    /// </summary>
+    float CalculateGreenDuration(List<int> group)
+    {
+        float maxNeeded = gMin;
+
+        foreach (int s in group)
+        {
+            float d = DemandOf(s);
+            if (d <= 0f) continue;
+            float needed = startupLostTime + d * saturationHeadway;
+            if (needed > maxNeeded) maxNeeded = needed;
+        }
+        return Mathf.Clamp(maxNeeded, gMin, gMax);
+    }
+
+    string DescribeDemand(List<int> group)
+    {
+        string[] parts = new string[group.Count];
+        for (int i = 0; i < group.Count; i++)
+            parts[i] = $"{config.SignalName(group[i])}={DemandOf(group[i])}";
+        return string.Join(", ", parts);
+    }
+
+    static List<int> Except(List<int> source, List<int> remove)
+    {
+        List<int> result = new List<int>();
+        foreach (int v in source)
+        {
+            if (!remove.Contains(v)) result.Add(v);
+        }
+        return result;
+    }
+
+    // ===================== Debug GUI =====================
 
     void OnGUI()
     {
-        if (!showDebugGUI || !Application.isPlaying) return;
+        if (!showDebugGUI || !Application.isPlaying || config == null) return;
 
-        float boxWidth = 230;
+        float boxWidth = 250;
         float startX = Screen.width - boxWidth - 10;
 
         GUI.Box(new Rect(startX, 10, boxWidth, 25), "");
-        GUI.Label(new Rect(startX + 10, 12, boxWidth - 20, 20), $"Status: {statusText}");
+        GUI.Label(new Rect(startX + 8, 12, boxWidth - 16, 20), $"Status: {statusText}");
 
-        for (int i = 0; i < 3; i++)
+        int n = config.SignalCount;
+        for (int s = 0; s < n; s++)
         {
-            float yPos = 45 + i * 65;
+            float yPos = 45 + s * 65;
 
-            Color stateColor = GetStateColor(currentPhaseState[i]);
-            string stateName = currentPhaseState[i].ToString().ToUpper();
+            TrafficLight light = config.SignalLight(s);
+            TrafficLight.LightState state = light != null ? light.currentState : TrafficLight.LightState.Red;
 
             GUI.Box(new Rect(startX, yPos, boxWidth, 55), "");
 
             Color oldColor = GUI.color;
-            GUI.color = stateColor;
+            GUI.color = GetStateColor(state);
             GUI.Box(new Rect(startX + 5, yPos + 5, 20, 20), "");
             GUI.color = oldColor;
 
-            GUI.Label(new Rect(startX + 35, yPos + 5, 190, 20), $"Lane {laneNames[i]} — {stateName}");
+            GUI.Label(new Rect(startX + 33, yPos + 5, boxWidth - 40, 20),
+                      $"Lane {config.SignalName(s)} — {state.ToString().ToUpper()}");
 
-            if (i == activeLaneIndex)
+            if (activeGroup.Contains(s))
             {
-                GUI.Label(new Rect(startX + 35, yPos + 25, 190, 20), $"Time left: {phaseTimeRemaining:F1}s");
+                GUI.Label(new Rect(startX + 33, yPos + 25, boxWidth - 40, 20),
+                          $"Time left: {phaseTimeRemaining:F1}s   ({DemandOf(s)} cars)");
             }
             else
             {
-                float wait = rois[i] != null ? rois[i].GetLongestWaitTime() : 0f;
-                GUI.Label(new Rect(startX + 35, yPos + 25, 190, 20), $"Waiting: {wait:F1}s / {maxWaitTime:F0}s");
+                GUI.Label(new Rect(startX + 33, yPos + 25, boxWidth - 40, 20),
+                          $"Waiting: {OldestWaitOf(s):F1}s / {maxWaitTime:F0}s");
             }
         }
     }

@@ -5,6 +5,9 @@ public class TrafficLight : MonoBehaviour
 {
     public enum LightState { Red, Yellow, Green }
 
+    [Header("Identity (ใส่ให้ตรงกับ IntersectionConfig เพื่ออ่าน log ง่าย)")]
+    public string laneName = "A";
+
     [Header("Current State")]
     public LightState currentState = LightState.Red;
 
@@ -44,10 +47,18 @@ public class TrafficLight : MonoBehaviour
 
     void NotifyCars()
     {
-        foreach (CarAgent car in assignedCars)
+        // วน backward เพื่อลบรถที่ถูก Destroy ไปแล้วออกจาก list ได้ปลอดภัย
+        for (int i = assignedCars.Count - 1; i >= 0; i--)
         {
-            if (car != null) car.OnLightStateChanged(currentState);
+            if (assignedCars[i] == null) { assignedCars.RemoveAt(i); continue; }
+            assignedCars[i].OnLightStateChanged(currentState);
         }
+    }
+
+    /// <summary>ล้างทะเบียนรถทั้งหมด — เรียกตอนเริ่ม run ใหม่ในแต่ละ batch</summary>
+    public void ClearRegistrations()
+    {
+        assignedCars.Clear();
     }
 
     public void RegisterCar(CarAgent car)

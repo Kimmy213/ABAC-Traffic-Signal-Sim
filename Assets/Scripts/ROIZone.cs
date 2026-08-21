@@ -12,6 +12,8 @@ public class ROIZone : MonoBehaviour
 
     [Header("Debug Display")]
     public bool showDebugGUI = true;
+    [Tooltip("ลำดับช่องที่จะแสดงบนจอ (0 = บนสุด) ตั้งไม่ให้ซ้ำกันระหว่างเลน")]
+    public int guiSlot = 0;
 
     private Dictionary<CarAgent, float> carsInZone = new Dictionary<CarAgent, float>();
 
@@ -97,11 +99,10 @@ public class ROIZone : MonoBehaviour
     {
         if (!showDebugGUI || !Application.isPlaying) return;
 
-        int laneIndex = laneName == "A" ? 0 : (laneName == "B" ? 1 : 2);
-        float yPos = 10 + laneIndex * 60;
+        float yPos = 10 + guiSlot * 55;
 
-        GUI.Box(new Rect(10, yPos, 220, 50), "");
-        GUI.Label(new Rect(20, yPos + 5, 200, 20), $"Lane {laneName} — ROI Count");
-        GUI.Label(new Rect(20, yPos + 25, 200, 20), $"Cars waiting: {GetVehicleCount()}   Wait: {GetLongestWaitTime():F1}s");
+        GUI.Box(new Rect(10, yPos, 230, 48), "");
+        GUI.Label(new Rect(18, yPos + 4, 214, 20), $"Lane {laneName} — ROI Count");
+        GUI.Label(new Rect(18, yPos + 24, 214, 20), $"Cars: {GetVehicleCount()}   Wait: {GetLongestWaitTime():F1}s");
     }
 }
