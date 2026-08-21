@@ -1,5 +1,0 @@
-ControllerType,Scenario,Timestamp,Lane,DriverType,WaitTime
-Adaptive,EveningPeak_Rep1,16.47,B,Cautious,9.66
-Adaptive,EveningPeak_Rep1,17.23,B,Aggressive,7.94
-Adaptive,EveningPeak_Rep1,17.87,B,Normal,7.78
-Adaptive,EveningPeak_Rep1,18.81,B,Cautious,7.82

@@ -1,6 +1,0 @@
-ControllerType,Scenario,Timestamp,Lane,DriverType,WaitTime
-Adaptive,ABACEvent_Rep1,14.22,B,Aggressive,6.24
-Adaptive,ABACEvent_Rep1,17.66,C,Normal,10.82
-Adaptive,ABACEvent_Rep1,18.54,C,Normal,11.06
-Adaptive,ABACEvent_Rep1,19.32,C,Cautious,10.94
-Adaptive,ABACEvent_Rep1,19.92,C,Aggressive,11.10
