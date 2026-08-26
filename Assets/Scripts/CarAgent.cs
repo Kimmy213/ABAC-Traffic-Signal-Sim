@@ -28,7 +28,25 @@ public class CarAgent : MonoBehaviour
 
     [Header("Car Following (กันรถซ้อนกัน)")]
     public float minGap = 2f;
+    [Tooltip("ระยะห่างด้านข้างสูงสุดที่ยังนับว่า 'อยู่เลนเดียวกัน' (เมตร) — ระยะห่างระหว่างเลนในซีนคือ 3.5 ม. " +
+             "ค่านี้จึงต้องน้อยกว่าครึ่งหนึ่งของ 3.5 เพื่อไม่ให้รถคนละเลนเบรกให้กันโดยไม่จำเป็น")]
     public float lookAheadAngle = 1.5f;
+    [Tooltip("มองหารถคันหน้าไกลสุดกี่เมตร — ⚠️ ห้ามตั้งต่ำกว่าระยะเบรกของคนขับแบบ Cautious (~33 ม.) " +
+             "ไม่งั้นรถจะเห็นคิวช้าเกินจนเบรกไม่ทัน")]
+    public float lookAheadDistance = 50f;
+
+    [Header("Shared Lane Bypass (เฉพาะเลนที่แชร์ทางกายภาพ เช่น Ax/A2)")]
+    [Tooltip("true = คันนี้ใช้ 'ไหล่ทาง/เลนฉุกเฉิน' แซงคิวที่จอดขวางในเลนแชร์ได้ — สุ่มครั้งเดียวตอน spawn โดย " +
+             "CarSpawner ตาม laneBypassChance จำลองพฤติกรรมจริงที่ Itim สังเกต (รถขยับขวา/มอไซค์แทรก/รปภ.โบก) " +
+             "ที่ทำให้การบล็อกไม่ใช่ 100%\n\n" +
+             "⚠️ เดิมทำโดย 'ข้ามไม่นับรถคนละเลนเป็นตัวบล็อก' ใน GetCarAhead() ซึ่งผิด — รถวิ่งทะลุผ่านคันที่จอดอยู่ " +
+             "ตรง ๆ (เห็นเป็นรถซ้อนกันในซีน) ตอนนี้เปลี่ยนเป็นการ 'เยื้องออกไหล่ทางจริง ๆ' ตาม bypassLateralOffset " +
+             "แล้วปล่อยให้ car-following ตามระยะห่างจริงจัดการเอง จึงไม่มีทางซ้อนทับกันอีก")]
+    public bool canBypassCrossLaneBlocker = false;
+
+    [Tooltip("ระยะเยื้องออกไหล่ทาง (world space) ตอนแซงคิวในเลนแชร์ — ตั้งโดย CarSpawner " +
+             "ใช้เฉพาะช่วงวิ่งเข้าหา waypoint แรก (ก่อนเริ่มหักเลี้ยว) จากนั้นกลับเข้าเลนปกติเอง")]
+    public Vector3 bypassLateralOffset = Vector3.zero;
 
     private static System.Collections.Generic.List<CarAgent> allCars
         = new System.Collections.Generic.List<CarAgent>();
@@ -60,6 +78,14 @@ public class CarAgent : MonoBehaviour
     [Header("Traffic Light (ตั้งค่าตอน Spawn — เว้นว่างถ้าเป็นเลนไหลอิสระ)")]
     [Tooltip("รถอ่านสถานะไฟจากตัวนี้เองทุกเฟรม เป็นตัวสำรองกรณีทะเบียนใน TrafficLight หลุด")]
     public TrafficLight assignedLight;
+
+    [Tooltip("true = เลน 'ให้ทาง' (yield) — ไฟที่อ้างถึงเป็นไฟของ*อีกกระแสหนึ่ง* ไม่ใช่ไฟของเราเอง\n" +
+             "อีกฝ่ายเขียว/เหลือง = เราต้องหยุด, อีกฝ่ายแดง = เราไปได้\n\n" +
+             "ใช้กับเลน Ax: ปกติเป็นเลนฟรีไม่ต้องรอไฟ แต่หน้างานจริงเลี้ยวเข้ามอไม่ได้ตอน Bx เขียว " +
+             "(Bx เลี้ยวขวาเข้ามอเหมือนกัน กวาดผ่านปากทางเข้า) จึงผูก Ax ไว้กับไฟ Bx แบบกลับด้าน\n" +
+             "⚠️ Ax ยังคง isSignalized = false ใน IntersectionConfig เพราะมันไม่มีเฟสของตัวเอง " +
+             "ไม่ได้รับการจัดสรรเวลาเขียว และไม่เข้าไปอยู่ใน conflict matrix — เป็นแค่การให้ทางเท่านั้น")]
+    public bool lightIsInverted = false;
 
     private bool lightIsGreen = false;
     private float reactionTimer = 0f;
@@ -167,7 +193,7 @@ public class CarAgent : MonoBehaviour
             return;
         }
 
-        Vector3 toTarget = pathWaypoints[waypointIndex].position - transform.position;
+        Vector3 toTarget = CurrentWaypointTarget() - transform.position;
         toTarget.y = 0f;
 
         // ผ่านไปแล้ว (อยู่ข้างหลังรถ) ก็นับว่าถึงเหมือนกัน
@@ -251,7 +277,8 @@ public class CarAgent : MonoBehaviour
         Transform wp = pathWaypoints[waypointIndex];
         if (wp == null) return Mathf.Infinity;
 
-        Vector3 toTarget = wp.position - transform.position;
+        Vector3 wpPos = CurrentWaypointTarget();
+        Vector3 toTarget = wpPos - transform.position;
         toTarget.y = 0f;
         if (toTarget.magnitude < 0.5f) return Mathf.Infinity;
 
@@ -277,7 +304,7 @@ public class CarAgent : MonoBehaviour
             && pathWaypoints[waypointIndex + 1] != null
             && toTarget.magnitude <= brakeDist + turnBrakeMargin)
         {
-            Vector3 nextSeg = pathWaypoints[waypointIndex + 1].position - wp.position;
+            Vector3 nextSeg = pathWaypoints[waypointIndex + 1].position - wpPos;
             nextSeg.y = 0f;
             if (nextSeg.magnitude > 0.1f && Vector3.Angle(toTarget, nextSeg) >= turnSlowAngle)
                 return cornerSpeed;
@@ -331,6 +358,11 @@ public class CarAgent : MonoBehaviour
         float closestGap = Mathf.Infinity;
         Vector3 frontPos = GetFrontPosition();
 
+        // ⚠️ ไม่มีการ "ข้ามรถคนละเลน" อีกแล้ว (ของเดิมทำให้รถที่สุ่มได้แซงวิ่งทะลุผ่านรถที่จอดอยู่จริง ๆ
+        //    = เห็นเป็นรถซ้อนทับกันในซีน) การแซงไหล่ทางตอนนี้ทำด้วยการเยื้องตำแหน่งจริงแทน (bypassLateralOffset)
+        //    แล้วปล่อยให้เงื่อนไข lateralDist ข้างล่างคัดออกเองตามระยะห่างจริง — ฟิสิกส์เดียว ไม่มีข้อยกเว้น
+        float maxLook = LookAheadLimit();
+
         foreach (CarAgent other in allCars)
         {
             if (other == this) continue;
@@ -338,6 +370,7 @@ public class CarAgent : MonoBehaviour
             Vector3 toOther = other.transform.position - frontPos;
             float forwardDist = Vector3.Dot(toOther, transform.forward);
             if (forwardDist <= 0f) continue;
+            if (forwardDist > maxLook) continue;
 
             float lateralDist = Vector3.Cross(transform.forward, toOther).magnitude;
             if (lateralDist > lookAheadAngle) continue;
@@ -353,6 +386,76 @@ public class CarAgent : MonoBehaviour
         return closest;
     }
 
+    /// <summary>
+    /// จุดหมายของ waypoint ปัจจุบัน — ปกติคือตัว waypoint เอง
+    /// ยกเว้นรถที่ "ใช้ไหล่ทางแซงคิว" ในช่วงวิ่งเข้าหา waypoint แรก (ยังไม่เริ่มหักเลี้ยว)
+    /// จะเล็งไปยังจุดที่เยื้องออกไปตาม bypassLateralOffset เพื่อให้วิ่งอยู่บนไหล่ทางจริง ๆ ตลอดช่วงที่แซง
+    /// พอเข้า waypoint ถัดไป (เริ่มเลี้ยว) ก็กลับมาใช้เส้นทางปกติ = merge กลับเข้าเลนเองโดยอัตโนมัติ
+    /// </summary>
+    Vector3 CurrentWaypointTarget()
+    {
+        Vector3 p = pathWaypoints[waypointIndex].position;
+        if (waypointIndex == 0 && canBypassCrossLaneBlocker) p += bypassLateralOffset;
+        return p;
+    }
+
+    /// <summary>
+    /// มองหารถคันหน้าได้ไกลสุดกี่เมตร
+    ///
+    /// ⚠️ จุดนี้เคยเป็นบั๊กใหญ่: ของเดิมมองไกล "ไม่จำกัด" ตามแนวเส้นตรงหน้ารถ
+    /// แต่เลนเลี้ยว (Ax) จะหักออกไปทางอื่นก่อนถึงรถที่มองเห็น เช่น Ax วิ่งอยู่ z=6.5 มุ่ง +X
+    /// แนวเส้นตรงของมันพุ่งทะลุสี่แยกไปเจอรถ CA ที่ merge เข้าเลน z=6.5 ฝั่งตะวันออก (ห่าง 40-90 ม.)
+    /// ทั้งที่ตัวเองจะเลี้ยวซ้ายออกไปตั้งแต่ x=-11 ไม่มีทางไปชนกันเลย
+    /// ผลคือรถ Ax เบรกและ "จอดไกล" จากสี่แยกโดยไม่มีเหตุผล
+    ///
+    /// ตอนนี้จำกัด 2 ชั้น: (1) เพดานระยะมองปกติ (2) ถ้าเลย waypoint ปัจจุบันไปแล้วเส้นทางหักเลี้ยว
+    /// ก็มองได้แค่ถึง waypoint นั้น — รถที่อยู่เลยจุดหักไปไม่เกี่ยวกับเราแล้ว
+    /// (คิวที่บล็อกจริงอยู่ "ก่อน" จุดหักเสมอ จึงยังตรวจเจอครบเหมือนเดิม)
+    /// </summary>
+    float LookAheadLimit()
+    {
+        float limit = lookAheadDistance;
+
+        if (pathWaypoints == null || pathWaypoints.Length == 0) return limit;
+        if (reachedEndOfPath) return limit;
+        // ⚠️ ไม่มี guard "ยังไม่ถึงเส้นหยุด" ตรงนี้โดยตั้งใจ — ต่อให้ยังไม่ถึงเส้นหยุด รถเลนเลี้ยวก็รู้อยู่แล้วว่า
+        //    ตัวเองจะหักออกที่ waypoint แรก จึงไม่ควรเบรกให้รถที่อยู่เลยจุดนั้นไป (นี่คือบั๊ก "Ax จอดไกล")
+        if (waypointIndex >= pathWaypoints.Length) return limit;
+        if (pathWaypoints[waypointIndex] == null) return limit;
+        if (waypointIndex + 1 >= pathWaypoints.Length) return limit;
+        if (pathWaypoints[waypointIndex + 1] == null) return limit;
+
+        Vector3 wpPos = CurrentWaypointTarget();
+        Vector3 toWp = wpPos - GetFrontPosition();
+        toWp.y = 0f;
+
+        float along = Vector3.Dot(toWp, transform.forward);
+        if (along <= 0f) return limit;
+
+        Vector3 nextSeg = pathWaypoints[waypointIndex + 1].position - wpPos;
+        nextSeg.y = 0f;
+        if (nextSeg.magnitude > 0.1f && toWp.magnitude > 0.1f
+            && Vector3.Angle(toWp, nextSeg) >= turnSlowAngle)
+        {
+            return Mathf.Min(limit, along + waypointReachRadius);
+        }
+        return limit;
+    }
+
+    /// <summary>
+    /// มีรถคันไหนอยู่ในรัศมีนี้ไหม — CarSpawner เรียกก่อนปล่อยรถ กันปล่อยทับคันที่จอดค้างอยู่ตรงจุด spawn
+    /// (เกิดจริงเมื่อคิวยาวถอยมาถึงจุด spawn หรือเมื่อสอง spawner ใช้เลนกายภาพเดียวกัน เช่น A2 กับ Ax)
+    /// </summary>
+    public static bool IsSpaceOccupied(Vector3 pos, float radius)
+    {
+        foreach (CarAgent c in allCars)
+        {
+            if (c == null) continue;
+            if (Vector3.Distance(c.transform.position, pos) < radius) return true;
+        }
+        return false;
+    }
+
     void MoveForward()
     {
         transform.Translate(Vector3.forward * currentSpeed * Time.deltaTime);
@@ -365,6 +468,17 @@ public class CarAgent : MonoBehaviour
         lightInitialized = true;
 
         if (hasCleared) return; // ผ่านไปแล้ว ไม่สนไฟอีก
+
+        // ===== เลนให้ทาง (yield): อ่านไฟของอีกกระแสแบบกลับด้าน =====
+        // เหลืองของอีกฝ่ายก็ยังถือว่าเราไปไม่ได้ เพราะรถเขายังเคลียร์ปากทางไม่หมด
+        // ไม่ใช้ dilemma zone ที่นี่ — คนที่ให้ทางไม่ได้ "เร่งฝ่า" เหมือนคนเจอไฟเหลืองของตัวเอง
+        // ถ้าใกล้เส้นเกินกว่าจะหยุดทัน ComputeDesiredSpeed จะไถเลยเส้นแล้วนับเป็น hasCleared ไปเอง
+        // (พฤติกรรมนี้สมจริง = หยุดไม่ทันก็ต้องไปต่อ) ไม่ต้องเขียนเพิ่ม
+        if (lightIsInverted)
+        {
+            lightIsGreen = (state == TrafficLight.LightState.Red);
+            return;
+        }
 
         if (state == TrafficLight.LightState.Green)
         {

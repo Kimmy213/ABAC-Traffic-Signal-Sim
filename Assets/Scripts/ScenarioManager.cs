@@ -5,7 +5,7 @@ using System.Collections.Generic;
 /// <summary>
 /// รัน batch experiment: 5 scenario x 27 repetition x 2 controller = 270 runs
 /// ใช้ seed เดียวกันคู่ Fixed/Adaptive เพื่อให้ paired t-test valid
-/// อ่านรายชื่อเลนจาก IntersectionConfig จึงรองรับทั้ง 3 เลนเดิมและ 6 เลนเต็มระบบ
+/// อ่านรายชื่อเลนจาก IntersectionConfig จึงรองรับทั้ง 3 เลนเดิมและ 7 เลนเต็มระบบ (รวม A2 shared lane)
 /// </summary>
 public class ScenarioManager : MonoBehaviour
 {
@@ -97,6 +97,12 @@ public class ScenarioManager : MonoBehaviour
     public float medium = 4f;
     public float low = 7f;
     public float veryLow = 15f;
+    [Tooltip("เลน 'ปิด' จริง (ยืนยันจาก รปภ.) — mean interval ใหญ่มาก ๆ แทนศูนย์ (Poisson หาร rate จาก interval)")]
+    public float closed = 999999f;
+
+    [Tooltip("สัดส่วนรถตรงที่เข้าเลนนอก A2 (เลนแชร์กับ Ax) เทียบกับรถตรงทั้งหมด — Itim back-calculate จากอัตราการ" +
+             "บล็อกที่สังเกตจริงได้ ~18% (ช่วง sensitivity 13-23%) ไม่ใช่ 50/50 ที่เดาไว้แต่แรก")]
+    [Range(0.01f, 0.99f)] public float a2Share = 0.18f;
 
     [Header("Scenario Table (กด Load ABAC Scenario Preset ถ้ายังว่าง)")]
     public List<ScenarioDef> scenarios = new List<ScenarioDef>();
@@ -457,14 +463,21 @@ public class ScenarioManager : MonoBehaviour
     ///   ABACEvent    — งานรับปริญญา/กิจกรรมใหญ่ เข้าออกหนักพร้อมกัน
     ///   Night        — เบาบางทุกทิศ
     /// </summary>
-    [ContextMenu("Load ABAC Scenario Preset (5 scenarios x 6 lanes)")]
+    // ⚠️ ค่า MorningPeak / MiddayNormal ใช้ตัวเลขวัดจริงจาก Itim (detector ผ่านครบ 8 คลิป, ปรับแก้รอบ 24 ส.ค.)
+    // ที่เหลือ (EveningPeak, ABACEvent, Night) ยังเป็นสมมติฐานจาก bucket — ยังไม่มีข้อมูลวัด
+    // MorningPeak CB/CA = closed — แก้แล้ว: เลน C ปิดแค่ 08:30-09:00 (~15-30 นาที) ไม่ใช่ทั้งเช้า แต่ตรงกับ
+    //   ช่วง peak จริง (08:15-09:00, จบทันทีหลัง 09:00 ไม่ใช่ 07:00-08:30 ตามที่เดาไว้แต่แรก) จึงยังใช้ closed ได้
+    // MiddayNormal และ scenario อื่น ๆ CB/CA ยังเป็นสมมติฐาน (รอฟุตเทจเลน C วันจันทร์จาก Itim)
+    // ⚠️ ยืนยันแล้ว: 09:00-15:00 ไฟกระพริบเหลืองจริง (ไม่ใช่ fixed-time) — MiddayNormal (11:37-12:00) อยู่ในช่วงนี้
+    //   ผล Fixed vs Adaptive ของ MiddayNormal จึงเป็นการเทียบเชิงสมมติ ไม่ใช่สภาพจริงตอนเที่ยง ต้องระบุ caveat ในรายงาน
+    [ContextMenu("Load ABAC Scenario Preset (5 scenarios x 7 lanes)")]
     public void LoadABACScenarioPreset()
     {
         scenarios = new List<ScenarioDef>
         {
-            MakeScenario("MorningPeak",  A: high,    Ax: high,     B: medium, Bx: high,     CB: veryLow, CA: veryLow),
+            MakeScenario("MorningPeak",  A: 19.7f, Ax: 5.6f,   B: 8.7f,  Bx: 9.6f,     CB: closed,  CA: closed),
             MakeScenario("EveningPeak",  A: medium,  Ax: low,      B: high,   Bx: low,      CB: high,    CA: high),
-            MakeScenario("MiddayNormal", A: low,     Ax: low,      B: low,    Bx: low,      CB: low,     CA: low),
+            MakeScenario("MiddayNormal", A: 30.3f, Ax: 8.5f,   B: 15.9f, Bx: 17.6f,    CB: low,     CA: low),
             MakeScenario("ABACEvent",    A: medium,  Ax: veryHigh, B: medium, Bx: veryHigh, CB: high,    CA: high),
             MakeScenario("Night",        A: veryLow, Ax: veryLow,  B: veryLow, Bx: veryLow, CB: veryLow, CA: veryLow),
         };
@@ -474,14 +487,21 @@ public class ScenarioManager : MonoBehaviour
                   $"{scenarios.Count * repetitionsPerScenario * 2} runs");
     }
 
+    /// <summary>
+    /// A ที่รับเข้ามาคือ "อัตรารถตรงรวม" (ก่อนมี shared lane) — แบ่งให้ A (เลนใน) กับ A2 (เลนนอก)
+    /// เหมือนกับ TestCaseLibrary.Poisson() เป๊ะ ๆ ตามสัดส่วน a2Share (ค่าเริ่มต้น 18% ไม่ใช่ 50/50 แล้ว)
+    /// </summary>
     ScenarioDef MakeScenario(string name, float A, float Ax, float B, float Bx, float CB, float CA)
     {
+        float aInner = A / (1f - a2Share);
+        float aOuter = A / a2Share;
         return new ScenarioDef
         {
             name = name,
             laneRates = new List<LaneArrivalRate>
             {
-                new LaneArrivalRate("A",  A),
+                new LaneArrivalRate("A",  aInner),
+                new LaneArrivalRate("A2", aOuter),
                 new LaneArrivalRate("Ax", Ax),
                 new LaneArrivalRate("B",  B),
                 new LaneArrivalRate("Bx", Bx),

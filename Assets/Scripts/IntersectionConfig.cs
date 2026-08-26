@@ -333,9 +333,12 @@ public class IntersectionConfig : MonoBehaviour
             {
                 Debug.LogError($"[IntersectionConfig] เลน {lane.laneName} ยังไม่ได้ลาก ROIZone"); problems++;
             }
-            else if (lane.roi.laneName != lane.laneName)
+            else if (!lane.roi.Accepts(lane.laneName))
             {
-                Debug.LogError($"[IntersectionConfig] ROIZone ของเลน {lane.laneName} ตั้ง laneName เป็น '{lane.roi.laneName}' ไม่ตรงกัน"); problems++;
+                // ⚠️ ใช้ Accepts() ไม่ใช่เทียบ laneName ตรง ๆ เพราะ ROI ตัวเดียวรับผิดชอบได้หลายเลน
+                //    (A2 กับ Ax อยู่เลนกายภาพเดียวกัน จึงใช้ ROI_Ax ร่วมกัน — ดู ROIZone.alsoCountLanes)
+                Debug.LogError($"[IntersectionConfig] ROIZone '{lane.roi.name}' ของเลน {lane.laneName} ไม่ได้นับเลนนี้ " +
+                               $"(laneName='{lane.roi.laneName}', alsoCountLanes ไม่มี '{lane.laneName}') → demand จะเป็น 0 ตลอด"); problems++;
             }
             if (lane.spawner == null)
             {
@@ -373,8 +376,9 @@ public class IntersectionConfig : MonoBehaviour
     {
         lanes = new List<ApproachLane>
         {
-            new ApproachLane { laneName = "A",  isSignalized = true,  movementDescription = "ถนนบางนา-ตราด ทิศทางไปตะวันออก (+X) วิ่งตรงผ่านแยก" },
-            new ApproachLane { laneName = "Ax", isSignalized = false, movementDescription = "แยกจาก A เลี้ยวซ้ายเข้า ABAC — ฟรี ไม่ตัดกระแสใคร (ABAC อยู่ทางซ้ายของ A)" },
+            new ApproachLane { laneName = "A",  isSignalized = true,  movementDescription = "ถนนบางนา-ตราด ทิศทางไปตะวันออก (+X) วิ่งตรงผ่านแยก — เลนใน" },
+            new ApproachLane { laneName = "A2", isSignalized = true,  movementDescription = "รถตรงที่ใช้เลนนอกร่วมกับ Ax (shared lane) — ใช้ไฟดวงเดียวกับ A เป๊ะ ๆ และ ROI ตัวเดียวกับ Ax เป๊ะ ๆ (อ้างถึง component เดียวกันทั้งคู่ ไม่ใช่แค่ตั้งค่าให้เหมือนกัน) จึงเขียว/แดงพร้อม A เสมอ และถูกนับรวมกับ Ax เหมือนที่ detector จริงเห็น — สัดส่วนรถตรงเข้าเลนนอก 18% (Itim back-calculate จากอัตราการบล็อกจริง, sensitivity 13-23%)" },
+            new ApproachLane { laneName = "Ax", isSignalized = false, movementDescription = "แยกจาก A เลี้ยวซ้ายเข้า ABAC (ABAC อยู่ทางซ้ายของ A) — ไม่มีเฟส/เวลาเขียวของตัวเอง แต่ไม่ใช่เลนฟรี 100%: (1) วิ่งเลนเดียวกับ A2 จึงถูก A2 ที่จอดรอไฟแดงบล็อก (2) เลี้ยวเข้ามอไม่ได้ตอน Bx เขียว เพราะ Bx ก็เลี้ยวเข้ามอเหมือนกัน — ทำผ่าน CarSpawner.lightIsInverted ผูกกับไฟ Bx แบบกลับด้าน ไม่ได้อยู่ใน conflict matrix เพราะไม่ใช่เลนที่มีไฟ" },
             new ApproachLane { laneName = "B",  isSignalized = true,  movementDescription = "ถนนบางนา-ตราด ทิศทางไปตะวันตก (-X) วิ่งตรงผ่านแยก" },
             new ApproachLane { laneName = "Bx", isSignalized = true,  movementDescription = "แยกจาก B เลี้ยวขวาเข้า ABAC — ตัดกระแส A (ABAC อยู่ทางขวาของ B)" },
             new ApproachLane { laneName = "CB", isSignalized = true,  movementDescription = "ออกจาก ABAC เลี้ยวขวาไปทางตะวันตก merge เข้าเลน B — ต้องข้ามเลน A ก่อน" },
@@ -385,12 +389,16 @@ public class IntersectionConfig : MonoBehaviour
         {
             new ConflictPair { laneA = "A",  laneB = "Bx", reason = "Bx เลี้ยวขวาเข้า ABAC ต้องตัดผ่านกระแสรถตรงของเลน A" },
             new ConflictPair { laneA = "A",  laneB = "CB", reason = "CB ต้องข้ามช่องจราจรของเลน A ก่อนไป merge เลน B" },
+            new ConflictPair { laneA = "A2", laneB = "Bx", reason = "A2 ใช้ไฟเดียวกับ A — เลนนอกก็ถูก Bx ตัดผ่านเหมือนกับเลนใน" },
+            new ConflictPair { laneA = "A2", laneB = "CB", reason = "A2 ใช้ไฟเดียวกับ A — CB ต้องข้ามเลนนอกก่อนไป merge เลน B เหมือนกับที่ต้องข้ามเลนใน" },
             new ConflictPair { laneA = "B",  laneB = "CB", reason = "CB merge เข้าช่องจราจรที่ B กำลังวิ่งผ่านพอดี" },
             new ConflictPair { laneA = "Bx", laneB = "CB", reason = "เส้นทางตัดกันกลางแยก (ตามที่ระบุใน scope)" },
         };
 
         // หมายเหตุ: A กับ B ไม่ conflict (กระแสตรงสวนทางกัน) -> เขียวพร้อมกันได้
         //          B กับ Bx ไม่ conflict (มาจากขาเดียวกัน)   -> เขียวพร้อมกันได้
+        //          A กับ A2 ไม่ conflict โดยตั้งใจ (ไม่มี ConflictPair) -> ต้องเขียวพร้อมกันได้เสมอ
+        //          เพราะจริง ๆ แล้วมันคือไฟดวงเดียวกัน ถ้าใครไป conflict กับ A ก็ต้อง conflict กับ A2 ด้วยเสมอ
 
         Build();
         Debug.Log("[IntersectionConfig] โหลด preset แยก ABAC แล้ว — เหลือลาก TrafficLight / ROIZone / CarSpawner ใส่แต่ละเลน");

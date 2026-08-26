@@ -5,7 +5,9 @@ using System.Collections.Generic;
 /// <summary>
 /// Baseline controller: วนเฟสตายตัวตามลำดับที่กำหนดไว้ ไม่สนใจ demand จริง
 /// รองรับ "เฟสที่เปิดหลายเลนพร้อมกัน" (เช่น A+B กระแสตรงสวนทาง)
-/// อ้างอิงรอบสัญญาณ 120 วินาที/รอบ ตาม DOH Thailand (2019)
+/// เดิมอ้างอิงรอบสัญญาณ 120 วินาที/รอบ ตาม DOH Thailand (2019) — ปัจจุบันปรับเป็น 107s
+/// ตามที่ Kimmy จับเวลาจริงหน้างาน + Itim วิเคราะห์วิดีโอยืนยัน (A=40s/B=65s/Bx=20-23s/CB=31s แดง 73.5s)
+/// ดูรายละเอียดที่ LoadABACPreset() — ยืนยันแล้วว่าไฟเป็น fixed-time จริง ไม่ใช่ actuated (ดู reply_to_badin_4.md ข้อ 3)
 /// </summary>
 public class FixedController : MonoBehaviour
 {
@@ -213,25 +215,36 @@ public class FixedController : MonoBehaviour
     void PrintCycleLength()
     {
         if (config != null) { config.EnsureBuilt(); BuildPhaseCache(); }
-        Debug.Log($"[FixedController] Cycle length = {GetCycleLength():F0}s (เป้าหมาย 120s ตาม DOH Thailand 2019)");
+        Debug.Log($"[FixedController] Cycle length = {GetCycleLength():F0}s (เป้าหมาย 107s ตามค่าวัดจริงล่าสุด)");
     }
 
     /// <summary>
-    /// แผนเฟสตายตัวของแยก ABAC — 3 เฟส คุม 4 ไฟ รวม 120 วินาที/รอบ
-    ///   P1 A+B   45s  (กระแสตรงสวนทาง วิ่งพร้อมกันได้)
-    ///   P2 B+Bx  30s  (ขาตะวันออกตรง + เลี้ยวขวาเข้า ABAC แบบ protected)
-    ///   P3 CB    30s  (ระบายรถออกจาก ABAC)
+    /// แผนเฟสตายตัวของแยก ABAC — 3 เฟส คุม 5 ไฟ (A ใช้ TrafficLight ร่วมกับ A2) รวม 107 วินาที/รอบ
+    ///   P1 A+A2+B  40s  (กระแสตรงสวนทาง + เลนแชร์นอก A2 วิ่งพร้อมกันได้ — A2 ใช้ไฟดวงเดียวกับ A)
+    ///   P2 B+Bx    21s  (ขาตะวันออกตรง + เลี้ยวขวาเข้า ABAC แบบ protected — ⭐ นี่คือคอขวดจริง ดูหมายเหตุด้านล่าง)
+    ///   P3 CB      31s  (ระบายรถออกจาก ABAC)
     ///   inter-green 3 ครั้ง x (3s เหลือง + 2s แดงทั้งหมด) = 15s
-    ///   รวม 45+30+30+15 = 120s
+    ///   รวม 40+21+31+15 = 107s
+    ///
+    ///   ⭐ ค่าชุดนี้มาจาก Kimmy จับเวลาไฟจริงหน้างาน (A=50/B=90-95/Bx=20/CB=31/3/75 ที่นับสด — เชื่อถือ CB
+    ///   ได้สุดเพราะมีจอนับถอยหลัง) แล้ว Itim เอาไปเทียบกับวิดีโอที่ Kimmy ถ่ายมา วิเคราะห์ซ้ำได้ A=40s / B=65s /
+    ///   Bx=20-23s / CB=31s เขียว, แดง C=73.5s (วัดซ้ำ 2 รอบได้เท่ากันเป๊ะ → ยืนยันเป็น fixed-time จริง ไม่ใช่
+    ///   actuated) เอา 40/21(กลางของ Bx 20-23 ที่ทำให้ผลรวมตรง 107s พอดี)/31 มาลงเป๊ะ ๆ — เช็คคืน: แดงของ CB ที่
+    ///   คำนวณได้จากตารางนี้ = 107-31-3 = 73s ตรงกับที่วัดจากวิดีโอ 73.5s (คลาดแค่ 0.5s)
+    ///
+    ///   ⚠️ Itim คำนวณ v/c จากค่าชุดนี้แล้วพบว่า Bx ล้น (v/c 1.21-1.39, คิวยาวเกิน 78m ที่มีใน 7-11 นาที) ขณะที่
+    ///   A ได้ไฟเขียวเกินความต้องการ 4 เท่า (v/c 0.25) — ข้อเสนอ "ย้ายเขียว 8s จาก A ไป Bx" เป็น**นโยบายที่ควร
+    ///   เขียนในรายงาน/ให้ Adaptive หาเจอเอง** ไม่ได้เอามาแก้ preset นี้ตรง ๆ เพราะ Fixed ต้องจำลองปัญหาจริงของ
+    ///   ระบบเดิมไว้ ถ้าแก้ preset ให้ฉลาดขึ้นเอง จะเสียจุดประสงค์ของการเทียบ Fixed vs Adaptive ไป
     /// </summary>
-    [ContextMenu("Load ABAC 4-Phase Preset (120s cycle)")]
+    [ContextMenu("Load ABAC 4-Phase Preset (107s cycle)")]
     public void LoadABACPreset()
     {
         phases = new List<FixedPhase>
         {
-            new FixedPhase { phaseName = "P1 MainThrough",  greenLanes = new[] { "A", "B" },  greenDuration = 45f },
-            new FixedPhase { phaseName = "P2 EastRightTurn", greenLanes = new[] { "B", "Bx" }, greenDuration = 30f },
-            new FixedPhase { phaseName = "P3 ABACExit",      greenLanes = new[] { "CB" },      greenDuration = 30f },
+            new FixedPhase { phaseName = "P1 MainThrough",  greenLanes = new[] { "A", "A2", "B" },  greenDuration = 40f },
+            new FixedPhase { phaseName = "P2 EastRightTurn", greenLanes = new[] { "B", "Bx" }, greenDuration = 21f },
+            new FixedPhase { phaseName = "P3 ABACExit",      greenLanes = new[] { "CB" },      greenDuration = 31f },
         };
         yellowDuration = 3f;
         allRedDuration = 2f;

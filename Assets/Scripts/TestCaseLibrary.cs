@@ -163,6 +163,14 @@ public static class TestCasePresets
 {
     // อัตรา Poisson มาตรฐาน
     const float VERY_HIGH = 1.5f, HIGH = 2.5f, MEDIUM = 4f, LOW = 7f, VERY_LOW = 15f;
+    // เลน "ปิด" จริง (ยืนยันจาก รปภ.) — ไม่ใช่แค่รถน้อย ใช้ mean interval ใหญ่มาก ๆ แทนศูนย์
+    // เพราะ Poisson ใน CarSpawner หาร rate จาก interval, ตั้ง 0 ตรง ๆ จะกลายเป็น rate ไม่จำกัด (พังคนละทาง)
+    const float CLOSED = 999999f;
+
+    // สัดส่วนรถตรงที่เข้าเลนนอก (A2 — เลนแชร์กับ Ax) เทียบกับรถตรงทั้งหมด
+    // เดิมเดา 50/50 — Itim back-calculate จากอัตราการบล็อกที่สังเกตจริง (Ax โดนบล็อก 40-60% ของเวลา) ได้ตัวเลขจริง
+    // ประมาณ 13-23% กลาง ๆ ที่ 18% (ดู reply_to_badin_3.md ข้อ 1) — ใช้ 18% เป็นค่ากลาง, sensitivity ที่ 13%/23%
+    const float A2_SHARE = 0.18f;
 
     public static List<TestCase> BuildDefault()
     {
@@ -185,13 +193,16 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T2 · ทุกเลนเท่ากัน",
-            description = "ทั้ง 6 เลนปล่อย 8 คันพร้อมกัน ห่างกัน 2 วิ\n" +
+            description = "ทั้ง 7 เลนปล่อย 8 คันพร้อมกัน ห่างกัน 2 วิ (รวม A2 เลนแชร์ด้วย)\n" +
                           "ตรวจความเป็นธรรม: ทุกเลนต้องได้ไฟเขียว ไม่มีเลนไหนถูกทิ้ง\n" +
-                          "และเลนฟรี Ax/CA ต้องมีเวลารอใกล้ 0",
+                          "และเลนฟรี CA ต้องมีเวลารอใกล้ 0 — ส่วน Ax ตอนนี้ไม่ใช่ 0 แล้ว (โดนตั้งใจ) ด้วย 2 เหตุ:\n" +
+                          "(1) A2 จอดรอไฟแดงบล็อกอยู่ข้างหน้าในเลนเดียวกัน (2) Ax เองก็ต้องหยุดตอน Bx เขียว\n" +
+                          "ดู T13 สำหรับกรณีที่ชัดกว่านี้",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 180f,
             schedules = new List<LaneSchedule> {
                 new LaneSchedule("A",  new ScheduledBurst(0f, 8, 2f)),
+                new LaneSchedule("A2", new ScheduledBurst(0f, 8, 2f)),
                 new LaneSchedule("Ax", new ScheduledBurst(0f, 8, 2f)),
                 new LaneSchedule("B",  new ScheduledBurst(0f, 8, 2f)),
                 new LaneSchedule("Bx", new ScheduledBurst(0f, 8, 2f)),
@@ -253,10 +264,13 @@ public static class TestCasePresets
         // ---------- T6 ----------
         list.Add(new TestCase
         {
-            name = "T6 · เลนฟรีอย่างเดียว",
-            description = "ปล่อยเฉพาะ Ax และ CA (สองเลนที่ไม่มีไฟ) ไม่มีรถเลนอื่นเลย\n" +
-                          "⭐ Sanity check: เวลารอต้องใกล้ 0 และรถต้องเลี้ยวได้ไม่ติดอะไร\n" +
-                          "ถ้าเลนฟรีมีเวลารอเยอะ = ตั้ง stopLineTarget ผิด",
+            name = "T6 · เลนไม่มีเฟสของตัวเอง (Ax, CA)",
+            description = "ปล่อยเฉพาะ Ax และ CA ไม่มีรถเลนอื่นเลย — ไม่มี A2 มาบล็อกด้วย\n" +
+                          "⭐ CA เป็นเลนฟรีแท้ ๆ เวลารอต้องใกล้ 0 เสมอ ถ้าไม่ใกล้ 0 = ตั้ง stopLineTarget ผิด\n" +
+                          "⭐ Ax ไม่ใช่เลนฟรีแท้แล้ว (ต้องหยุดตอน Bx เขียว) เทสนี้เลยกลายเป็นตัวเทียบ Fixed vs Adaptive ที่ตรงประเด็นมาก:\n" +
+                          "   • Fixed → Bx ได้ไฟเขียวทุกรอบถึงไม่มีรถ Bx สักคัน = Ax โดนหยุดฟรี ๆ ทุกรอบ เวลารอ > 0 ชัดเจน\n" +
+                          "   • Adaptive → ไม่มี demand ที่ Bx ก็ไม่ควรให้เขียว = Ax แทบไม่ต้องรอเลย\n" +
+                          "   ถ้า Adaptive ทำข้อนี้ไม่ได้ แปลว่า logic gap-out/anti-starvation มีปัญหา",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 120f,
             schedules = new List<LaneSchedule> {
@@ -281,16 +295,44 @@ public static class TestCasePresets
             }
         });
 
+        // ---------- T13 ----------
+        list.Add(new TestCase
+        {
+            name = "T13 · Shared Lane Blocking Demo",
+            description = "สาธิตกลไก shared lane โดยตรง: A2 (รถตรงเลนนอก) กับ Ax (เลี้ยวเข้ามอเลนนอก) ใช้เลนเดียวกัน\n" +
+                          "⭐ A2 ต้องรอไฟแดงเหมือน A ปกติ — ตอน A2 จอดรอ รถ Ax ที่ตามมาข้างหลังจะติดขังไปด้วย\n" +
+                          "⭐ และเมื่อ Bx เขียว Ax เองก็ต้องหยุดที่เส้นหยุดของมัน — คิว Ax จะไปขวาง A2 กลับด้วย (บล็อกสองทาง)\n" +
+                          "ดูแถว Ax+A2 ใน UI (ROI เดียวกันแล้ว = จำนวนรถในเลนนอกทั้งหมดที่ detector จริงเห็น)\n" +
+                          "เวลารอของ Ax ต้อง > 0 ชัดเจน — ปล่อยยาวพอให้ผ่านครบทั้ง 3 เฟสอย่างน้อย 1 รอบ\n" +
+                          "และควรเห็นรถ Ax บางคัน (65%) แซงคิวไปทางไหล่ทางฝั่งเหนือด้วย",
+            mode = ArrivalMode.Scripted,
+            suggestedDuration = 300f,
+            schedules = new List<LaneSchedule> {
+                new LaneSchedule("A2", new ScheduledBurst(0f, 30, 4f)),
+                new LaneSchedule("Ax", new ScheduledBurst(2f, 40, 3f)),
+                new LaneSchedule("B",  new ScheduledBurst(0f, 15, 5f)),
+            }
+        });
+
         // ---------- T8-T12 : Poisson (ชุดเดียวกับการทดลองจริง) ----------
-        list.Add(Poisson("T8 · MorningPeak",  "คนเข้ามหาลัยเยอะ — ชุดเดียวกับที่ใช้รันสถิติ",
-            HIGH, HIGH, MEDIUM, HIGH, VERY_LOW, VERY_LOW));
-        list.Add(Poisson("T9 · EveningPeak",  "คนออกจากมหาลัยเยอะ",
+        // T8/T10 ใช้ค่าที่ Itim วัดจริงจากคลิปโดรน (5 นาที, 13/22 ก.ค. 2569) แทนค่าเดา
+        // ส่วน CB/CA ยังไม่มีข้อมูลวัด — ใช้ bucket เดิมไปก่อน (ดู Questions_for_Itim.md ข้อ 2)
+        // T9/T11/T12 ยังไม่มีข้อมูลวัดเลย (ไม่ใช่ session ที่ Itim ถ่าย) — เป็นสมมติฐานล้วน ๆ
+        //
+        // พารามิเตอร์ A ที่ส่งเข้า Poisson() คือ "อัตรารถตรงรวม" ก่อนแบ่งเลน — ฟังก์ชันจะหาร 50/50
+        // ให้ A กับ A2 เองข้างล่าง (มาตรฐานการ thin Poisson process: แบ่งครึ่งคัน = mean interval คูณ 2)
+        list.Add(Poisson("T8 · MorningPeak",  "คนเข้ามหาลัยเยอะ — A/Ax/B/Bx เป็นค่าวัดจริงจาก Itim (13 ก.ค. 08:40-09:05, ปรับแก้ตัวเลขรอบ 24 ส.ค. หลังรัน detector ครบ 8 คลิป)\n" +
+            "CB/CA = ปิด — แก้แล้ว: เลน C ขาออกปิดแค่ 08:30-09:00 (~15-30 นาที) ไม่ใช่ทั้งเช้า แต่พอดีตรงกับช่วง peak นี้เป๊ะ (08:15-09:00) จึงยังใช้ CB≈CA≈0 ได้",
+            19.7f, 5.6f, 8.7f, 9.6f, CLOSED, CLOSED));
+        list.Add(Poisson("T9 · EveningPeak",  "คนออกจากมหาลัยเยอะ — ยังไม่มีข้อมูลวัดจริง (สมมติฐานทั้งหมด)",
             MEDIUM, LOW, HIGH, LOW, HIGH, HIGH));
-        list.Add(Poisson("T10 · MiddayNormal", "จราจรปกติทุกทิศ",
-            LOW, LOW, LOW, LOW, LOW, LOW));
-        list.Add(Poisson("T11 · ABACEvent",   "งานใหญ่ เข้าออกหนักพร้อมกัน",
+        list.Add(Poisson("T10 · MiddayNormal", "จราจรปกติทุกทิศ — A/Ax/B/Bx เป็นค่าวัดจริงจาก Itim (22 ก.ค. 11:37-12:00, ปรับแก้ตัวเลขรอบ 24 ส.ค.), CB/CA ยังเป็นค่าเดา (รอฟุตเทจเลน C วันจันทร์)\n" +
+            "⚠️ ยืนยันแล้วจากวิดีโอ: 09:00-15:00 ไฟกระพริบเหลืองจริง ไม่ใช่ fixed-time — ช่วงที่ถ่าย midday (11:37-12:00) อยู่ในช่วงกระพริบพอดี\n" +
+            "แปลว่า T10 เทียบกับ 'Fixed' เป็นการเทียบเชิงสมมติ (ถ้าแยกนี้ใช้ fixed-time ตลอดวัน) ไม่ใช่สภาพจริงที่เกิดขึ้นตอนเที่ยง — ต้องระบุ caveat นี้ในรายงานให้ชัด",
+            30.3f, 8.5f, 15.9f, 17.6f, LOW, LOW));
+        list.Add(Poisson("T11 · ABACEvent",   "งานใหญ่ เข้าออกหนักพร้อมกัน — สมมติฐานทั้งหมด",
             MEDIUM, VERY_HIGH, MEDIUM, VERY_HIGH, HIGH, HIGH));
-        list.Add(Poisson("T12 · Night",       "เบาบางทุกทิศ",
+        list.Add(Poisson("T12 · Night",       "เบาบางทุกทิศ — สมมติฐานทั้งหมด",
             VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW));
 
         return list;
@@ -299,6 +341,12 @@ public static class TestCasePresets
     static TestCase Poisson(string name, string desc,
                             float A, float Ax, float B, float Bx, float CB, float CA)
     {
+        // A ที่รับเข้ามาคือ "อัตรารถตรงรวม" (ก่อนมี shared lane) — แบ่งให้ A (เลนใน) กับ A2 (เลนนอก)
+        // ตามสัดส่วน A2_SHARE (18% เลนนอก / 82% เลนใน — ไม่ใช่ 50/50 แล้ว ดูคอมเมนต์ที่ A2_SHARE ด้านบน)
+        // thinning ของ Poisson process: rate ของแต่ละเลน = rate รวม x สัดส่วน -> mean interval = interval รวม / สัดส่วน
+        float aInner = A / (1f - A2_SHARE);   // เลนใน (A) ได้รถเยอะกว่า -> interval สั้นกว่าเดิม
+        float aOuter = A / A2_SHARE;          // เลนนอก/แชร์ (A2) ได้รถน้อยกว่ามาก -> interval ยาวกว่าเดิมเยอะ
+
         return new TestCase
         {
             name = name,
@@ -306,7 +354,8 @@ public static class TestCasePresets
             mode = ArrivalMode.Poisson,
             suggestedDuration = 300f,
             rates = new List<LaneArrivalRate> {
-                new LaneArrivalRate("A",  A),
+                new LaneArrivalRate("A",  aInner),
+                new LaneArrivalRate("A2", aOuter),
                 new LaneArrivalRate("Ax", Ax),
                 new LaneArrivalRate("B",  B),
                 new LaneArrivalRate("Bx", Bx),

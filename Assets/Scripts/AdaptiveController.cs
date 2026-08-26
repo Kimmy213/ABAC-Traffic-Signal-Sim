@@ -232,7 +232,42 @@ public class AdaptiveController : MonoBehaviour
         {
             if (config.IsCompatibleWithGroup(c, group)) group.Add(c);
         }
+
+        // ===== เลนที่ใช้ TrafficLight component เดียวกันจริง ๆ (เช่น A/A2 เลนแชร์) ต้องอยู่กลุ่มเดียวกันเสมอ =====
+        // ไม่ว่าตอนสร้างกลุ่มด้านบนจะมี demand พอให้ถูกเลือกเข้ากลุ่มหรือไม่ก็ตาม
+        // เพราะไฟของมันซิงค์กันอัตโนมัติอยู่แล้ว (คนละ signal index แต่ชี้ TrafficLight object เดียวกัน)
+        // ถ้าไม่บังคับรวม: สมมติ A2 เป็น leader แต่ A มี 0 คันตอนนั้น -> group = {A2} เท่านั้น
+        // แล้วพอมีรถ A มาใหม่ระหว่างเฟส gap-out/anti-starvation จะมองไม่เห็น demand ของ A เลย
+        // (เพราะ GroupIsEmpty/starvation เช็คเฉพาะสมาชิกใน group) ทั้งที่ไฟจริงเขียวให้ A อยู่แล้ว
+        AddPhysicallyLinkedSignals(group);
+
         return group;
+    }
+
+    /// <summary>เติมเลนอื่นที่ใช้ TrafficLight component ตัวเดียวกับสมาชิกที่มีอยู่แล้วเข้ากลุ่ม (fixed point)</summary>
+    void AddPhysicallyLinkedSignals(List<int> group)
+    {
+        bool added = true;
+        while (added)
+        {
+            added = false;
+            for (int s = 0; s < config.SignalCount; s++)
+            {
+                if (group.Contains(s)) continue;
+                TrafficLight light = config.SignalLight(s);
+                if (light == null) continue;
+
+                foreach (int member in group)
+                {
+                    if (config.SignalLight(member) == light)
+                    {
+                        group.Add(s);
+                        added = true;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     // ===================== Green phase =====================

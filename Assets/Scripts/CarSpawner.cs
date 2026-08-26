@@ -10,6 +10,9 @@ public class CarSpawner : MonoBehaviour
     public Transform spawnPoint;
     public Transform stopLineTarget;   // stop line ของเลนนี้ (เว้นว่างได้ถ้าเป็นเลนไหลอิสระ Ax/CA)
     public TrafficLight assignedLight; // ไฟที่ควบคุมเลนนี้ (เว้นว่างได้ถ้าเป็นเลนไหลอิสระ)
+    [Tooltip("true = เลน 'ให้ทาง' — assignedLight เป็นไฟของอีกกระแส อ่านแบบกลับด้าน (เขา 'ไม่แดง' = เราหยุด)\n" +
+             "ใช้กับ Ax ที่เลี้ยวเข้ามอไม่ได้ตอน Bx เขียว ดูรายละเอียดที่ CarAgent.lightIsInverted")]
+    public bool lightIsInverted = false;
 
     [Header("Rotation (ให้รถหันหน้าถูกทิศ)")]
     public float spawnRotationY = 0f;  // ตั้งตามทิศทางแต่ละเลน
@@ -45,6 +48,30 @@ public class CarSpawner : MonoBehaviour
     [Range(0, 100)] public float normalPercent = 60f;
     // cautious = 100 - aggressive - normal (คำนวณอัตโนมัติ)
 
+    [Header("Shared Lane Bypass (ตั้งค่าเฉพาะเลนที่แชร์ทางกายภาพกับเลนอื่น เช่น Ax)")]
+    [Tooltip("โอกาสที่รถคันนี้จะ 'แซง' รถอีกเลนที่จอดขวางผ่านไหล่ทาง/เลนฉุกเฉินได้ (0 = ไม่มีทางแซง บล็อก 100% เหมือนเดิม)\n" +
+             "⚠️ ปัจจุบัน 'ปิดอยู่' (ตั้งเป็น 0 ใน ABACSceneBuilder) ด้วย 2 เหตุผล:\n" +
+             "1) ขาเข้าฝั่งตะวันออกมี 2 แถวเท่านั้น (A เลนใน / Ax+A2 เลนนอก) ไม่มีไหล่ทางให้แซงเป็นแถวที่ 3\n" +
+             "2) ค่า A2_SHARE = 18% ที่ใช้อยู่ Itim back-calculate มาจากอัตราบล็อกจริง 40-60% โดยใช้โมเดล " +
+             "car-following ล้วน ๆ อยู่แล้ว ถ้าใส่การแซงทับเข้าไปอีกจะเป็นการหักผลเดียวกันสองรอบ\n\n" +
+             "ถ้าจะเปิดกลับมาใช้ **ต้องตั้ง bypassLateralOffset ให้มากกว่า CarAgent.lookAheadAngle เสมอ** " +
+             "ไม่งั้นรถจะวิ่งทะลุผ่านกัน (Test6 บังคับกฎข้อนี้ไว้แล้ว) — สุ่มครั้งเดียวต่อคันตอน spawn ไม่ใช่ทุกเฟรม")]
+    [Range(0f, 1f)] public float laneBypassChance = 0f;
+
+    [Tooltip("ระยะเยื้องออกไหล่ทาง (world space) ของรถที่สุ่มได้ว่าจะแซงคิว — ส่งต่อให้ CarAgent\n" +
+             "ต้องมากกว่า lookAheadAngle ของ CarAgent (1.5 ม.) พอสมควร ไม่งั้นรถจะยังมองเห็นคิวแล้วเบรกตาม " +
+             "แต่ก็ต้องไม่กว้างจนหลุดขอบถนน (ถนนกว้าง 18 ม. ขอบเหนืออยู่ที่ z=9.88 เลน Ax อยู่ z=6.5)")]
+    public Vector3 bypassLateralOffset = Vector3.zero;
+
+    [Header("Spawn Safety (กันปล่อยรถทับคันที่จอดอยู่)")]
+    [Tooltip("ถ้ามีรถคันไหนอยู่ในรัศมีนี้รอบจุด spawn จะยังไม่ปล่อยรถคันใหม่ แต่พักไว้ในคิวก่อน\n" +
+             "ควร >= ความยาวรถ (4 ม.) + ระยะเผื่อ — เกิดจริงเมื่อคิวยาวถอยมาถึงจุด spawn " +
+             "หรือเมื่อสอง spawner ใช้เลนกายภาพเดียวกัน (A2 กับ Ax อยู่เลน z=6.5 เหมือนกัน)")]
+    public float spawnClearRadius = 6f;
+
+    [Tooltip("ลองปล่อยรถที่ค้างคิวอยู่ทุกกี่วินาที")]
+    public float pendingRetryInterval = 0.25f;
+
     [Header("Cleanup")]
     public float despawnDistance = 80f; // ระยะจาก spawn point ที่จะลบรถทิ้ง
     // ===== เพิ่มสำหรับ Batch Run =====
@@ -58,6 +85,21 @@ public class CarSpawner : MonoBehaviour
     // ทำให้ Fixed กับ Adaptive เจอ "ชุดรถ" ไม่เหมือนกันเป๊ะ → paired t-test อ่อนลง
     private System.Random rng = new System.Random(12345);
 
+    // ===== คิวรถที่มาถึงแล้วแต่จุด spawn ยังไม่ว่าง =====
+    // ⚠️ ห้าม "ทิ้ง" รถที่ปล่อยไม่ได้ เพราะจะกลายเป็นการลด demand ลงเงียบ ๆ ตอนที่รถติดที่สุดพอดี
+    //    (ยิ่งติด ยิ่งทิ้งเยอะ = ผลออกมาดูดีเกินจริง) จึงพักไว้ในคิวแล้วปล่อยทีหลังแทน
+    private struct PendingArrival
+    {
+        public CarAgent.DriverType driver;
+        public bool bypass;
+    }
+    private Queue<PendingArrival> pending = new Queue<PendingArrival>();
+
+    /// <summary>จำนวนรถที่มาถึงแล้วแต่ยังลงถนนไม่ได้ (จุด spawn ไม่ว่าง)</summary>
+    public int PendingSpawnCount => pending.Count;
+    /// <summary>นับจำนวนครั้งที่รถมาถึงแล้วต้องรอคิว — ถ้าค่านี้สูงแปลว่า spawn point อยู่ใกล้แยกเกินไป</summary>
+    public int delayedArrivals = 0;
+
     public void SetSeed(int seed)
     {
         rng = new System.Random(seed);
@@ -66,6 +108,7 @@ public class CarSpawner : MonoBehaviour
     public void ResetSpawnCount()
     {
         totalSpawned = 0;
+        delayedArrivals = 0;
     }
     public void SetArrivalRate(float meanInterval)
     {
@@ -109,6 +152,7 @@ public class CarSpawner : MonoBehaviour
         StopAllCoroutines();   // หยุดทั้ง SpawnLoop และ DespawnWhenFar ที่ค้างอยู่
         ClearAllCars();
         StartCoroutine(SpawnLoop());
+        StartCoroutine(PendingReleaseLoop());
     }
 
     public void ClearAllCars()
@@ -123,12 +167,24 @@ public class CarSpawner : MonoBehaviour
             }
         }
         spawnedCars.Clear();
+        pending.Clear();
     }
     void Start()
     {
         if (spawnStarted) return;   // Control Panel เริ่มให้แล้ว ไม่ต้องเริ่มซ้ำ
         spawnStarted = true;
         StartCoroutine(SpawnLoop());
+        StartCoroutine(PendingReleaseLoop());
+    }
+
+    /// <summary>คอยปล่อยรถที่ค้างคิวอยู่ทันทีที่จุด spawn ว่าง</summary>
+    IEnumerator PendingReleaseLoop()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(Mathf.Max(0.05f, pendingRetryInterval));
+            if (pending.Count > 0) TryReleasePending();
+        }
     }
 
     IEnumerator SpawnLoop()
@@ -185,10 +241,46 @@ public class CarSpawner : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// "รถมาถึง" 1 คัน — สุ่มค่าที่ต้องใช้ให้ครบก่อนเสมอ แล้วค่อยดูว่าลงถนนได้เลยไหม
+    ///
+    /// ⚠️ ลำดับการสุ่มต้องไม่ขึ้นกับสภาพจราจรเด็ดขาด ไม่งั้น Fixed กับ Adaptive จะเจอ "ชุดรถ" คนละชุด
+    ///    ทันทีที่รถติดไม่เท่ากัน → paired t-test ใช้ไม่ได้ จึงสุ่ม bypass ตรงนี้ (ตอนมาถึง)
+    ///    ไม่ใช่ตอนปล่อยจริง
+    /// </summary>
     void SpawnCar(CarAgent.DriverType driver)
     {
-        GameObject newCar = Instantiate(carPrefab, spawnPoint.position, Quaternion.Euler(0, spawnRotationY, 0));
-        spawnedCars.Add(newCar); 
+        bool bypass = laneBypassChance > 0f && rng.NextDouble() < laneBypassChance;
+
+        pending.Enqueue(new PendingArrival { driver = driver, bypass = bypass });
+        int before = pending.Count;
+        TryReleasePending();
+        if (pending.Count >= before) delayedArrivals++;   // ปล่อยไม่ออก ต้องรอคิว
+    }
+
+    /// <summary>จุดปล่อยรถจริง — คันที่แซงไหล่ทางจะเยื้องออกไปตั้งแต่ต้น</summary>
+    Vector3 SpawnPositionFor(bool bypass)
+    {
+        return bypass ? spawnPoint.position + bypassLateralOffset : spawnPoint.position;
+    }
+
+    /// <summary>ปล่อยรถที่ค้างคิวออกให้มากที่สุดเท่าที่จุด spawn ว่าง (เรียงตามลำดับที่มาถึง)</summary>
+    void TryReleasePending()
+    {
+        while (pending.Count > 0)
+        {
+            PendingArrival next = pending.Peek();
+            Vector3 pos = SpawnPositionFor(next.bypass);
+            if (CarAgent.IsSpaceOccupied(pos, spawnClearRadius)) return;   // ยังไม่ว่าง รอรอบหน้า
+            pending.Dequeue();
+            PlaceCar(next.driver, next.bypass, pos);
+        }
+    }
+
+    void PlaceCar(CarAgent.DriverType driver, bool bypass, Vector3 pos)
+    {
+        GameObject newCar = Instantiate(carPrefab, pos, Quaternion.Euler(0, spawnRotationY, 0));
+        spawnedCars.Add(newCar);
         totalSpawned++;
         CarAgent agent = newCar.GetComponent<CarAgent>();
 
@@ -199,6 +291,9 @@ public class CarSpawner : MonoBehaviour
         agent.steerRate = steerRate;
         agent.turnRadius = turnRadius;
         agent.assignedLight = assignedLight;
+        agent.lightIsInverted = lightIsInverted;
+        agent.canBypassCrossLaneBlocker = bypass;
+        agent.bypassLateralOffset = bypassLateralOffset;
 
         ApplyCarMaterial(newCar);
 
