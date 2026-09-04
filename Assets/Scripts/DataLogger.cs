@@ -190,23 +190,44 @@ public class DataLogger : MonoBehaviour
     {
         if (!showDebugGUI || !Application.isPlaying) return;
 
-        float boxWidth = 250;
-        GUI.Box(new Rect(10, Screen.height - 160, boxWidth, 150), "");
-        GUI.Label(new Rect(20, Screen.height - 155, boxWidth - 20, 20), $"[{controllerType}] {scenarioName}");
-        GUI.Label(new Rect(20, Screen.height - 135, boxWidth - 20, 20), $"Total spawned: {totalSpawnedCount}");
-        GUI.Label(new Rect(20, Screen.height - 115, boxWidth - 20, 20), $"Vehicles cleared: {GetVehicleCount()}");
-        GUI.Label(new Rect(20, Screen.height - 95, boxWidth - 20, 20), $"Avg wait: {GetAverageWaitTime():F1}s");
-        GUI.Label(new Rect(20, Screen.height - 75, boxWidth - 20, 20), $"Max wait: {GetMaxWaitTime():F1}s");
-        GUI.Label(new Rect(20, Screen.height - 55, boxWidth - 20, 20), $"Starvation events: {GetStarvationCount()}");
+        UITheme.Begin();
 
-        if (GUI.Button(new Rect(20, Screen.height - 30, 110, 22), "Export CSV"))
+        const float W = 262f, H = 168f;
+        Rect card = new Rect(12f, Screen.height - H - 12f, W, H);
+        GUI.Box(card, GUIContent.none);
+
+        float x = card.x + 12f, w = W - 24f, y = card.y + 8f;
+
+        GUI.Label(new Rect(x, y, w - 80f, 18f), "MEASUREMENTS", UITheme.Title);
+        UITheme.Pill(new Rect(card.x + W - 84f, y + 1f, 72f, 17f), controllerType.ToString(),
+                     controllerType == ControllerType.Adaptive ? UITheme.Accent : UITheme.Neutral);
+        y += 22f;
+        GUI.Label(new Rect(x, y, w, 15f), scenarioName, UITheme.Dim);
+        y += 18f;
+        UITheme.Rule(new Rect(x, y, w, 1f)); y += 6f;
+
+        UITheme.Row(new Rect(x, y, w, 17f), "Released",      totalSpawnedCount.ToString());   y += 18f;
+        UITheme.Row(new Rect(x, y, w, 17f), "Cleared",       GetVehicleCount().ToString());   y += 18f;
+        UITheme.Row(new Rect(x, y, w, 17f), "Mean wait",     $"{GetAverageWaitTime():F1}s");  y += 18f;
+        UITheme.Row(new Rect(x, y, w, 17f), "Max wait",      $"{GetMaxWaitTime():F1}s");      y += 18f;
+
+        int starv = GetStarvationCount();
+        GUI.Label(new Rect(x, y, w * 0.58f, 17f), "Starvation", UITheme.Body);
+        GUIStyle sv = new GUIStyle(UITheme.Value);
+        sv.normal.textColor = starv > 0 ? UITheme.SigRed : UITheme.SigGreen;
+        GUI.Label(new Rect(x + w * 0.58f, y, w * 0.42f, 17f), starv.ToString(), sv);
+        y += 22f;
+
+        if (GUI.Button(new Rect(x, y, w * 0.5f - 3f, 22f), "Export CSV"))
         {
             ExportDetailedCSV();
             ExportSummaryCSV();
         }
-        if (GUI.Button(new Rect(140, Screen.height - 30, 110, 22), "Reset Run"))
+        if (GUI.Button(new Rect(x + w * 0.5f + 3f, y, w * 0.5f - 3f, 22f), "Reset Run"))
         {
             ResetRun();
         }
+
+        UITheme.End();
     }
 }

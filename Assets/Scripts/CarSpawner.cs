@@ -24,6 +24,10 @@ public class CarSpawner : MonoBehaviour
     public float steerRate = 55f;
     [Tooltip("รัศมีวงเลี้ยวเป้าหมาย (เมตร) — ใช้จำกัดความเร็วตอนเลี้ยว ยิ่งเล็กยิ่งเลี้ยวแคบแต่ต้องช้าลง")]
     public float turnRadius = 7f;
+    [Tooltip("อนุญาตให้เปลี่ยนเลน/เลี้ยวก่อนถึงเส้นหยุด (ใช้กับ A2 ที่ต้อง merge เข้าเลนแชร์) — ดู CarAgent.steerBeforeStopLine")]
+    public bool steerBeforeStopLine = false;
+    [Tooltip("ระยะที่เริ่มเปลี่ยนเลน (เมตร) 0 = เปลี่ยนตั้งแต่ spawn — ดู CarAgent.steerStartDistance")]
+    public float steerStartDistance = 0f;
 
     [Header("Appearance")]
     [Tooltip("วัสดุของรถเลนนี้ — ใช้แยกสีตามกลุ่มเลนใหญ่ A / B / C (เว้นว่าง = ใช้สีเดิมของ prefab)")]
@@ -290,12 +294,14 @@ public class CarSpawner : MonoBehaviour
         agent.pathWaypoints = pathWaypoints;
         agent.steerRate = steerRate;
         agent.turnRadius = turnRadius;
+        agent.steerBeforeStopLine = steerBeforeStopLine;
+        agent.steerStartDistance = steerStartDistance;
         agent.assignedLight = assignedLight;
         agent.lightIsInverted = lightIsInverted;
         agent.canBypassCrossLaneBlocker = bypass;
         agent.bypassLateralOffset = bypassLateralOffset;
 
-        ApplyCarMaterial(newCar);
+        ApplyCarMaterial(newCar, agent);
 
         if (assignedLight != null)
         {
@@ -307,13 +313,30 @@ public class CarSpawner : MonoBehaviour
 
     // ใช้ sharedMaterial ที่สร้างไว้ล่วงหน้า 3 ตัว ไม่ใช่ .material
     // เพราะ .material จะโคลน material ใหม่ต่อรถ 1 คัน รันยาว ๆ แล้วหน่วง
-    void ApplyCarMaterial(GameObject car)
+    //
+    // ⚠️ ของเดิมทาสีทับ "ทุก Renderer ในรถ" ซึ่งใช้ได้ตอนรถเป็นกล่องชิ้นเดียว
+    //    แต่พอเปลี่ยนเป็นโมเดลจริงที่มีล้อ/กระจก/ไฟหน้า/ไฟท้ายแยกชิ้น จะกลายเป็นทาสีเลนทั้งคัน
+    //    ตอนนี้ทาเฉพาะช่องวัสดุของตัวถัง (CarAgent.bodyRenderer / bodyMaterialIndex)
+    //    ซึ่ง ABAC ▸ Rebuild Car Prefab หาให้อัตโนมัติจากชิ้นที่มีพื้นผิวมากที่สุด
+    void ApplyCarMaterial(GameObject car, CarAgent agent)
     {
         if (carMaterial == null || car == null) return;
-        foreach (Renderer r in car.GetComponentsInChildren<Renderer>())
+
+        Renderer target = agent != null ? agent.bodyRenderer : null;
+        if (target == null)
         {
+            // fallback: prefab เก่าที่เป็นกล่องชิ้นเดียว ยังทาทั้งคันได้เหมือนเดิม
+            Renderer r = car.GetComponent<Renderer>();
             if (r != null) r.sharedMaterial = carMaterial;
+            return;
         }
+
+        int slot = agent.bodyMaterialIndex;
+        Material[] mats = target.sharedMaterials;
+        if (slot < 0 || slot >= mats.Length) slot = 0;
+        if (mats.Length == 0) return;
+        mats[slot] = carMaterial;
+        target.sharedMaterials = mats;   // ต้อง assign array กลับ ไม่งั้นไม่มีผล
     }
 
     /// <summary>จำนวนรถของเลนนี้ที่ยังวิ่งอยู่บนถนน</summary>

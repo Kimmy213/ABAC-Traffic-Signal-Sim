@@ -18,8 +18,14 @@ public class AdaptiveController : MonoBehaviour
     public float gMax = 45f;
     public float yellowDuration = 3f;
     public float allRedDuration = 2f;
-    public float startupLostTime = 3f;
-    public float saturationHeadway = 2.5f;
+    // ⭐ วัดจริงที่แยกนี้ ไม่ใช่ค่า default ของ HCM (จาก 5 เฟสเขียวที่มีคิวเต็ม, 39 ตัวอย่าง, B_morning)
+    //    startup lost time 2.95s = 1.5 เท่าของ HCM (2.0) — สมเหตุสมผลเพราะมอไซค์แทรกมาอยู่หัวแถว
+    //    ต้องรอให้เคลียร์ก่อนรถยนต์ถึงจะออกได้
+    //    ⚠️ ตัวนี้กระทบมากกว่าที่คิด: 2.95s ถูกกินไปจาก "ทุก" เฟสเขียว = 15% ของเฟส Bx ที่ยาว 20s
+    //    saturation headway 2.31s/คัน (sd 0.81) = 1561 คัน/ชม./เลน (HCM ให้ 1800)
+    //    รถที่ระบายได้ต่อเฟส = (green - 2.95) / 2.31
+    public float startupLostTime = 2.95f;
+    public float saturationHeadway = 2.31f;
 
     [Tooltip("เขียวต่อเนื่องกลุ่มเดิมได้นานสุดกี่วินาที ก่อนบังคับปล่อยเฟส (max green ตามมาตรฐาน)")]
     public float maxContinuousGreen = 90f;
@@ -478,41 +484,62 @@ public class AdaptiveController : MonoBehaviour
     {
         if (!showDebugGUI || !Application.isPlaying || config == null) return;
 
-        float boxWidth = 250;
-        float startX = Screen.width - boxWidth - 10;
+        UITheme.Begin();
 
-        GUI.Box(new Rect(startX, 10, boxWidth, 25), "");
-        GUI.Label(new Rect(startX + 8, 12, boxWidth - 16, 20), $"Status: {statusText}");
+        const float W = 288f;
+        float x = Screen.width - W - 12f;
 
+        // ---- แถบหัว ----
+        Rect head = new Rect(x, 12f, W, 44f);
+        GUI.Box(head, GUIContent.none);
+        GUI.Label(new Rect(x + 12f, head.y + 6f, W - 24f, 18f), "ADAPTIVE CONTROLLER", UITheme.Title);
+        GUI.Label(new Rect(x + 12f, head.y + 24f, W - 24f, 15f), statusText, UITheme.Dim);
+
+        // ---- การ์ดต่อสัญญาณไฟ ----
         int n = config.SignalCount;
+        float y = head.y + head.height + 6f;
+        const float CH = 44f;
+
         for (int s = 0; s < n; s++)
         {
-            float yPos = 45 + s * 65;
-
             TrafficLight light = config.SignalLight(s);
             TrafficLight.LightState state = light != null ? light.currentState : TrafficLight.LightState.Red;
+            bool active = activeGroup.Contains(s);
+            string lane = config.SignalName(s);
 
-            GUI.Box(new Rect(startX, yPos, boxWidth, 55), "");
+            Rect card = new Rect(x, y, W, CH);
+            GUI.Box(card, GUIContent.none);
 
-            Color oldColor = GUI.color;
-            GUI.color = GetStateColor(state);
-            GUI.Box(new Rect(startX + 5, yPos + 5, 20, 20), "");
-            GUI.color = oldColor;
+            // แถบสีเลนด้านซ้าย + จุดสถานะไฟ
+            UITheme.Dot(new Rect(card.x + 10f, card.y + 8f, 10f, 10f), UITheme.SignalColor(state));
+            GUI.Label(new Rect(card.x + 26f, card.y + 4f, 90f, 17f), lane, UITheme.Title);
 
-            GUI.Label(new Rect(startX + 33, yPos + 5, boxWidth - 40, 20),
-                      $"Lane {config.SignalName(s)} — {state.ToString().ToUpper()}");
+            UITheme.Pill(new Rect(card.x + W - 78f, card.y + 5f, 66f, 16f),
+                         state.ToString().ToUpper(), UITheme.SignalColor(state));
 
-            if (activeGroup.Contains(s))
+            if (active)
             {
-                GUI.Label(new Rect(startX + 33, yPos + 25, boxWidth - 40, 20),
-                          $"Time left: {phaseTimeRemaining:F1}s   ({DemandOf(s)} cars)");
+                // กำลังเขียว: โชว์เวลาที่เหลือเป็นแถบ เทียบกับ gMax
+                float t = gMax > 0.01f ? phaseTimeRemaining / gMax : 0f;
+                UITheme.Bar(new Rect(card.x + 26f, card.y + 26f, W - 120f, 5f), t, UITheme.SigGreen);
+                GUI.Label(new Rect(card.x + W - 90f, card.y + 22f, 78f, 15f),
+                          $"{phaseTimeRemaining:F1}s \u00B7 {DemandOf(s)} cars", UITheme.Right);
             }
             else
             {
-                GUI.Label(new Rect(startX + 33, yPos + 25, boxWidth - 40, 20),
-                          $"Waiting: {OldestWaitOf(s):F1}s / {maxWaitTime:F0}s");
+                // รออยู่: แถบยิ่งเต็ม = ยิ่งใกล้ถูกบังคับให้เขียว (anti-starvation)
+                float wait = OldestWaitOf(s);
+                float t = maxWaitTime > 0.01f ? wait / maxWaitTime : 0f;
+                Color c = t >= 1f ? UITheme.SigRed : t >= 0.6f ? UITheme.SigYellow : UITheme.Neutral;
+                UITheme.Bar(new Rect(card.x + 26f, card.y + 26f, W - 120f, 5f), t, c);
+                GUI.Label(new Rect(card.x + W - 90f, card.y + 22f, 78f, 15f),
+                          $"wait {wait:F0}/{maxWaitTime:F0}s", UITheme.Right);
             }
+
+            y += CH + 4f;
         }
+
+        UITheme.End();
     }
 
     Color GetStateColor(TrafficLight.LightState state)

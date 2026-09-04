@@ -148,7 +148,7 @@ public class TestCase
         {
             var parts = new List<string>();
             foreach (var s in schedules) if (s != null && s.TotalCars > 0) parts.Add($"{s.laneName}:{s.TotalCars}");
-            return $"Scripted {TotalScriptedCars} คัน  ({string.Join("  ", parts)})";
+            return $"Scripted {TotalScriptedCars} cars  ({string.Join("  ", parts)})";
         }
     }
 }
@@ -168,9 +168,16 @@ public static class TestCasePresets
     const float CLOSED = 999999f;
 
     // สัดส่วนรถตรงที่เข้าเลนนอก (A2 — เลนแชร์กับ Ax) เทียบกับรถตรงทั้งหมด
-    // เดิมเดา 50/50 — Itim back-calculate จากอัตราการบล็อกที่สังเกตจริง (Ax โดนบล็อก 40-60% ของเวลา) ได้ตัวเลขจริง
-    // ประมาณ 13-23% กลาง ๆ ที่ 18% (ดู reply_to_badin_3.md ข้อ 1) — ใช้ 18% เป็นค่ากลาง, sensitivity ที่ 13%/23%
-    const float A2_SHARE = 0.18f;
+    //
+    // ประวัติค่า: เดา 50/50 → back-calculate ได้ 18% → **ตอนนี้ 5.4% จากการนับตรง** (SP1_HANDOFF_v2 §5)
+    // Itim นับจากคลิป A_morning: รถตรงทั้งหมด 56 คัน อยู่เลนใน 53 คัน เข้าเลนแชร์แค่ **3 คัน**
+    // นี่คือค่าที่นับมาตรง ๆ ไม่ใช่ค่าที่อนุมานย้อนจากอัตราการบล็อกอีกต่อไป จึงเชื่อถือได้กว่าเดิมมาก
+    //
+    // ⚠️ ตัวเลขนี้ต้องอ่านคู่กับพฤติกรรม "merge ช้า" เสมอ — รถ 3 คันนั้นเปลี่ยนเลขเข้ามาตอนเหลือระยะ
+    //    แค่ ~5 ช่วงรถก่อนถึงจุดเลี้ยว = แทรกเข้า "หัวคิว" พอดี คันเดียวหยุดรถเลี้ยวทั้งแถวที่ตามมาทั้งช่วงไฟแดง
+    //    ผลคือ "เกิดไม่บ่อยแต่รุนแรงเกือบสูงสุดทุกครั้ง" ไม่ใช่ "บ่อย ๆ แต่หน่วงนิดเดียว"
+    //    ทั้งสองแบบให้ค่าเฉลี่ยเท่ากันแต่ queue dynamics คนละเรื่อง — ดูหมายเหตุใน ABACSceneBuilder
+    const float A2_SHARE = 0.054f;
 
     public static List<TestCase> BuildDefault()
     {
@@ -179,9 +186,9 @@ public static class TestCasePresets
         // ---------- T1 ----------
         list.Add(new TestCase
         {
-            name = "T1 · เลนเดียว 10 คัน",
-            description = "ปล่อยรถเฉพาะเลน A 10 คัน ห่างกัน 1.5 วิ\n" +
-                          "ตรวจพื้นฐาน: รถจอดรอเป็นแถวสวย ๆ ไม่ซ้อนกัน แล้วระบายออกตอนไฟเขียว",
+            name = "T1 \u00B7 Single lane, 10 cars",
+            description = "Release 10 cars on lane A only, 1.5 s apart.\n" +
+                          "Baseline check: cars queue in a neat line without overlapping, then discharge on green.",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 120f,
             schedules = new List<LaneSchedule> {
@@ -192,12 +199,11 @@ public static class TestCasePresets
         // ---------- T2 ----------
         list.Add(new TestCase
         {
-            name = "T2 · ทุกเลนเท่ากัน",
-            description = "ทั้ง 7 เลนปล่อย 8 คันพร้อมกัน ห่างกัน 2 วิ (รวม A2 เลนแชร์ด้วย)\n" +
-                          "ตรวจความเป็นธรรม: ทุกเลนต้องได้ไฟเขียว ไม่มีเลนไหนถูกทิ้ง\n" +
-                          "และเลนฟรี CA ต้องมีเวลารอใกล้ 0 — ส่วน Ax ตอนนี้ไม่ใช่ 0 แล้ว (โดนตั้งใจ) ด้วย 2 เหตุ:\n" +
-                          "(1) A2 จอดรอไฟแดงบล็อกอยู่ข้างหน้าในเลนเดียวกัน (2) Ax เองก็ต้องหยุดตอน Bx เขียว\n" +
-                          "ดู T13 สำหรับกรณีที่ชัดกว่านี้",
+            name = "T2 \u00B7 All lanes equal",
+            description = "All 7 lanes release 8 cars at once, 2 s apart (including the A2 shared lane).\n" +
+                          "Fairness check: every signalised lane must get green; none may be starved.\n" +
+                          "Free lane CA should show a wait near zero. Ax will NOT be zero \u2014 by design \u2014 for two reasons:\n" +
+                          "(1) A2 stops at the red light in the same lane ahead of it, (2) Ax itself must yield while Bx is green.",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 180f,
             schedules = new List<LaneSchedule> {
@@ -214,10 +220,10 @@ public static class TestCasePresets
         // ---------- T3 ----------
         list.Add(new TestCase
         {
-            name = "T3 · Bx ปะทะ CB (conflict)",
-            description = "อัด Bx และ CB พร้อมกันหนัก ๆ + A อีกนิดหน่อย\n" +
-                          "⭐ ตรวจ conflict rule: Bx กับ CB ต้องไม่เขียวพร้อมกันเด็ดขาด\n" +
-                          "เปิดดูตอนเดโมได้เลย เห็นชัดว่าระบบสลับให้ทีละฝั่ง",
+            name = "T3 \u00B7 Bx vs CB conflict",
+            description = "Heavy load on Bx and CB at the same time, plus some traffic on A.\n" +
+                          "Key check: Bx and CB must never be green together. Easy to see during a demo \u2014\n" +
+                          "the controller alternates between them.",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 180f,
             schedules = new List<LaneSchedule> {
@@ -230,10 +236,10 @@ public static class TestCasePresets
         // ---------- T4 ----------
         list.Add(new TestCase
         {
-            name = "T4 · ทดสอบกันอด (starvation)",
-            description = "A และ B อัดต่อเนื่องยาว ๆ 40 คัน แต่ CB มีรถแค่ 1 คันที่วินาทีที่ 5\n" +
-                          "⭐ คำถาม: รถคันเดียวของ CB จะได้ไฟเขียวไหม รอนานแค่ไหน\n" +
-                          "นี่คือเทสที่พิสูจน์ว่า anti-starvation ทำงานจริง — กรรมการชอบถามข้อนี้",
+            name = "T4 \u00B7 Starvation test",
+            description = "A and B run continuously with 40 cars each, while CB gets a single car at t = 5 s.\n" +
+                          "Question: does that one CB car ever get green, and how long does it wait?\n" +
+                          "This is the test that proves anti-starvation works \u2014 examiners like to ask about it.",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 180f,
             schedules = new List<LaneSchedule> {
@@ -246,9 +252,9 @@ public static class TestCasePresets
         // ---------- T5 ----------
         list.Add(new TestCase
         {
-            name = "T5 · งาน ABAC เข้า-ออก",
-            description = "ช่วงแรกคนเข้ามหาลัยหนัก (Ax, Bx) แล้ววินาทีที่ 90 คนออกพร้อมกัน (CB, CA)\n" +
-                          "จำลองงานรับปริญญา — ตรวจว่าระบบปรับตัวตามทิศทางที่เปลี่ยนได้ไหม",
+            name = "T5 \u00B7 Campus event in/out",
+            description = "Heavy inbound first (Ax, Bx), then at t = 90 s everyone leaves at once (CB, CA).\n" +
+                          "Models a graduation-day surge \u2014 checks that the controller adapts to a reversal in direction.",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 300f,
             schedules = new List<LaneSchedule> {
@@ -264,13 +270,13 @@ public static class TestCasePresets
         // ---------- T6 ----------
         list.Add(new TestCase
         {
-            name = "T6 · เลนไม่มีเฟสของตัวเอง (Ax, CA)",
-            description = "ปล่อยเฉพาะ Ax และ CA ไม่มีรถเลนอื่นเลย — ไม่มี A2 มาบล็อกด้วย\n" +
-                          "⭐ CA เป็นเลนฟรีแท้ ๆ เวลารอต้องใกล้ 0 เสมอ ถ้าไม่ใกล้ 0 = ตั้ง stopLineTarget ผิด\n" +
-                          "⭐ Ax ไม่ใช่เลนฟรีแท้แล้ว (ต้องหยุดตอน Bx เขียว) เทสนี้เลยกลายเป็นตัวเทียบ Fixed vs Adaptive ที่ตรงประเด็นมาก:\n" +
-                          "   • Fixed → Bx ได้ไฟเขียวทุกรอบถึงไม่มีรถ Bx สักคัน = Ax โดนหยุดฟรี ๆ ทุกรอบ เวลารอ > 0 ชัดเจน\n" +
-                          "   • Adaptive → ไม่มี demand ที่ Bx ก็ไม่ควรให้เขียว = Ax แทบไม่ต้องรอเลย\n" +
-                          "   ถ้า Adaptive ทำข้อนี้ไม่ได้ แปลว่า logic gap-out/anti-starvation มีปัญหา",
+            name = "T6 \u00B7 Unsignalised lanes (Ax, CA)",
+            description = "Only Ax and CA release vehicles. No A2 present to block anything.\n" +
+                          "CA is genuinely free \u2014 its wait must stay near zero, otherwise stopLineTarget is misconfigured.\n" +
+                          "Ax is no longer truly free (it yields while Bx is green), which makes this the sharpest\n" +
+                          "Fixed-vs-Adaptive comparison in the set:\n" +
+                          "   \u2022 Fixed \u2192 Bx gets green every cycle even with zero Bx traffic, so Ax stops for nothing.\n" +
+                          "   \u2022 Adaptive \u2192 no demand on Bx means no green, so Ax barely waits at all.",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 120f,
             schedules = new List<LaneSchedule> {
@@ -282,9 +288,9 @@ public static class TestCasePresets
         // ---------- T7 ----------
         list.Add(new TestCase
         {
-            name = "T7 · เทียบนิสัยคนขับ",
-            description = "เลน A ปล่อยคนขับดุ 6 คันก่อน แล้ววินาทีที่ 40 ปล่อยคนขับระวัง 6 คัน\n" +
-                          "เทียบระยะเบรก เวลาตอบสนอง และการฝ่าไฟเหลืองของแต่ละ profile",
+            name = "T7 \u00B7 Driver profiles",
+            description = "Lane A releases 6 aggressive drivers, then 6 cautious drivers at t = 40 s.\n" +
+                          "Compares braking distance, reaction time and amber-running between profiles.",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 150f,
             schedules = new List<LaneSchedule> {
@@ -299,12 +305,12 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T13 · Shared Lane Blocking Demo",
-            description = "สาธิตกลไก shared lane โดยตรง: A2 (รถตรงเลนนอก) กับ Ax (เลี้ยวเข้ามอเลนนอก) ใช้เลนเดียวกัน\n" +
-                          "⭐ A2 ต้องรอไฟแดงเหมือน A ปกติ — ตอน A2 จอดรอ รถ Ax ที่ตามมาข้างหลังจะติดขังไปด้วย\n" +
-                          "⭐ และเมื่อ Bx เขียว Ax เองก็ต้องหยุดที่เส้นหยุดของมัน — คิว Ax จะไปขวาง A2 กลับด้วย (บล็อกสองทาง)\n" +
-                          "ดูแถว Ax+A2 ใน UI (ROI เดียวกันแล้ว = จำนวนรถในเลนนอกทั้งหมดที่ detector จริงเห็น)\n" +
-                          "เวลารอของ Ax ต้อง > 0 ชัดเจน — ปล่อยยาวพอให้ผ่านครบทั้ง 3 เฟสอย่างน้อย 1 รอบ\n" +
-                          "และควรเห็นรถ Ax บางคัน (65%) แซงคิวไปทางไหล่ทางฝั่งเหนือด้วย",
+            description = "Direct demonstration of the shared-lane mechanism: A2 (straight, outer lane) and\n" +
+                          "Ax (turning into campus) occupy the same physical lane.\n" +
+                          "A2 waits at the red light like any straight vehicle \u2014 and every Ax car behind it is trapped,\n" +
+                          "even though no signal applies to Ax at all.\n" +
+                          "When Bx turns green, Ax must stop at its own line too, so the Ax queue blocks A2 in return.\n" +
+                          "Watch the Ax+A2 row in the HUD (one shared ROI = what a real detector sees).",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 300f,
             schedules = new List<LaneSchedule> {
@@ -323,13 +329,15 @@ public static class TestCasePresets
         // ให้ A กับ A2 เองข้างล่าง (มาตรฐานการ thin Poisson process: แบ่งครึ่งคัน = mean interval คูณ 2)
         list.Add(Poisson("T8 · MorningPeak",  "คนเข้ามหาลัยเยอะ — A/Ax/B/Bx เป็นค่าวัดจริงจาก Itim (13 ก.ค. 08:40-09:05, ปรับแก้ตัวเลขรอบ 24 ส.ค. หลังรัน detector ครบ 8 คลิป)\n" +
             "CB/CA = ปิด — แก้แล้ว: เลน C ขาออกปิดแค่ 08:30-09:00 (~15-30 นาที) ไม่ใช่ทั้งเช้า แต่พอดีตรงกับช่วง peak นี้เป๊ะ (08:15-09:00) จึงยังใช้ CB≈CA≈0 ได้",
-            19.7f, 5.6f, 8.7f, 9.6f, CLOSED, CLOSED));
-        list.Add(Poisson("T9 · EveningPeak",  "คนออกจากมหาลัยเยอะ — ยังไม่มีข้อมูลวัดจริง (สมมติฐานทั้งหมด)",
-            MEDIUM, LOW, HIGH, LOW, HIGH, HIGH));
+            18.8f, 5.1f, 9.0f, 9.6f, CLOSED, CLOSED));
+        list.Add(Poisson("T9 · EveningPeak",  "คนออกจากมหาลัยเยอะ — ⭐ CB/CA เป็นค่าวัดจริงแล้ว (SP1_HANDOFF_v2 §4 ช่วงเย็น)\n" +
+            "CB 159 คัน = 8.4s/คัน, CA 100 คัน = 13.4s/คัน (สัดส่วน CB:CA = 61:39)\n" +
+            "ส่วน A/Ax/B/Bx ตอนเย็นยังไม่มีข้อมูลวัด ใช้ bucket ประมาณไปก่อน",
+            MEDIUM, LOW, HIGH, LOW, 8.4f, 13.4f));
         list.Add(Poisson("T10 · MiddayNormal", "จราจรปกติทุกทิศ — A/Ax/B/Bx เป็นค่าวัดจริงจาก Itim (22 ก.ค. 11:37-12:00, ปรับแก้ตัวเลขรอบ 24 ส.ค.), CB/CA ยังเป็นค่าเดา (รอฟุตเทจเลน C วันจันทร์)\n" +
             "⚠️ ยืนยันแล้วจากวิดีโอ: 09:00-15:00 ไฟกระพริบเหลืองจริง ไม่ใช่ fixed-time — ช่วงที่ถ่าย midday (11:37-12:00) อยู่ในช่วงกระพริบพอดี\n" +
             "แปลว่า T10 เทียบกับ 'Fixed' เป็นการเทียบเชิงสมมติ (ถ้าแยกนี้ใช้ fixed-time ตลอดวัน) ไม่ใช่สภาพจริงที่เกิดขึ้นตอนเที่ยง — ต้องระบุ caveat นี้ในรายงานให้ชัด",
-            30.3f, 8.5f, 15.9f, 17.6f, LOW, LOW));
+            29.0f, 9.7f, 20.5f, 21.4f, LOW, LOW));
         list.Add(Poisson("T11 · ABACEvent",   "งานใหญ่ เข้าออกหนักพร้อมกัน — สมมติฐานทั้งหมด",
             MEDIUM, VERY_HIGH, MEDIUM, VERY_HIGH, HIGH, HIGH));
         list.Add(Poisson("T12 · Night",       "เบาบางทุกทิศ — สมมติฐานทั้งหมด",

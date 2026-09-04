@@ -100,9 +100,10 @@ public class ScenarioManager : MonoBehaviour
     [Tooltip("เลน 'ปิด' จริง (ยืนยันจาก รปภ.) — mean interval ใหญ่มาก ๆ แทนศูนย์ (Poisson หาร rate จาก interval)")]
     public float closed = 999999f;
 
-    [Tooltip("สัดส่วนรถตรงที่เข้าเลนนอก A2 (เลนแชร์กับ Ax) เทียบกับรถตรงทั้งหมด — Itim back-calculate จากอัตราการ" +
-             "บล็อกที่สังเกตจริงได้ ~18% (ช่วง sensitivity 13-23%) ไม่ใช่ 50/50 ที่เดาไว้แต่แรก")]
-    [Range(0.01f, 0.99f)] public float a2Share = 0.18f;
+    [Tooltip("สัดส่วนรถตรงที่เข้าเลนนอก A2 (เลนแชร์กับ Ax) เทียบกับรถตรงทั้งหมด\n" +
+             "5.4% = ค่านับตรงจากคลิป A_morning (รถตรง 56 คัน เข้าเลนใน 53 เข้าเลนแชร์ 3) ตาม SP1_HANDOFF_v2\n" +
+             "แทนค่าเดิม 18% ที่ได้จากการอนุมานย้อนจากอัตราการบล็อก")]
+    [Range(0.01f, 0.99f)] public float a2Share = 0.054f;
 
     [Header("Scenario Table (กด Load ABAC Scenario Preset ถ้ายังว่าง)")]
     public List<ScenarioDef> scenarios = new List<ScenarioDef>();
@@ -475,9 +476,9 @@ public class ScenarioManager : MonoBehaviour
     {
         scenarios = new List<ScenarioDef>
         {
-            MakeScenario("MorningPeak",  A: 19.7f, Ax: 5.6f,   B: 8.7f,  Bx: 9.6f,     CB: closed,  CA: closed),
-            MakeScenario("EveningPeak",  A: medium,  Ax: low,      B: high,   Bx: low,      CB: high,    CA: high),
-            MakeScenario("MiddayNormal", A: 30.3f, Ax: 8.5f,   B: 15.9f, Bx: 17.6f,    CB: low,     CA: low),
+            MakeScenario("MorningPeak",  A: 18.8f, Ax: 5.1f,   B: 9.0f,  Bx: 9.6f,     CB: closed,  CA: closed),
+            MakeScenario("EveningPeak",  A: medium,  Ax: low,      B: high,   Bx: low,      CB: 8.4f,    CA: 13.4f),
+            MakeScenario("MiddayNormal", A: 29.0f, Ax: 9.7f,   B: 20.5f, Bx: 21.4f,    CB: low,     CA: low),
             MakeScenario("ABACEvent",    A: medium,  Ax: veryHigh, B: medium, Bx: veryHigh, CB: high,    CA: high),
             MakeScenario("Night",        A: veryLow, Ax: veryLow,  B: veryLow, Bx: veryLow, CB: veryLow, CA: veryLow),
         };
@@ -515,9 +516,25 @@ public class ScenarioManager : MonoBehaviour
     {
         if (!isRunning) return;
 
-        GUI.Box(new Rect(Screen.width / 2 - 170, 10, 340, 78), "");
-        GUI.Label(new Rect(Screen.width / 2 - 160, 15, 320, 20), $"Batch Run: {finishedRuns}/{totalRuns}");
-        GUI.Label(new Rect(Screen.width / 2 - 160, 35, 320, 20), currentLabel);
-        GUI.Label(new Rect(Screen.width / 2 - 160, 55, 320, 20), $"Time Scale: {Time.timeScale}x");
+        UITheme.Begin();
+
+        const float W = 380f;
+        Rect card = new Rect(Screen.width / 2f - W / 2f, 10f, W, 84f);
+        GUI.Box(card, GUIContent.none);
+
+        GUI.Label(new Rect(card.x + 12f, card.y + 8f, 200f, 18f), "BATCH RUN", UITheme.Title);
+        UITheme.Pill(new Rect(card.x + W - 92f, card.y + 9f, 80f, 17f),
+                     $"{Time.timeScale:0.#}x speed", UITheme.AccentDark);
+
+        UITheme.Bar(new Rect(card.x + 12f, card.y + 32f, W - 24f, 8f), Progress01, UITheme.Accent);
+
+        GUI.Label(new Rect(card.x + 12f, card.y + 44f, W * 0.5f, 16f),
+                  $"{finishedRuns}/{totalRuns} runs  ({Progress01 * 100f:F0}%)", UITheme.Body);
+        float rem = EstimatedRemaining;
+        GUI.Label(new Rect(card.x + W * 0.5f - 12f, card.y + 44f, W * 0.5f, 16f),
+                  rem >= 0f ? $"~{rem / 60f:F0} min left" : "", UITheme.Right);
+        GUI.Label(new Rect(card.x + 12f, card.y + 62f, W - 24f, 16f), currentLabel, UITheme.Dim);
+
+        UITheme.End();
     }
 }

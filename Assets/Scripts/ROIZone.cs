@@ -43,6 +43,8 @@ public class ROIZone : MonoBehaviour
         if (!carsInZone.ContainsKey(car))
         {
             carsInZone.Add(car, Time.time);
+            RoiHighlight h = car.GetComponent<RoiHighlight>();
+            if (h != null) h.EnterZone();
         }
     }
 
@@ -64,6 +66,8 @@ public class ROIZone : MonoBehaviour
             }
 
             carsInZone.Remove(car);
+            RoiHighlight h = car.GetComponent<RoiHighlight>();
+            if (h != null) h.ExitZone();
         }
     }
 
@@ -134,14 +138,42 @@ public class ROIZone : MonoBehaviour
 #endif
     }
 
+    // จำนวนรถที่ถือว่า "เต็มเลน" ใช้เทียบเป็นสัดส่วนของแถบมิเตอร์เท่านั้น
+    const int BarFullCars = 15;
+    // เวลารอที่ถือว่า "นานเกินรับได้" — เกินนี้แถบเป็นสีแดง (อ้างจาก maxWaitTime ของ Adaptive = 45s)
+    const float WaitCritical = 45f;
+
     void OnGUI()
     {
         if (!showDebugGUI || !Application.isPlaying) return;
 
-        float yPos = 10 + guiSlot * 55;
+        UITheme.Begin();
 
-        GUI.Box(new Rect(10, yPos, 230, 48), "");
-        GUI.Label(new Rect(18, yPos + 4, 214, 20), $"Lane {DisplayName} — ROI Count");
-        GUI.Label(new Rect(18, yPos + 24, 214, 20), $"Cars: {GetVehicleCount()}   Wait: {GetLongestWaitTime():F1}s");
+        const float W = 246f, H = 52f;
+        Rect card = new Rect(12f, 12f + guiSlot * (H + 6f), W, H);
+        GUI.Box(card, GUIContent.none);
+
+        int cars = GetVehicleCount();
+        float wait = GetLongestWaitTime();
+        Color laneCol = UITheme.LaneColor(laneName);
+
+        // จุดสีประจำกลุ่มเลน + ชื่อเลน
+        UITheme.Dot(new Rect(card.x + 10f, card.y + 11f, 9f, 9f), laneCol);
+        GUI.Label(new Rect(card.x + 25f, card.y + 6f, 120f, 18f), DisplayName, UITheme.Title);
+
+        // ตัวเลขคันรถชิดขวา อ่านง่ายสุดในจอเดียว
+        GUI.Label(new Rect(card.x + W - 96f, card.y + 6f, 88f, 18f), cars.ToString(), UITheme.Value);
+
+        // แถบมิเตอร์ความหนาแน่น + เวลารอ
+        UITheme.Bar(new Rect(card.x + 10f, card.y + 30f, W - 96f, 6f),
+                    cars / (float)BarFullCars, laneCol);
+
+        Color wc = wait >= WaitCritical ? UITheme.SigRed
+                 : wait >= WaitCritical * 0.5f ? UITheme.SigYellow : UITheme.TextDim;
+        GUIStyle ws = new GUIStyle(UITheme.Dim); ws.normal.textColor = wc;
+        ws.alignment = TextAnchor.MiddleRight;
+        GUI.Label(new Rect(card.x + W - 96f, card.y + 27f, 88f, 16f), $"wait {wait:F1}s", ws);
+
+        UITheme.End();
     }
 }

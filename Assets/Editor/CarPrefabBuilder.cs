@@ -1,0 +1,354 @@
+#if UNITY_EDITOR
+using UnityEngine;
+using UnityEditor;
+using System.Collections.Generic;
+
+/// <summary>
+/// สร้าง Assets/Prefabs/Car.prefab จากโมเดล 3D จริง (Assets/Models/car_low_poly.fbx)
+/// เมนู: ABAC ▸ Rebuild Car Prefab  (ABACSceneBuilder เรียกให้เองตอน Build Scene ด้วย)
+///
+/// ทุกอย่างคำนวณจากตัวโมเดลจริงตอน build ไม่ได้ hard-code ค่าไว้ จึงเปลี่ยนไฟล์โมเดลแล้วกดใหม่ได้เลย:
+///   • ตัดกล้อง/ไฟ/Null ที่ Blender แถมมาในไฟล์ออก (ถ้าไม่ตัด รถทุกคันจะพก Light+Camera ติดตัวไปด้วย)
+///   • ย่อ/ขยายให้ยาว 4 เมตรเท่ากับ CarAgent.carLength พอดี (uniform ไม่บิดสัดส่วน)
+///   • หันหน้ารถไป +Z ตามแกน forward ของ Unity — ดูจาก "ไฟท้ายสีแดง" ว่าอยู่ปลายไหน
+///   • วางให้ล้อแตะพื้นพอดีตอน spawn ที่ y = CAR_Y
+///   • ชี้ให้ CarAgent รู้ว่าชิ้นไหน/ช่องวัสดุไหนคือสีตัวถัง เพื่อให้ทาสีตามเลนได้ถูกช่อง
+/// </summary>
+public static class CarPrefabBuilder
+{
+    public const string FbxPath    = "Assets/Models/car_low_poly.fbx";
+    public const string PrefabPath = "Assets/Prefabs/Car.prefab";
+
+    /// <summary>ความยาวรถเป้าหมาย (เมตร) — ต้องตรงกับ CarAgent.carLength ไม่งั้นระยะห่างคิวจะเพี้ยน</summary>
+    public const float TargetLength = 4f;
+
+    /// <summary>Thickness of one bar of the ROI tracking outline (m).</summary>
+    public const float RoiEdgeThickness = 0.09f;
+
+    /// <summary>
+    /// How far the outline sits outside the vehicle's own bounds (m, total across the box).
+    /// Just enough that the bars clear the bodywork instead of z-fighting it — deliberately tiny,
+    /// because the outline of a queued vehicle must never reach the vehicle behind it
+    /// (bumper-to-bumper spacing at rest is CarAgent.minGap).
+    /// </summary>
+    public const float RoiBoxPadding = 0.06f;
+
+    [MenuItem("ABAC/Rebuild Car Prefab", false, 2)]
+    public static void RebuildMenu()
+    {
+        GameObject p = Rebuild(null);
+        if (p != null) Selection.activeObject = p;
+    }
+
+    public static GameObject Rebuild(Material defaultBodyMaterial)
+    {
+        GameObject fbx = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
+        if (fbx == null)
+        {
+            Debug.LogWarning($"[ABAC] ไม่พบโมเดลรถที่ {FbxPath} — ข้ามการสร้าง prefab ใหม่ " +
+                             "(ของเดิมยังใช้ได้ปกติ) ถ้าเพิ่งก๊อปไฟล์เข้ามา ให้กด Assets ▸ Refresh ก่อน");
+            return AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+        }
+
+        // ---------- ประกอบร่างชั่วคราวในซีน ----------
+        GameObject root = new GameObject("Car");
+        GameObject model = Object.Instantiate(fbx);
+        model.name = "Model";
+        model.transform.SetParent(root.transform, false);
+        model.transform.localPosition = Vector3.zero;
+        model.transform.localRotation = Quaternion.identity;
+        model.transform.localScale = Vector3.one;
+
+        int stripped = StripNonCarParts(model);
+
+        List<Renderer> rends = new List<Renderer>(model.GetComponentsInChildren<Renderer>());
+        rends.RemoveAll(r => r == null || r.GetComponent<MeshFilter>() == null);
+        if (rends.Count == 0)
+        {
+            Debug.LogError("[ABAC] โมเดลรถไม่มี MeshRenderer เลย — ยกเลิก");
+            Object.DestroyImmediate(root);
+            return AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+        }
+
+        // ---------- 1) หันแกนยาวของรถให้ตรงกับแกน Z ----------
+        Bounds b = Combined(rends);
+        if (b.size.x > b.size.z)
+        {
+            model.transform.localRotation = Quaternion.Euler(0f, 90f, 0f) * model.transform.localRotation;
+            b = Combined(rends);
+        }
+
+        // ---------- 2) หาชิ้นตัวถัง + ช่องวัสดุ ----------
+        Renderer body = LargestRenderer(rends);
+        int paintSlot = BiggestSubmesh(body);
+        int tailSlot  = ReddestSlot(body);
+
+        // ---------- 3) หน้ารถต้องชี้ +Z (ไฟท้ายอยู่ฝั่ง -Z) ----------
+        string facing = "ตรวจไม่ได้ (ไม่พบไฟท้ายสีแดง) — ใช้ทิศตั้งต้นของโมเดล";
+        if (tailSlot >= 0)
+        {
+            Vector3 tail = SubmeshCentroid(body, tailSlot);
+            if (tail.z > b.center.z)   // ไฟท้ายอยู่ฝั่ง +Z แปลว่ารถหันหลังให้ทิศวิ่ง ต้องกลับ 180°
+            {
+                model.transform.localRotation = Quaternion.Euler(0f, 180f, 0f) * model.transform.localRotation;
+                b = Combined(rends);
+                facing = "หมุน 180° (เดิมไฟท้ายอยู่ฝั่ง +Z = หันหลังให้ทิศวิ่ง)";
+            }
+            else facing = "ไม่ต้องหมุน (ไฟท้ายอยู่ฝั่ง -Z อยู่แล้ว)";
+        }
+
+        // ---------- 4) ย่อ/ขยายให้ยาว 4 ม. ----------
+        float scale = b.size.z > 0.0001f ? TargetLength / b.size.z : 1f;
+        model.transform.localScale = Vector3.one * scale;
+        b = Combined(rends);
+
+        // ---------- 5) จัดกึ่งกลาง + ให้ล้อแตะพื้น ----------
+        // spawn ที่ y = CAR_Y (0.5) แล้วล้อต้องอยู่ y = 0 พอดี => ก้นรถต้องอยู่ที่ local y = -0.5
+        Vector3 fix = model.transform.position - b.center;
+        fix.y = model.transform.position.y - b.min.y - ABACSceneBuilder.CAR_Y;
+        model.transform.localPosition = fix;
+        b = Combined(rends);
+
+        // ---------- 6) component ที่ระบบต้องใช้ ----------
+        BoxCollider col = root.AddComponent<BoxCollider>();
+        col.size = b.size;
+        col.center = b.center - root.transform.position;
+        col.isTrigger = false;
+
+        Rigidbody rb = root.AddComponent<Rigidbody>();
+        rb.isKinematic = true;      // ขับด้วย transform เอง ไม่ใช้ฟิสิกส์
+        rb.useGravity = false;
+        // ⚠️ ต้องมี Rigidbody ไม่งั้น OnTriggerEnter ของ ROIZone ไม่ยิง = นับรถไม่ได้ทั้งระบบ
+
+        // ---------- 6.1) green tracking box shown while the vehicle is inside a detection zone ----------
+        // Drawn as a WIREFRAME outline, not a solid translucent block.
+        // A solid box is a volume: with the alpha blending it needs, you see straight through the box
+        // of the car in front into the box of the car behind, and a queue reads as one continuous
+        // green mass instead of N vehicles. An outline made of thin bars has almost no area to blend,
+        // so every vehicle in a stopped queue stays individually countable — which is the whole point
+        // of the overlay, and also what a real detector draws.
+        GameObject boxGO = BuildWireBox(root.transform, b.center - root.transform.position, b.size);
+        boxGO.SetActive(false);                           // off until the car actually enters a zone
+
+        RoiHighlight hl = root.AddComponent<RoiHighlight>();
+        hl.boxRoot = boxGO;
+
+        CarAgent agent = root.AddComponent<CarAgent>();
+        agent.carLength = TargetLength;
+        agent.bodyRenderer = body;
+        agent.bodyMaterialIndex = paintSlot;
+
+        if (defaultBodyMaterial != null && body != null && paintSlot >= 0)
+        {
+            Material[] mats = body.sharedMaterials;
+            if (paintSlot < mats.Length) { mats[paintSlot] = defaultBodyMaterial; body.sharedMaterials = mats; }
+        }
+
+        // ---------- 7) บันทึกเป็น prefab ----------
+        System.IO.Directory.CreateDirectory(Application.dataPath + "/Prefabs");
+        GameObject saved = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
+        Object.DestroyImmediate(root);
+        AssetDatabase.SaveAssets();
+
+        Debug.Log($"<b>[ABAC] สร้าง Car.prefab จากโมเดลจริงแล้ว</b>\n" +
+                  $"• ตัดของแถมจาก Blender ออก {stripped} ชิ้น (กล้อง/ไฟ/Null)\n" +
+                  $"• ขนาดจริงหลังย่อ: ยาว {b.size.z:F2} × กว้าง {b.size.x:F2} × สูง {b.size.y:F2} ม. (scale {scale:F4})\n" +
+                  $"• ทิศหน้ารถ: {facing}\n" +
+                  $"• ตัวถัง = '{(body != null ? body.name : "-")}' ช่องวัสดุ {paintSlot} " +
+                  $"(ไฟท้าย = ช่อง {tailSlot}) → ทาสีตามเลนที่ช่องนี้ช่องเดียว\n" +
+                  $"• ล้อแตะพื้นพอดีเมื่อ spawn ที่ y = {ABACSceneBuilder.CAR_Y}");
+
+        return saved;
+    }
+
+    // ===================== helpers =====================
+
+    /// <summary>
+    /// Builds the ROI tracking outline: a 12-bar wireframe cuboid centred at <paramref name="center"/>
+    /// (local space) around a body of the given size. Sized from the vehicle's real bounds plus
+    /// <see cref="RoiBoxPadding"/> only, so two outlines can never touch in a stopped queue.
+    /// </summary>
+    static GameObject BuildWireBox(Transform parent, Vector3 center, Vector3 size)
+    {
+        GameObject rootGO = new GameObject("RoiBox");
+        rootGO.transform.SetParent(parent, false);
+        rootGO.transform.localPosition = center;
+
+        Vector3 outer = size + Vector3.one * RoiBoxPadding;
+        Material mat = UnlitMaterial("Roi_Highlight", new Color(0.16f, 0.98f, 0.42f, 1f));
+        float t  = RoiEdgeThickness;
+        float hx = outer.x / 2f, hy = outer.y / 2f, hz = outer.z / 2f;
+
+        // 12 edges of a cuboid = 4 bars along each axis.
+        for (int i = 0; i < 4; i++)
+        {
+            float sy = (i < 2 ? -1f : 1f) * hy;
+            float sz = (i % 2 == 0 ? -1f : 1f) * hz;
+            AddBar(rootGO.transform, mat, new Vector3(0f, sy, sz), new Vector3(outer.x, t, t));
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            float sx = (i < 2 ? -1f : 1f) * hx;
+            float sz = (i % 2 == 0 ? -1f : 1f) * hz;
+            AddBar(rootGO.transform, mat, new Vector3(sx, 0f, sz), new Vector3(t, outer.y, t));
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            float sx = (i < 2 ? -1f : 1f) * hx;
+            float sy = (i % 2 == 0 ? -1f : 1f) * hy;
+            AddBar(rootGO.transform, mat, new Vector3(sx, sy, 0f), new Vector3(t, t, outer.z));
+        }
+        return rootGO;
+    }
+
+    /// <summary>One bar of the wireframe outline.</summary>
+    static void AddBar(Transform parent, Material mat, Vector3 pos, Vector3 scale)
+    {
+        GameObject bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        bar.name = "Edge";
+        bar.transform.SetParent(parent, false);
+        bar.transform.localPosition = pos;
+        bar.transform.localScale = scale;
+
+        Collider c = bar.GetComponent<Collider>();
+        if (c != null) Object.DestroyImmediate(c);        // must not disturb the ROI trigger
+
+        Renderer r = bar.GetComponent<Renderer>();
+        if (r != null)
+        {
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+        }
+    }
+
+    /// <summary>
+    /// Flat unlit material for the tracking outline. Unlit keeps the green constant whatever the sun
+    /// angle, so the outline stays legible in the low-angle junction camera shots as well as overhead.
+    /// Opaque on purpose — the old translucent box is exactly what made queued boxes blend together.
+    /// </summary>
+    static Material UnlitMaterial(string name, Color color)
+    {
+        string path = $"Assets/Materials/{name}.mat";
+        Material m = AssetDatabase.LoadAssetAtPath<Material>(path);
+        bool isNew = m == null;
+
+        Shader sh = Shader.Find("Unlit/Color");
+        if (sh == null) sh = Shader.Find("Standard");
+        if (isNew)
+        {
+            if (sh == null) return null;
+            m = new Material(sh);
+        }
+        else if (sh != null && m.shader != sh) m.shader = sh;   // upgrade the old transparent asset
+
+        m.color = color;
+        if (m.HasProperty("_Color"))     m.SetColor("_Color", color);
+        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
+        if (m.HasProperty("_EmissionColor"))
+        {
+            m.EnableKeyword("_EMISSION");
+            m.SetColor("_EmissionColor", color);
+        }
+        m.renderQueue = -1;                                     // whatever the shader asks for
+
+        if (isNew)
+        {
+            System.IO.Directory.CreateDirectory(Application.dataPath + "/Materials");
+            AssetDatabase.CreateAsset(m, path);
+            AssetDatabase.SaveAssets();
+        }
+        else EditorUtility.SetDirty(m);
+        return m;
+    }
+
+    /// <summary>ตัดกล้อง/ไฟ/ชิ้นที่ไม่มีเมช ที่ Blender แถมมาในไฟล์ออก</summary>
+    static int StripNonCarParts(GameObject model)
+    {
+        int n = 0;
+        foreach (Light l in model.GetComponentsInChildren<Light>(true))
+        {
+            if (l != null) { Object.DestroyImmediate(l.gameObject); n++; }
+        }
+        foreach (Camera c in model.GetComponentsInChildren<Camera>(true))
+        {
+            if (c != null) { Object.DestroyImmediate(c.gameObject); n++; }
+        }
+        return n;
+    }
+
+    static Bounds Combined(List<Renderer> rends)
+    {
+        Bounds b = rends[0].bounds;
+        for (int i = 1; i < rends.Count; i++) b.Encapsulate(rends[i].bounds);
+        return b;
+    }
+
+    /// <summary>ชิ้นที่ใหญ่สุด = ตัวถัง (ล้อ/กระจกเล็กกว่าเสมอ)</summary>
+    static Renderer LargestRenderer(List<Renderer> rends)
+    {
+        Renderer best = rends[0];
+        float bestV = -1f;
+        foreach (Renderer r in rends)
+        {
+            Vector3 s = r.bounds.size;
+            float v = s.x * s.y * s.z;
+            if (v > bestV) { bestV = v; best = r; }
+        }
+        return best;
+    }
+
+    /// <summary>ช่องวัสดุที่กินพื้นที่มากที่สุดในชิ้นนั้น = สีตัวถัง</summary>
+    static int BiggestSubmesh(Renderer r)
+    {
+        Mesh m = MeshOf(r);
+        if (m == null || m.subMeshCount <= 1) return 0;
+        int best = 0, bestTris = -1;
+        for (int i = 0; i < m.subMeshCount; i++)
+        {
+            int t = (int)m.GetIndexCount(i);
+            if (t > bestTris) { bestTris = t; best = i; }
+        }
+        return best;
+    }
+
+    /// <summary>ช่องวัสดุที่ "แดงที่สุด" = ไฟท้าย ใช้ชี้ว่าท้ายรถอยู่ทางไหน</summary>
+    static int ReddestSlot(Renderer r)
+    {
+        Material[] mats = r != null ? r.sharedMaterials : null;
+        if (mats == null) return -1;
+        int best = -1; float bestScore = 0.25f;   // ต้องแดงชัดจริง ไม่งั้นถือว่าไม่เจอ
+        for (int i = 0; i < mats.Length; i++)
+        {
+            if (mats[i] == null || !mats[i].HasProperty("_Color")) continue;
+            Color c = mats[i].color;
+            float score = c.r - Mathf.Max(c.g, c.b);
+            if (score > bestScore) { bestScore = score; best = i; }
+        }
+        return best;
+    }
+
+    /// <summary>จุดกึ่งกลางของช่องวัสดุหนึ่ง ในพิกัดโลก</summary>
+    static Vector3 SubmeshCentroid(Renderer r, int slot)
+    {
+        Mesh m = MeshOf(r);
+        if (m == null || slot < 0 || slot >= m.subMeshCount) return r.bounds.center;
+
+        int[] tris = m.GetTriangles(slot);
+        Vector3[] verts = m.vertices;
+        if (tris.Length == 0) return r.bounds.center;
+
+        Vector3 sum = Vector3.zero;
+        for (int i = 0; i < tris.Length; i++) sum += verts[tris[i]];
+        Vector3 local = sum / tris.Length;
+        return r.transform.TransformPoint(local);
+    }
+
+    static Mesh MeshOf(Renderer r)
+    {
+        if (r == null) return null;
+        MeshFilter mf = r.GetComponent<MeshFilter>();
+        return mf != null ? mf.sharedMesh : null;
+    }
+}
+#endif

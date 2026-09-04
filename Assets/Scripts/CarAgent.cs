@@ -18,6 +18,15 @@ public class CarAgent : MonoBehaviour
     private float emergencyDecelMultiplier;  // ← เบรกฉุกเฉินแรงกว่าปกติกี่เท่า
     private float dilemmaZoneFactor;         // ← ยิ่งสูง ยิ่งฝ่าไฟเหลืองง่าย
 
+    [Header("Body Paint (ชิ้นที่จะถูกทาสีตามเลน)")]
+    [Tooltip("Renderer ของตัวถังรถ — ตั้งให้อัตโนมัติตอนสร้าง prefab โดย ABAC ▸ Rebuild Car Prefab\n" +
+             "⚠️ ห้ามทาสีทุก Renderer ในรถ ไม่งั้นล้อ กระจก และไฟหน้า/ท้าย จะโดนทาสีเลนไปด้วยหมดคัน")]
+    public Renderer bodyRenderer;
+
+    [Tooltip("ช่องวัสดุ (material slot) ของตัวถังใน bodyRenderer — โมเดลรถมีหลายช่อง " +
+             "(สีตัวถัง / กระจก / ยาง / ไฟหน้า / ไฟท้าย) ต้องทาแค่ช่องสีตัวถังช่องเดียว")]
+    public int bodyMaterialIndex = 0;
+
     [Header("Lane Identity")]
     public string assignedLane = "";   // ตั้งค่าโดย CarSpawner ตอน spawn
     [Header("Runtime State")]
@@ -70,6 +79,20 @@ public class CarAgent : MonoBehaviour
     public float turnBrakeMargin = 4f;
     [Tooltip("เข้าใกล้ waypoint เท่านี้ถือว่าถึงแล้ว")]
     public float waypointReachRadius = 2f;
+
+    [Header("Late Merge (เปลี่ยนเลนก่อนถึงเส้นหยุด — ใช้กับ A2)")]
+    [Tooltip("true = เลี้ยว/เปลี่ยนเลนได้ทั้งที่ยังไม่ผ่านเส้นหยุด\n" +
+             "ปกติรถที่มีเส้นหยุดจะวิ่งตรงจนผ่านเส้นก่อนถึงเริ่มเลี้ยว (กันค่า signedDistToStopPoint เพี้ยน)\n" +
+             "แต่ A2 ต้อง 'เปลี่ยนเลน' เข้าเลนแชร์ก่อนถึงเส้นหยุด — การเยื้องด้านข้างไม่กระทบระยะเบรก " +
+             "เพราะรถวิ่งขนานแกน X ล้วน signedDistToStopPoint คิดจากผลต่าง X อย่างเดียว")]
+    public bool steerBeforeStopLine = false;
+
+    [Tooltip("ยังไม่เริ่มเปลี่ยนเลนจนกว่าจะเหลือระยะถึง waypoint แรกน้อยกว่านี้ (เมตร) — 0 = เปลี่ยนตั้งแต่ spawn\n\n" +
+             "⭐ นี่คือหัวใจของ 'late merge': Itim นับจากคลิปว่ารถตรงที่เข้าเลนแชร์ทั้ง 3 คัน เปลี่ยนเลนเข้ามา" +
+             "ตอนเหลือระยะแค่ ~5 ช่วงรถก่อนถึงจุดเลี้ยว = แทรกเข้า 'หัวคิว' พอดี\n" +
+             "ถ้าปล่อยให้เปลี่ยนเลนตั้งแต่ไกล รถจะกระจายอยู่กลางคิว เกิดเป็น 'หน่วงนิดเดียวแต่บ่อย' " +
+             "ซึ่งค่าเฉลี่ยเท่ากันแต่ queue dynamics ผิดไปคนละเรื่องกับของจริงที่ 'นาน ๆ ครั้งแต่รุนแรงเกือบสูงสุด'")]
+    public float steerStartDistance = 0f;
 
     private int waypointIndex = 0;
     /// <summary>true = วิ่งจนสุดเส้นทางที่กำหนดแล้ว (CarSpawner ใช้ตัดสินใจลบรถทิ้ง)</summary>
@@ -180,7 +203,7 @@ public class CarAgent : MonoBehaviour
     void Steer()
     {
         if (pathWaypoints == null || pathWaypoints.Length == 0) return;
-        if (stopLineTarget != null && !hasCleared) return;
+        if (stopLineTarget != null && !hasCleared && !steerBeforeStopLine) return;
         if (reachedEndOfPath) return;
 
         // ข้าม waypoint ที่เป็น null หรือถูกลบไปแล้ว
@@ -195,6 +218,10 @@ public class CarAgent : MonoBehaviour
 
         Vector3 toTarget = CurrentWaypointTarget() - transform.position;
         toTarget.y = 0f;
+
+        // ===== late merge: ยังไกลอยู่ก็วิ่งตรงในเลนเดิมไปก่อน ยังไม่ต้องเบียดเข้าเลนใหม่ =====
+        if (steerStartDistance > 0f && waypointIndex == 0
+            && Vector3.Dot(toTarget, transform.forward) > steerStartDistance) return;
 
         // ผ่านไปแล้ว (อยู่ข้างหลังรถ) ก็นับว่าถึงเหมือนกัน
         // กันเคสรถเลี้ยวกว้างเกินจนไม่เคยเข้าใกล้ waypoint ในรัศมี แล้ววนเป็นวงกลมไม่จบ
@@ -432,6 +459,11 @@ public class CarAgent : MonoBehaviour
         float along = Vector3.Dot(toWp, transform.forward);
         if (along <= 0f) return limit;
 
+        // ⚠️ ตัดระยะมองแค่ "เลนที่หักออกไปจริง ๆ" เท่านั้น (Ax/Bx/CB/CA) ห้ามตัดให้เลนเปลี่ยนเลน (A2)
+        //    A2 เปลี่ยนเลนแล้ววิ่งตรงต่อ ถ้าไปตัดระยะมองที่จุดเปลี่ยนเลน มันจะมองไม่เห็นคิวที่รออยู่
+        //    เลยจุดนั้นแล้วพุ่งชนท้าย — เช็คด้วย "ปลายทางของเส้นทางเบนจากหัวรถไปกี่องศา"
+        if (!PathTurnsAway()) return limit;
+
         Vector3 nextSeg = pathWaypoints[waypointIndex + 1].position - wpPos;
         nextSeg.y = 0f;
         if (nextSeg.magnitude > 0.1f && toWp.magnitude > 0.1f
@@ -443,9 +475,45 @@ public class CarAgent : MonoBehaviour
     }
 
     /// <summary>
+    /// เส้นทางข้างหน้า "หักออกไปคนละทาง" หรือแค่ "เปลี่ยนเลนแล้ววิ่งตรงต่อ"
+    ///
+    /// ดูจากทิศของช่วงสุดท้ายของเส้นทางเทียบกับหัวรถตอนนี้:
+    ///   Ax เลี้ยวซ้ายเข้ามอ  -> ปลายทางมุ่ง +Z ต่างจากหัวรถ (+X) ~90°  = หักออก
+    ///   A2 เปลี่ยนเลนแล้วตรง -> ปลายทางมุ่ง +X เท่าหัวรถ ~0°           = ไม่ได้หักออก
+    /// </summary>
+    bool PathTurnsAway()
+    {
+        int last = pathWaypoints.Length - 1;
+        while (last > waypointIndex && pathWaypoints[last] == null) last--;
+        if (last <= waypointIndex) return false;
+
+        Vector3 endDir = pathWaypoints[last].position - pathWaypoints[waypointIndex].position;
+        endDir.y = 0f;
+        if (endDir.magnitude < 0.1f) return false;
+        return Vector3.Angle(transform.forward, endDir) >= 45f;
+    }
+
+    /// <summary>
     /// มีรถคันไหนอยู่ในรัศมีนี้ไหม — CarSpawner เรียกก่อนปล่อยรถ กันปล่อยทับคันที่จอดค้างอยู่ตรงจุด spawn
     /// (เกิดจริงเมื่อคิวยาวถอยมาถึงจุด spawn หรือเมื่อสอง spawner ใช้เลนกายภาพเดียวกัน เช่น A2 กับ Ax)
     /// </summary>
+    /// <summary>
+    /// รถของเลนนี้ที่อยู่ใกล้จุดอ้างอิงที่สุด — CameraDirector ใช้เลือกคันที่จะเกาะ
+    /// (ส่งตำแหน่งกล้องนิ่งของมุมนั้นมาเป็นจุดอ้างอิง จะได้เกาะคันที่อยู่ในกรอบภาพอยู่แล้ว)
+    /// </summary>
+    public static CarAgent NearestInLane(string lane, Vector3 point)
+    {
+        CarAgent best = null;
+        float bestD = Mathf.Infinity;
+        foreach (CarAgent c in allCars)
+        {
+            if (c == null || c.assignedLane != lane) continue;
+            float d = Vector3.Distance(c.transform.position, point);
+            if (d < bestD) { bestD = d; best = c; }
+        }
+        return best;
+    }
+
     public static bool IsSpaceOccupied(Vector3 pos, float radius)
     {
         foreach (CarAgent c in allCars)

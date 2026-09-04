@@ -14,11 +14,11 @@ using System.IO;
 /// </summary>
 public class BatchRunPanel : MonoBehaviour
 {
-    [Header("References (เว้นว่างได้ ระบบหาเองในซีน)")]
+    [Header("References (leave empty — found automatically in the scene)")]
     public ScenarioManager scenarioManager;
 
     [Header("Layout")]
-    [Tooltip("ความกว้างแผงด้านขวา")]
+    [Tooltip("Width of the side panel")]
     public float panelWidth = 400f;
     [Range(0.7f, 2f)] public float uiScale = 1f;
 
@@ -121,9 +121,9 @@ public class BatchRunPanel : MonoBehaviour
         if (seconds < 0f) return "—";
         int s = Mathf.RoundToInt(seconds);
         int h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
-        if (h > 0) return $"{h} ชม. {m} นาที";
-        if (m > 0) return $"{m} นาที {sec} วิ";
-        return $"{sec} วิ";
+        if (h > 0) return $"{h}h {m}m";
+        if (m > 0) return $"{m}m {sec}s";
+        return $"{sec}s";
     }
 
     // ===================== main =====================
@@ -138,6 +138,8 @@ public class BatchRunPanel : MonoBehaviour
         if (!running && !finished) { summaryDismissed = false; return; }
         if (!stylesReady) BuildStyles();
 
+        UITheme.Begin();
+
         Matrix4x4 old = GUI.matrix;
         if (!Mathf.Approximately(uiScale, 1f))
             GUIUtility.ScaleAroundPivot(new Vector2(uiScale, uiScale), Vector2.zero);
@@ -149,6 +151,7 @@ public class BatchRunPanel : MonoBehaviour
         if (finished && showSummaryOnFinish) DrawSummaryOverlay(sw, sh);
 
         GUI.matrix = old;
+        UITheme.End();
     }
 
     // ---------------------------------------------------------------- side panel
@@ -167,13 +170,13 @@ public class BatchRunPanel : MonoBehaviour
 
         // ---- header ----
         GUILayout.Label("BATCH RUN", sH1);
-        GUILayout.Label("รันทุก scenario ทั้ง Fixed และ Adaptive อัตโนมัติ", sDim);
+        GUILayout.Label("Running every scenario under both controllers", sDim);
         GUILayout.Space(10);
 
         // ---- progress ----
         float p = sm.Progress01;
         GUILayout.BeginHorizontal();
-        GUILayout.Label($"จบแล้ว {sm.CompletedRuns} / {sm.TotalRuns} runs", sNum);
+        GUILayout.Label($"{sm.CompletedRuns} / {sm.TotalRuns} runs complete", sNum);
         GUILayout.FlexibleSpace();
         GUILayout.Label($"{p * 100f:F1}%", sNum);
         GUILayout.EndHorizontal();
@@ -183,15 +186,15 @@ public class BatchRunPanel : MonoBehaviour
         GUILayout.Space(8);
 
         // ---- เวลา ----
-        Row("ใช้ไปแล้ว", FormatDuration(sm.ElapsedRealtime));
-        Row("เหลืออีกประมาณ", FormatDuration(sm.EstimatedRemaining));
+        Row("Elapsed", FormatDuration(sm.ElapsedRealtime));
+        Row("Remaining", FormatDuration(sm.EstimatedRemaining));
 
         // ก่อน run แรกจบ ตัวเลขยังเป็นการคำนวณจาก timeScale ล้วน ๆ
         // พอ run แรกจบจะเปลี่ยนไปใช้เวลาจริง ตัวเลขอาจกระโดดครั้งเดียว บอกไว้ก่อนจะได้ไม่งง
         if (sm.CompletedRuns == 0)
-            GUILayout.Label("(ยังเป็นค่าประเมินคร่าว ๆ — จะแม่นขึ้นเมื่อ run แรกจบ)", sDim);
+            GUILayout.Label("(rough estimate until the first run finishes)", sDim);
 
-        Row("ความเร็วจำลอง", $"{Time.timeScale:0.#}x");
+        Row("Sim speed", $"{Time.timeScale:0.#}x");
         GUILayout.Space(8);
 
         // ---- run ปัจจุบัน ----
@@ -200,7 +203,7 @@ public class BatchRunPanel : MonoBehaviour
         bool isFixed = sm.CurrentController == DataLogger.ControllerType.Fixed;
         Fill(new Rect(cur.x, cur.y, 3f, cur.height), isFixed ? C_FIXED : C_ADAPTIVE);
         GUI.Label(new Rect(cur.x + 10f, cur.y + 4f, cur.width - 20f, 18f),
-                  $"run ที่ {sm.StartedRuns}: {sm.CurrentScenarioName} · รอบที่ {sm.CurrentRep}", sLabel);
+                  $"Run {sm.StartedRuns}: {sm.CurrentScenarioName} \u00B7 rep {sm.CurrentRep}", sLabel);
         Color oc = GUI.contentColor;
         GUI.contentColor = isFixed ? C_FIXED : C_ADAPTIVE;
         GUI.Label(new Rect(cur.x + 10f, cur.y + 24f, cur.width - 20f, 18f),
@@ -211,14 +214,14 @@ public class BatchRunPanel : MonoBehaviour
         Divider(w - 28f);
 
         // ---- ตารางผลรายซีนาริโอ ----
-        GUILayout.Label("ผลรายซีนาริโอ (เฉลี่ยเวลารอ)", sH2);
+        GUILayout.Label("PER-SCENARIO RESULTS (mean wait)", sH2);
         GUILayout.Space(2);
 
         GUILayout.BeginHorizontal();
         GUILayout.Label("Scenario", sDim, GUILayout.Width(104));
         GUILayout.Label("Fixed", sDim, GUILayout.Width(58));
         GUILayout.Label("Adaptive", sDim, GUILayout.Width(62));
-        GUILayout.Label("ผลต่าง", sDim);
+        GUILayout.Label("Diff", sDim);
         GUILayout.EndHorizontal();
 
         scroll = GUILayout.BeginScrollView(scroll);
@@ -229,7 +232,7 @@ public class BatchRunPanel : MonoBehaviour
             DrawScenarioRow(r, maxWait, w - 40f);
         }
         if (sm.Results.Count == 0)
-            GUILayout.Label("ยังไม่มีผล — รอ run แรกจบก่อน", sDim);
+            GUILayout.Label("No results yet — waiting for the first run", sDim);
 
         GUILayout.EndScrollView();
 
@@ -240,19 +243,19 @@ public class BatchRunPanel : MonoBehaviour
         sm.GetOverall(out fW, out aW, out pct);
         if (fW >= 0f)
         {
-            GUILayout.Label("ภาพรวมตอนนี้", sH2);
-            Row("Fixed เฉลี่ย", $"{fW:F2} วิ");
-            Row("Adaptive เฉลี่ย", $"{aW:F2} วิ");
+            GUILayout.Label("OVERALL SO FAR", sH2);
+            Row("Fixed mean", $"{fW:F2} s");
+            Row("Adaptive mean", $"{aW:F2} s");
 
             Color c = pct > 0f ? C_GOOD : C_BAD;
-            string who = pct > 0f ? "Adaptive เร็วกว่า" : "Fixed เร็วกว่า";
+            string who = pct > 0f ? "Adaptive better by" : "Fixed better by";
             GUI.contentColor = c;
             GUILayout.Label($"→ {who} {Mathf.Abs(pct):F1}%", sNum);
             GUI.contentColor = C_TEXT;
         }
 
         GUILayout.Space(8);
-        if (GUILayout.Button("■  หยุด batch run", sBtn, GUILayout.Height(26)))
+        if (GUILayout.Button("\u25A0  Stop batch run", sBtn, GUILayout.Height(26)))
             scenarioManager.StopBatchRun();
 
         GUILayout.EndArea();
@@ -286,7 +289,7 @@ public class BatchRunPanel : MonoBehaviour
         {
             GUI.contentColor = C_DIM;
             GUI.Label(new Rect(row.x + 226f, row.y + 2f, width - 226f, 16f),
-                      $"{r.PairCount} คู่", sCell);
+                      $"{r.PairCount} pairs", sCell);
         }
         GUI.contentColor = oc;
 
@@ -327,9 +330,9 @@ public class BatchRunPanel : MonoBehaviour
 
         GUILayout.BeginArea(new Rect(x + 28f, y + 20f, w - 56f, h - 40f));
 
-        GUILayout.Label("สรุปผลการทดลอง", sH1);
+        GUILayout.Label("EXPERIMENT SUMMARY", sH1);
         GUILayout.Label($"{sm.CompletedRuns} runs · {sm.Results.Count} scenarios · " +
-                        $"ใช้เวลาจริง {FormatDuration(sm.ElapsedRealtime)}", sDim);
+                        $"wall-clock {FormatDuration(sm.ElapsedRealtime)}", sDim);
         GUILayout.Space(14);
 
         // ---------- แถวตัวเลขใหญ่ ----------
@@ -337,21 +340,21 @@ public class BatchRunPanel : MonoBehaviour
         Rect cards = GUILayoutUtility.GetRect(w - 56f, 108f);
 
         BigCard(new Rect(cards.x, cards.y, cardW, 108f),
-                "FIXED", fW >= 0f ? $"{fW:F2}" : "—", "วินาที (เฉลี่ยเวลารอ)", C_FIXED);
+                "FIXED", fW >= 0f ? $"{fW:F2}" : "\u2014", "seconds (mean wait)", C_FIXED);
 
         BigCard(new Rect(cards.x + cardW + 12f, cards.y, cardW, 108f),
-                "ADAPTIVE", aW >= 0f ? $"{aW:F2}" : "—", "วินาที (เฉลี่ยเวลารอ)", C_ADAPTIVE);
+                "ADAPTIVE", aW >= 0f ? $"{aW:F2}" : "\u2014", "seconds (mean wait)", C_ADAPTIVE);
 
         Color resC = pct > 0f ? C_GOOD : C_BAD;
-        string resTitle = pct > 0f ? "ADAPTIVE ดีกว่า" : "FIXED ดีกว่า";
+        string resTitle = pct > 0f ? "ADAPTIVE WINS" : "FIXED WINS";
         BigCard(new Rect(cards.x + (cardW + 12f) * 2f, cards.y, cardW, 108f),
                 resTitle, $"{Mathf.Abs(pct):F1}%",
-                fW >= 0f ? $"ลดไป {Mathf.Abs(fW - aW):F2} วินาที" : "", resC);
+                fW >= 0f ? $"{Mathf.Abs(fW - aW):F2} s lower" : "", resC);
 
         GUILayout.Space(16);
 
         // ---------- กราฟแท่งรายซีนาริโอ ----------
-        GUILayout.Label("เทียบรายซีนาริโอ", sH2);
+        GUILayout.Label("BY SCENARIO", sH2);
         GUILayout.Space(4);
 
         // legend
@@ -396,10 +399,10 @@ public class BatchRunPanel : MonoBehaviour
         Divider(w - 56f);
 
         GUILayout.BeginHorizontal();
-        if (GUILayout.Button("บันทึกสรุปเป็นไฟล์", sBtn, GUILayout.Height(28), GUILayout.Width(170)))
+        if (GUILayout.Button("Save summary to file", sBtn, GUILayout.Height(28), GUILayout.Width(180)))
             SaveSummaryFile();
         GUILayout.FlexibleSpace();
-        if (GUILayout.Button("ปิด", sBtn, GUILayout.Height(28), GUILayout.Width(110)))
+        if (GUILayout.Button("Close", sBtn, GUILayout.Height(28), GUILayout.Width(110)))
         {
             summaryDismissed = true;
             scenarioManager.DismissSummary();
@@ -459,12 +462,12 @@ public class BatchRunPanel : MonoBehaviour
         sm.GetOverall(out fW, out aW, out pct);
 
         var sb = new StringBuilder();
-        sb.AppendLine("ABAC TRAFFIC SIGNAL SIMULATION — สรุปผล Batch Run");
-        sb.AppendLine($"บันทึกเมื่อ {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        sb.AppendLine($"จำนวน run: {sm.CompletedRuns} / {sm.TotalRuns}");
-        sb.AppendLine($"เวลาจริงที่ใช้: {FormatDuration(sm.ElapsedRealtime)}");
+        sb.AppendLine("ABAC TRAFFIC SIGNAL SIMULATION \u2014 Batch Run Summary");
+        sb.AppendLine($"Saved {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"Runs: {sm.CompletedRuns} / {sm.TotalRuns}");
+        sb.AppendLine($"Wall-clock: {FormatDuration(sm.ElapsedRealtime)}");
         sb.AppendLine();
-        sb.AppendLine($"{"Scenario",-16}{"คู่",5}{"Fixed",10}{"Adaptive",11}{"ลด%",9}{"MaxFixed",11}{"MaxAdapt",11}");
+        sb.AppendLine($"{"Scenario",-16}{"Pairs",6}{"Fixed",10}{"Adaptive",11}{"Impr%",9}{"MaxFixed",11}{"MaxAdapt",11}");
         sb.AppendLine(new string('-', 74));
 
         foreach (var r in sm.Results)
@@ -474,10 +477,10 @@ public class BatchRunPanel : MonoBehaviour
                           $"{r.ImprovementPercent,8:F1}%{r.FixedMaxWait,11:F2}{r.AdaptiveMaxWait,11:F2}");
         }
         sb.AppendLine(new string('-', 74));
-        sb.AppendLine($"{"รวมทุก scenario",-16}{"",5}{fW,10:F2}{aW,11:F2}{pct,8:F1}%");
+        sb.AppendLine($"{"ALL SCENARIOS",-16}{"",6}{fW,10:F2}{aW,11:F2}{pct,8:F1}%");
         sb.AppendLine();
-        sb.AppendLine("หมายเหตุ: ตัวเลขเป็นค่าเฉลี่ยเวลารอ (วินาที) ต่อคัน");
-        sb.AppendLine("การทดสอบนัยสำคัญทางสถิติให้รัน Analysis/analyze_results.py กับไฟล์ CSV");
+        sb.AppendLine("Note: figures are mean waiting time per vehicle, in seconds.");
+        sb.AppendLine("For significance testing, run Analysis/analyze_results.py against the CSV output.");
 
         try
         {
@@ -486,11 +489,11 @@ public class BatchRunPanel : MonoBehaviour
             if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
             string path = Path.Combine(folder, $"batch_summary_{System.DateTime.Now:yyyyMMdd_HHmmss}.txt");
             File.WriteAllText(path, sb.ToString());
-            Debug.Log($"[BatchRunPanel] บันทึกสรุปไว้ที่ {path}");
+            Debug.Log($"[BatchRunPanel] Summary saved to {path}");
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"[BatchRunPanel] บันทึกไม่สำเร็จ: {e.Message}");
+            Debug.LogError($"[BatchRunPanel] Save failed: {e.Message}");
         }
     }
 }

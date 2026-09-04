@@ -18,7 +18,7 @@ public class SimulationControlPanel : MonoBehaviour
     public enum ControllerKind { Fixed, Adaptive }
     public enum RunState { Idle, Running, Paused, Finished }
 
-    [Header("References (เว้นว่างได้ ระบบจะหาเองในซีน)")]
+    [Header("References (leave empty — found automatically in the scene)")]
     public IntersectionConfig config;
     public FixedController fixedController;
     public AdaptiveController adaptiveController;
@@ -26,22 +26,22 @@ public class SimulationControlPanel : MonoBehaviour
     public ScenarioManager scenarioManager;
 
     [Header("Test Cases")]
-    [Tooltip("กด context menu 'Load Default Test Cases' ถ้ายังว่าง")]
+    [Tooltip("Use the context menu 'Load Default Test Cases' if this is empty")]
     public List<TestCase> testCases = new List<TestCase>();
     public int selectedTestCase = 0;
 
     [Header("Startup")]
-    [Tooltip("เริ่มจำลองทันทีที่กด Play")]
+    [Tooltip("Start the run as soon as Play is pressed")]
     public bool autoStartOnPlay = true;
     public ControllerKind startController = ControllerKind.Adaptive;
-    [Tooltip("seed สำหรับโหมด Poisson — เลขเดียวกันให้ผลเหมือนกัน")]
+    [Tooltip("Seed for Poisson mode — the same number reproduces the same traffic")]
     public int randomSeed = 12345;
 
     [Header("Panel")]
     public bool showPanel = true;
-    [Tooltip("ขยาย UI สำหรับจอความละเอียดสูง (1 = ปกติ, 1.5 = ใหญ่ขึ้น 50%)")]
+    [Tooltip("UI scale for high-DPI displays (1 = normal, 1.5 = 50% larger)")]
     [Range(0.7f, 2.5f)] public float uiScale = 1f;
-    [Tooltip("ซ่อน debug GUI เดิมของ ROI/Controller ตอนเปิด panel นี้")]
+    [Tooltip("Hide the per-lane and controller HUDs while this panel is open")]
     public bool hideLegacyDebugGUI = true;
 
     // ===================== runtime state =====================
@@ -94,7 +94,7 @@ public class SimulationControlPanel : MonoBehaviour
         else
         {
             StopRun();
-            Toast("กด ▶ Start เพื่อเริ่ม");
+            Toast("Press \u25B6 Play to start");
         }
     }
 
@@ -114,7 +114,7 @@ public class SimulationControlPanel : MonoBehaviour
             RecordClearance(clearanceTime);
             state = RunState.Finished;
             Time.timeScale = 0f;
-            Toast($"รถหมดถนนแล้ว — ใช้เวลา {clearanceTime:F1} วินาที");
+            Toast($"Road cleared in {clearanceTime:F1} s");
             return;
         }
 
@@ -122,7 +122,7 @@ public class SimulationControlPanel : MonoBehaviour
         {
             state = RunState.Finished;
             Time.timeScale = 0f;
-            Toast($"ครบเวลา {runElapsed:F0} วินาที (ยังมีรถเหลือบนถนน)");
+            Toast($"Time limit reached at {runElapsed:F0} s (vehicles still on the road)");
         }
     }
 
@@ -149,12 +149,12 @@ public class SimulationControlPanel : MonoBehaviour
     {
         if (config == null)
         {
-            Toast("ไม่พบ IntersectionConfig");
+            Toast("IntersectionConfig not found");
             return;
         }
         if (scenarioManager != null && scenarioManager.IsBatchRunning)
         {
-            Toast("batch run กำลังทำงาน — หยุดก่อน");
+            Toast("A batch run is in progress — stop it first");
             return;
         }
 
@@ -184,7 +184,7 @@ public class SimulationControlPanel : MonoBehaviour
         state = RunState.Running;
         Time.timeScale = simSpeed;
 
-        Toast(tc != null ? $"เริ่ม: {tc.name}" : "เริ่มจำลอง");
+        Toast(tc != null ? $"Running: {tc.name}" : "Run started");
     }
 
     void RecordClearance(float t)
@@ -204,7 +204,7 @@ public class SimulationControlPanel : MonoBehaviour
         else lastAdaptiveClearance = t;
 
         clearanceLabel = $"{tcName} · {activeController}";
-        Debug.Log($"[ControlPanel] ระบายรถหมดใน {t:F2} วินาที  ({clearanceLabel})");
+        Debug.Log($"[ControlPanel] Road cleared in {t:F2} s  ({clearanceLabel})");
     }
 
     public void PauseRun()
@@ -213,7 +213,7 @@ public class SimulationControlPanel : MonoBehaviour
         speedBeforePause = simSpeed;
         Time.timeScale = 0f;
         state = RunState.Paused;
-        Toast("หยุดชั่วคราว");
+        Toast("Paused");
     }
 
     public void ResumeRun()
@@ -223,7 +223,7 @@ public class SimulationControlPanel : MonoBehaviour
         Time.timeScale = simSpeed;
         if (state == RunState.Finished) runLimit = 0f;   // เล่นต่อแบบไม่จำกัดเวลา
         state = RunState.Running;
-        Toast("เล่นต่อ");
+        Toast("Resumed");
     }
 
     public void TogglePause()
@@ -244,13 +244,34 @@ public class SimulationControlPanel : MonoBehaviour
         runElapsed = 0f;
         clearanceTime = -1f;
         Time.timeScale = 0f;
-        Toast("หยุดแล้ว — ถนนโล่ง");
+        Toast("Stopped — road cleared");
     }
 
     public void RestartRun()
     {
         StopRun();
         StartRun();
+    }
+
+    /// <summary>
+    /// Run a test case that was built at runtime (see CustomTestCase).
+    ///
+    /// The case is appended to the list and selected, so it goes through exactly the same
+    /// path as the built-in presets — no separate code path to keep in sync, and the case
+    /// stays in the list afterwards so it can be re-run or compared against.
+    /// </summary>
+    public void RunCustomCase(TestCase tc)
+    {
+        if (tc == null) return;
+
+        // Replace an earlier custom case with the same name rather than piling up duplicates
+        int existing = testCases.FindIndex(t => t != null && t.name == tc.name);
+        if (existing >= 0) testCases[existing] = tc;
+        else testCases.Add(tc);
+
+        selectedTestCase = existing >= 0 ? existing : testCases.Count - 1;
+        RestartRun();
+        Toast($"Running: {tc.name}");
     }
 
     /// <summary>สลับระบบสัญญาณไฟกลางคัน โดยไม่ล้างรถบนถนน</summary>
@@ -276,7 +297,7 @@ public class SimulationControlPanel : MonoBehaviour
             dataLogger.controllerType = useFixed ? DataLogger.ControllerType.Fixed
                                                  : DataLogger.ControllerType.Adaptive;
 
-        if (!silent) Toast($"สลับเป็น {kind}");
+        if (!silent) Toast($"Switched to {kind}");
     }
 
     public void SetSpeed(float s)
@@ -303,7 +324,7 @@ public class SimulationControlPanel : MonoBehaviour
     public void LoadDefaultTestCases()
     {
         testCases = TestCasePresets.BuildDefault();
-        Debug.Log($"[ControlPanel] โหลด test case {testCases.Count} ชุด");
+        Debug.Log($"[ControlPanel] Loaded {testCases.Count} test cases");
     }
 
     // ===================== GUI =====================
@@ -336,9 +357,17 @@ public class SimulationControlPanel : MonoBehaviour
     {
         HandleHotkeys();
 
+        // ธีมกลาง: ครอบไว้ทั้งก้อน แล้ว GUI.Box/Label/Button ทุกบรรทัดในแผงนี้
+        // จะได้หน้าตาชุดเดียวกับแผงอื่นทันที โดยไม่ต้องแก้ทีละจุด (ดู UITheme.Begin)
+        UITheme.Begin();
+
         if (!showPanel)
         {
-            GUI.Label(new Rect(10, 10, 300, 20), "กด H เพื่อเปิดแผงควบคุม");
+            Rect hint = new Rect(12f, 12f, 216f, 32f);
+            GUI.Box(hint, GUIContent.none);
+            GUI.Label(new Rect(hint.x + 12f, hint.y + 8f, hint.width - 24f, 16f),
+                      "Press  H  to open the control panel", UITheme.Body);
+            UITheme.End();
             return;
         }
 
@@ -356,6 +385,7 @@ public class SimulationControlPanel : MonoBehaviour
         windowRect = GUI.Window(9317, windowRect, DrawWindow, "");
 
         GUI.matrix = old;
+        UITheme.End();
     }
 
     void HandleHotkeys()
@@ -397,18 +427,18 @@ public class SimulationControlPanel : MonoBehaviour
         mainScroll = GUILayout.BeginScrollView(mainScroll);
 
         // ---------- run control ----------
-        GUILayout.Label("การควบคุม", sHeader);
+        GUILayout.Label("RUN CONTROL", sHeader);
         GUILayout.BeginHorizontal();
-        if (Btn(state == RunState.Running ? "⏸  หยุดชั่วคราว" : "▶  เล่น", false))
+        if (Btn(state == RunState.Running ? "\u23F8  Pause" : "\u25B6  Play", false))
             TogglePause();
-        if (Btn("⏹  หยุด", false, 70)) StopRun();
-        if (Btn("↻  เริ่มใหม่", false, 82)) RestartRun();
+        if (Btn("\u23F9  Stop", false, 70)) StopRun();
+        if (Btn("\u21BB  Restart", false, 88)) RestartRun();
         GUILayout.EndHorizontal();
 
         // ---------- speed ----------
         GUILayout.Space(4);
         GUILayout.BeginHorizontal();
-        GUILayout.Label($"ความเร็ว  {simSpeed:0.#}x", sMono, GUILayout.Width(105));
+        GUILayout.Label($"Speed  {simSpeed:0.#}x", sMono, GUILayout.Width(105));
         float ns = GUILayout.HorizontalSlider(simSpeed, 0.25f, 20f);
         if (!Mathf.Approximately(ns, simSpeed)) SetSpeed(ns);
         GUILayout.EndHorizontal();
@@ -423,7 +453,7 @@ public class SimulationControlPanel : MonoBehaviour
         Divider();
 
         // ---------- controller ----------
-        GUILayout.Label("ระบบสัญญาณไฟ", sHeader);
+        GUILayout.Label("SIGNAL CONTROLLER", sHeader);
         GUILayout.BeginHorizontal();
         if (Btn("Fixed  (F)", activeController == ControllerKind.Fixed))
             ApplyController(ControllerKind.Fixed);
@@ -432,25 +462,25 @@ public class SimulationControlPanel : MonoBehaviour
         GUILayout.EndHorizontal();
 
         if (activeController == ControllerKind.Fixed && fixedController != null)
-            GUILayout.Label($"วนตายตัว · รอบละ {fixedController.GetCycleLength():F0} วินาที", sSmall);
+            GUILayout.Label($"Fixed-time \u00B7 {fixedController.GetCycleLength():F0} s cycle", sSmall);
         else if (adaptiveController != null)
-            GUILayout.Label($"ปรับตามดีมานด์ · เขียว {adaptiveController.gMin:F0}-{adaptiveController.gMax:F0} วินาที" +
-                            (adaptiveController.enableConcurrentPhases ? " · รวมเลนได้" : " · ทีละเลน"), sSmall);
+            GUILayout.Label($"Demand-responsive \u00B7 green {adaptiveController.gMin:F0}-{adaptiveController.gMax:F0} s" +
+                            (adaptiveController.enableConcurrentPhases ? " \u00B7 concurrent phases" : " \u00B7 one lane at a time"), sSmall);
 
         Divider();
 
         // ---------- test case ----------
         GUILayout.BeginHorizontal();
-        GUILayout.Label("ชุดทดสอบ", sHeader);
+        GUILayout.Label("TEST CASES", sHeader);
         GUILayout.FlexibleSpace();
-        if (GUILayout.Button(showTestList ? "ย่อ" : "ขยาย", sBtn, GUILayout.Width(46)))
+        if (GUILayout.Button(showTestList ? "Hide" : "Show", sBtn, GUILayout.Width(52)))
             showTestList = !showTestList;
         GUILayout.EndHorizontal();
 
         if (testCases == null || testCases.Count == 0)
         {
-            GUILayout.Label("ยังไม่มี test case", sSmall);
-            if (Btn("โหลดชุดมาตรฐาน", false)) LoadDefaultTestCases();
+            GUILayout.Label("No test cases loaded", sSmall);
+            if (Btn("Load default set", false)) LoadDefaultTestCases();
         }
         else
         {
@@ -465,7 +495,7 @@ public class SimulationControlPanel : MonoBehaviour
                     if (Btn(testCases[i].name, i == selectedTestCase))
                     {
                         selectedTestCase = i;
-                        Toast("เลือกแล้ว — กด ↻ เริ่มใหม่ เพื่อใช้งาน");
+                        Toast("Selected — press Restart to apply");
                     }
                 }
                 GUILayout.EndScrollView();
@@ -482,10 +512,10 @@ public class SimulationControlPanel : MonoBehaviour
                     string sv = GUILayout.TextField(randomSeed.ToString(), GUILayout.Width(72));
                     int parsed;
                     if (int.TryParse(sv, out parsed)) randomSeed = parsed;
-                    if (Btn("สุ่มใหม่", false, 60)) randomSeed = Random.Range(1, 999999);
+                    if (Btn("Reroll", false, 62)) randomSeed = Random.Range(1, 999999);
                     GUILayout.EndHorizontal();
                 }
-                if (Btn("▶  ใช้ชุดนี้แล้วเริ่มใหม่", false)) RestartRun();
+                if (Btn("\u25B6  Apply and restart", false)) RestartRun();
             }
         }
 
@@ -493,9 +523,9 @@ public class SimulationControlPanel : MonoBehaviour
 
         // ---------- live lane table ----------
         GUILayout.BeginHorizontal();
-        GUILayout.Label("สถานะแต่ละเลน", sHeader);
+        GUILayout.Label("LANE STATUS", sHeader);
         GUILayout.FlexibleSpace();
-        if (GUILayout.Button(showLaneTable ? "ย่อ" : "ขยาย", sBtn, GUILayout.Width(46)))
+        if (GUILayout.Button(showLaneTable ? "Hide" : "Show", sBtn, GUILayout.Width(52)))
             showLaneTable = !showLaneTable;
         GUILayout.EndHorizontal();
 
@@ -509,8 +539,8 @@ public class SimulationControlPanel : MonoBehaviour
 
         // ---------- actions ----------
         GUILayout.BeginHorizontal();
-        if (Btn("บันทึก CSV", false)) ExportNow();
-        if (Btn("ล้างสถิติ", false)) { if (dataLogger != null) { dataLogger.ResetRun(); Toast("ล้างสถิติแล้ว"); } }
+        if (Btn("Export CSV", false)) ExportNow();
+        if (Btn("Clear stats", false)) { if (dataLogger != null) { dataLogger.ResetRun(); Toast("Statistics cleared"); } }
         GUILayout.EndHorizontal();
 
         if (scenarioManager != null)
@@ -518,23 +548,23 @@ public class SimulationControlPanel : MonoBehaviour
             GUILayout.BeginHorizontal();
             if (scenarioManager.IsBatchRunning)
             {
-                if (Btn("■ หยุด batch run", true)) scenarioManager.StopBatchRun();
+                if (Btn("\u25A0  Stop batch run", true)) scenarioManager.StopBatchRun();
             }
             else
             {
-                if (Btn("เริ่ม batch run 270 รอบ", false))
+                if (Btn("Start batch run (270 runs)", false))
                 {
                     Time.timeScale = 1f;
                     state = RunState.Idle;
                     scenarioManager.StartBatchRun();
-                    Toast("เริ่ม batch run");
+                    Toast("Batch run started");
                 }
             }
             GUILayout.EndHorizontal();
         }
 
         GUILayout.Space(3);
-        GUILayout.Label("คีย์ลัด · Space เล่น/หยุด · R เริ่มใหม่ · F/G สลับระบบ · 1-5 ความเร็ว · H ซ่อนแผง", sSmall);
+        GUILayout.Label("Keys \u00B7 Space play/pause \u00B7 R restart \u00B7 F/G controller \u00B7 1-5 speed \u00B7 H panel \u00B7 [ ] camera", sSmall);
 
         GUILayout.EndScrollView();
 
@@ -556,10 +586,10 @@ public class SimulationControlPanel : MonoBehaviour
         Color c;
         switch (state)
         {
-            case RunState.Running:  label = "กำลังจำลอง"; c = new Color(.45f, .85f, .45f); break;
-            case RunState.Paused:   label = "หยุดชั่วคราว"; c = new Color(1f, .8f, .3f); break;
-            case RunState.Finished: label = "จบ run แล้ว";  c = new Color(.5f, .75f, 1f); break;
-            default:                label = "หยุด";        c = new Color(.9f, .45f, .45f); break;
+            case RunState.Running:  label = "RUNNING"; c = new Color(.45f, .85f, .45f); break;
+            case RunState.Paused:   label = "PAUSED";  c = new Color(1f, .8f, .3f); break;
+            case RunState.Finished: label = "FINISHED"; c = new Color(.5f, .75f, 1f); break;
+            default:                label = "IDLE";     c = new Color(.9f, .45f, .45f); break;
         }
 
         GUILayout.BeginHorizontal();
@@ -571,7 +601,7 @@ public class SimulationControlPanel : MonoBehaviour
         GUILayout.Label(label, sMono, GUILayout.Width(88));
         GUILayout.FlexibleSpace();
 
-        string t = runLimit > 0f ? $"{runElapsed:F0} / {runLimit:F0} วิ" : $"{runElapsed:F0} วิ";
+        string t = runLimit > 0f ? $"{runElapsed:F0} / {runLimit:F0} s" : $"{runElapsed:F0} s";
         GUILayout.Label(t, sMono);
         GUILayout.EndHorizontal();
     }
@@ -581,10 +611,10 @@ public class SimulationControlPanel : MonoBehaviour
         if (config == null) return;
 
         GUILayout.BeginHorizontal();
-        GUILayout.Label("เลน", sSmall, GUILayout.Width(38));
-        GUILayout.Label("ไฟ", sSmall, GUILayout.Width(52));
-        GUILayout.Label("คิว", sSmall, GUILayout.Width(38));
-        GUILayout.Label("รอนานสุด", sSmall);
+        GUILayout.Label("Lane", sSmall, GUILayout.Width(44));
+        GUILayout.Label("Signal", sSmall, GUILayout.Width(58));
+        GUILayout.Label("Queue", sSmall, GUILayout.Width(46));
+        GUILayout.Label("Longest wait", sSmall);
         GUILayout.EndHorizontal();
 
         // สูงพอสำหรับ 6 เลน ถ้าเพิ่มเลนทีหลังจะเลื่อนดูได้
@@ -604,7 +634,7 @@ public class SimulationControlPanel : MonoBehaviour
             if (!lane.isSignalized)
             {
                 GUI.color = new Color(.6f, .6f, .65f);
-                GUILayout.Label("ฟรี", sMono, GUILayout.Width(52));
+                GUILayout.Label("free", sMono, GUILayout.Width(58));
             }
             else
             {
@@ -622,7 +652,7 @@ public class SimulationControlPanel : MonoBehaviour
             // ไฮไลต์แดงถ้ารอนานผิดปกติ
             if (adaptiveController != null && wait > adaptiveController.maxWaitTime * 0.8f)
                 GUI.color = new Color(1f, .5f, .4f);
-            GUILayout.Label($"{wait:F1} วิ", sMono);
+            GUILayout.Label($"{wait:F1} s", sMono);
             GUI.color = oc;
 
             GUILayout.EndHorizontal();
@@ -633,32 +663,32 @@ public class SimulationControlPanel : MonoBehaviour
 
     void DrawClearance()
     {
-        GUILayout.Label("เวลาระบายรถทั้งหมด", sHeader);
+        GUILayout.Label("TOTAL CLEARANCE TIME", sHeader);
 
         if (clearanceTime >= 0f)
         {
             Color oc = GUI.color;
             GUI.color = new Color(.5f, 1f, .6f);
-            GUILayout.Label($"✓  {clearanceTime:F2} วินาที   ({clearanceLabel})", sMono);
+            GUILayout.Label($"\u2713  {clearanceTime:F2} s   ({clearanceLabel})", sMono);
             GUI.color = oc;
         }
         else if (config != null && config.AllScheduledSpawned())
         {
-            GUILayout.Label($"ปล่อยรถครบแล้ว · เหลือบนถนน {config.GetActiveCarCount()} คัน", sSmall);
+            GUILayout.Label($"All vehicles released \u00B7 {config.GetActiveCarCount()} still on the road", sSmall);
         }
         else
         {
-            GUILayout.Label("ยังปล่อยรถไม่ครบ (โหมด Poisson จะไม่มีวันจบ)", sSmall);
+            GUILayout.Label("Still releasing vehicles (Poisson mode never ends)", sSmall);
         }
 
         // ---- ตารางเทียบ Fixed vs Adaptive ของชุดทดสอบเดียวกัน ----
         if (lastFixedClearance >= 0f || lastAdaptiveClearance >= 0f)
         {
             GUILayout.Space(2);
-            GUILayout.Label($"เทียบชุด: {comparisonTestCase}", sSmall);
+            GUILayout.Label($"Comparing: {comparisonTestCase}", sSmall);
 
-            Stat("  Fixed",    lastFixedClearance    >= 0f ? $"{lastFixedClearance:F2} วิ"    : "ยังไม่ได้รัน");
-            Stat("  Adaptive", lastAdaptiveClearance >= 0f ? $"{lastAdaptiveClearance:F2} วิ" : "ยังไม่ได้รัน");
+            Stat("  Fixed",    lastFixedClearance    >= 0f ? $"{lastFixedClearance:F2} s"    : "not run yet");
+            Stat("  Adaptive", lastAdaptiveClearance >= 0f ? $"{lastAdaptiveClearance:F2} s" : "not run yet");
 
             if (lastFixedClearance > 0f && lastAdaptiveClearance > 0f)
             {
@@ -666,34 +696,34 @@ public class SimulationControlPanel : MonoBehaviour
                 float pct = diff / lastFixedClearance * 100f;
                 Color oc = GUI.color;
                 GUI.color = diff > 0f ? new Color(.5f, 1f, .6f) : new Color(1f, .6f, .5f);
-                string who = diff > 0f ? "Adaptive เร็วกว่า" : "Fixed เร็วกว่า";
-                GUILayout.Label($"  → {who} {Mathf.Abs(diff):F2} วิ ({Mathf.Abs(pct):F1}%)", sMono);
+                string who = diff > 0f ? "Adaptive faster by" : "Fixed faster by";
+                GUILayout.Label($"  \u2192 {who} {Mathf.Abs(diff):F2} s ({Mathf.Abs(pct):F1}%)", sMono);
                 GUI.color = oc;
             }
             else
             {
-                GUILayout.Label("  สลับระบบแล้วกด ↻ เพื่อรันอีกฝั่ง", sSmall);
+                GUILayout.Label("  Switch controller and restart to run the other side", sSmall);
             }
         }
     }
 
     void DrawStats()
     {
-        GUILayout.Label("สถิติ run นี้", sHeader);
+        GUILayout.Label("RUN STATISTICS", sHeader);
         if (dataLogger == null)
         {
-            GUILayout.Label("ไม่พบ DataLogger", sSmall);
+            GUILayout.Label("DataLogger not found", sSmall);
             return;
         }
 
         int spawned = config != null ? config.GetTotalSpawned() : 0;
         int cleared = dataLogger.GetVehicleCount();
 
-        Stat("รถที่ปล่อยแล้ว", spawned.ToString());
-        Stat("รถที่ผ่านแยกไป", cleared.ToString());
-        Stat("เวลารอเฉลี่ย", $"{dataLogger.GetAverageWaitTime():F2} วิ");
-        Stat("เวลารอสูงสุด", $"{dataLogger.GetMaxWaitTime():F2} วิ");
-        Stat("กลไกกันอดทำงาน", $"{dataLogger.GetStarvationCount()} ครั้ง");
+        Stat("Vehicles released", spawned.ToString());
+        Stat("Vehicles cleared", cleared.ToString());
+        Stat("Average wait", $"{dataLogger.GetAverageWaitTime():F2} s");
+        Stat("Maximum wait", $"{dataLogger.GetMaxWaitTime():F2} s");
+        Stat("Starvation events", dataLogger.GetStarvationCount().ToString());
     }
 
     void Stat(string k, string v)
@@ -707,11 +737,11 @@ public class SimulationControlPanel : MonoBehaviour
 
     void ExportNow()
     {
-        if (dataLogger == null) { Toast("ไม่พบ DataLogger"); return; }
+        if (dataLogger == null) { Toast("DataLogger not found"); return; }
         if (config != null) dataLogger.SetTotalSpawned(config.GetTotalSpawned());
         dataLogger.ExportDetailedCSV();
         dataLogger.ExportSummaryCSV();
-        Toast("บันทึกลง SimulationResults แล้ว");
+        Toast("Saved to SimulationResults");
     }
 
     // ---------- widgets ----------

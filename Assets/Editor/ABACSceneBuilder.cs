@@ -32,17 +32,28 @@ public static class ABACSceneBuilder
     public const float Z_BX = -1.2f;   // ช่องเลี้ยวขวาเข้า ABAC (ชิด centerline ฝั่งใต้)
     public const float Z_B  = -4.5f;   // ช่องวิ่งตรง ขาตะวันตก
 
-    const float X_AX_IN = -4.0f;   // เลนขาเข้า ABAC ที่รับจาก Ax
-    const float X_BX_IN = -1.8f;   // เลนขาเข้า ABAC ที่รับจาก Bx
-    const float X_CB    = 1.5f;    // เลนขาออก ABAC เลี้ยวขวา (ไปตะวันตก)
-    const float X_CA    = 3.8f;    // เลนขาออก ABAC เลี้ยวซ้าย (ไปตะวันออก)
+    public const float X_AX_IN = -4.0f;   // เลนขาเข้า ABAC ที่รับจาก Ax
+    public const float X_BX_IN = -1.8f;   // เลนขาเข้า ABAC ที่รับจาก Bx
+    public const float X_CB    = 1.5f;    // เลนขาออก ABAC เลี้ยวขวา (ไปตะวันตก)
+    public const float X_CA    = 3.8f;    // เลนขาออก ABAC เลี้ยวซ้าย (ไปตะวันออก)
 
     public const float STOP_A_X = -10.5f;
-    // จุดที่ Ax เริ่มหักเลี้ยว (= waypoint แรกของ Ax)
-    public const float AX_TURN_X = -11.0f;
-    // จุดหยุดของ Ax — ต้องอยู่ที่หรือก่อนจุดหักเลี้ยว ไม่งั้นรถจะเริ่มเลี้ยวก่อนแล้วค่อยหยุด = ไปจอดขวางกลางแยก
-    // ตั้งไว้ที่จุดหักพอดี เพื่อให้คิวค้างอยู่ใน "เลนนอก" ตามที่สังเกตหน้างาน (แล้วไปขวาง A2 ต่อได้)
-    public const float AX_STOP_X = AX_TURN_X;
+    // จุดหยุดของเลนนอก (Ax) — ⭐ ต้องเป็น "ค่าเดียวกับ" เส้นหยุดของเลนใน (A) เป๊ะ ๆ
+    // ของเดิมตั้งไว้ที่ -11.0 ต่างจาก A ที่ -10.5 อยู่ 0.5 ม. มองจากในเกมเห็นเป็นเส้นขาวเหลื่อมกันสองเส้น
+    // ของจริงเส้นหยุดขาเดียวกันต้องอยู่แนวเดียวกัน จึงผูกให้เท่ากับ STOP_A_X ไปเลย (มีเทสล็อกไว้)
+    public const float AX_STOP_X = STOP_A_X;
+    // จุดที่ Ax เริ่มหักเลี้ยว = จุดเดียวกับเส้นหยุด (รถหยุดตรงนั้นแล้วค่อยเลี้ยวออกไป)
+    public const float AX_TURN_X = AX_STOP_X;
+
+    // ===== จุดที่รถ A2 เปลี่ยนเลนเข้ามาในเลนแชร์ (late merge) =====
+    // Itim นับจากคลิป: รถตรงที่เข้าเลนแชร์ทั้ง 3 คัน เปลี่ยนเลนเข้ามาตอนเหลือ ~5 ช่วงรถก่อนถึงจุดเลี้ยว
+    // 5 ช่วงรถ ~ 5 x (ยาว 4 ม. + เว้น 2 ม.) = 30 ม. — ใช้ 20 ม. เป็นจุดที่ "merge เสร็จ" แล้วเริ่มเบียด
+    // ตั้งแต่ 22 ม. ก่อนหน้านั้น (รวมแล้วการเปลี่ยนเลนเกิดในช่วง ~5-10 ช่วงรถสุดท้าย ตรงกับที่สังเกต)
+    //
+    // ⚠️ ค่านี้สำคัญกว่าที่เห็น: มันคือสิ่งที่ทำให้รถ A2 ไป "แทรกหัวคิว" แทนที่จะกระจายอยู่กลางคิว
+    //    ถ้า merge ตั้งแต่ไกล จะได้ "บล็อกบ่อยแต่เบา" ซึ่งผิดจากของจริงที่ "บล็อกนาน ๆ ครั้งแต่รุนแรง"
+    public const float A2_MERGE_X   = STOP_A_X - 20f;
+    public const float A2_MERGE_DIST = 22f;
     public const float STOP_B_X = 9.5f;
     public const float STOP_C_Z = 10.9f;
 
@@ -68,7 +79,9 @@ public static class ABACSceneBuilder
     public const float ROI_LEN     = 100f;
     public const float ROI_WIDTH   = 3f;
     public const float ROAD_WIDTH  = 18f;   // ความกว้างถนนบางนา-ตราดในซีน (ใช้ตรวจว่าไหล่ทางไม่หลุดขอบ)
-    public const float CAR_WIDTH   = 2f;    // ความกว้างตัวรถโดยประมาณ (ใช้ตรวจระยะเฉียดกัน)
+    // ความกว้างตัวรถ — คำนวณจากโมเดลจริง car_low_poly.fbx: สัดส่วน กว้าง 879.6 : ยาว 1636.9 หน่วย
+    // เมื่อย่อให้ยาว 4.00 ม. ตาม CarAgent.carLength จะได้กว้าง 879.6/1636.9*4 = 2.15 ม.
+    public const float CAR_WIDTH   = 2.15f;
     public const float CAR_Y       = 0.5f;
     public const float DESPAWN     = 300f;
 
@@ -89,6 +102,9 @@ public static class ABACSceneBuilder
             "• ⭐ Ax จะมีเส้นหยุดของตัวเอง และหยุดรอตอน Bx เขียว (เลี้ยวเข้ามอไม่ได้)\n\n" +
             "แนะนำให้ commit git ก่อน — ดำเนินการต่อไหม?",
             "สร้างเลย", "ยกเลิก")) return;
+
+        // ให้ Unity อ่านไฟล์ที่เพิ่งถูกก๊อปเข้ามา (texture PNG / โมเดล FBX) ก่อนเริ่มใช้งาน
+        AssetDatabase.Refresh();
 
         var scene = EditorSceneManager.GetActiveScene();
 
@@ -176,9 +192,10 @@ public static class ABACSceneBuilder
 
         // ---------- spawner ----------
         // สีรถแยกตามกลุ่มเลนใหญ่ A / B / C — ดูแล้วรู้ทันทีว่ารถคันไหนมาจากไหน
-        Material matA = GetOrCreateMaterial("Car_LaneA", new Color(0.23f, 0.51f, 0.96f));  // น้ำเงิน
-        Material matB = GetOrCreateMaterial("Car_LaneB", new Color(0.96f, 0.62f, 0.07f));  // ส้ม
-        Material matC = GetOrCreateMaterial("Car_LaneC", new Color(0.13f, 0.77f, 0.37f));  // เขียว
+        // สีรถจริงเงากว่าวัสดุทั่วไปมาก — ใส่ smoothness/metallic ให้ดูเป็นสีพ่นรถ ไม่ใช่พลาสติกด้าน
+        Material matA = GetOrCreateMaterial("Car_LaneA", new Color(0.23f, 0.51f, 0.96f), 0.78f, null, 1f, 1f, 0.35f);
+        Material matB = GetOrCreateMaterial("Car_LaneB", new Color(0.96f, 0.62f, 0.07f), 0.78f, null, 1f, 1f, 0.35f);
+        Material matC = GetOrCreateMaterial("Car_LaneC", new Color(0.13f, 0.77f, 0.37f), 0.78f, null, 1f, 1f, 0.35f);
 
         var spA  = BuildSpawner("A",  new Vector3(-SPAWN_FAR, CAR_Y, Z_A),   90f, stopA,  lightA,  null, matA);
         // ⭐ Ax ไม่ใช่เลนฟรี 100% อีกแล้ว — หน้างานจริงเลี้ยวเข้ามอไม่ได้ตอน Bx เขียว
@@ -195,13 +212,36 @@ public static class ABACSceneBuilder
         var spBx = BuildSpawner("Bx", new Vector3( SPAWN_FAR, CAR_Y, Z_BX), -90f, stopBx, lightBx, wpBx, matB);
         var spCB = BuildSpawner("CB", new Vector3(X_CB, CAR_Y, SPAWN_FAR),  180f, stopCB, lightCB, wpCB, matC);
         var spCA = BuildSpawner("CA", new Vector3(X_CA, CAR_Y, SPAWN_FAR),  180f, null,   null,    wpCA, matC);
-        // A2 = รถตรงในเลนนอก (เลนแชร์กับ Ax) — จุด spawn ถอยจาก Ax ไป 20 ม.
+        // A2 = รถตรงที่ไปใช้เลนนอก (เลนแชร์กับ Ax) — จุด spawn อยู่ในเลนใน ถอยจาก A ไป 20 ม.
         // ⚠️ ของเดิมถอยแค่ 5 ม. ซึ่งสั้นกว่าความยาวรถ + ระยะเผื่อ (4 ม. + 2 ม.) แทบไม่มีที่ว่าง
         //    พอ Poisson ปล่อยสองเลนใกล้กันก็เกิดรถซ้อนทับกันทันที — ตอนนี้ถอยเป็น 20 ม. (5 ช่วงรถ)
         //    และมี CarSpawner.spawnClearRadius คอยกันซ้ำอีกชั้นหนึ่ง
         // ไม่มี waypoints (วิ่งตรงเหมือน A), stopLineTarget/
         // assignedLight ใช้ตัวเดียวกับ A เป๊ะ ๆ — ดูคอมเมนต์ที่ BuildStopLine("StopLine_A2_Visual", ...)
-        var spA2 = BuildSpawner("A2", new Vector3(-SPAWN_FAR - 20f, CAR_Y, Z_AX), 90f, stopA, lightA, null, matA);
+        // ⭐ A2 spawn ใน "เลนใน" (Z_A) เหมือนรถตรงทั่วไป แล้วค่อยเปลี่ยนเลนเข้าเลนแชร์ตอนใกล้ถึงเส้นหยุด
+        //    ไม่ใช่ spawn ในเลนแชร์ตั้งแต่ต้นทางเหมือนเดิม — ดูเหตุผลที่ค่าคงที่ A2_MERGE_X
+        var wpA2 = BuildWaypoints("A2", new[] {
+            new Vector3(A2_MERGE_X, CAR_Y, Z_AX),    // จุดที่ merge เข้าเลนแชร์เสร็จ
+            new Vector3(SPAWN_FAR,  CAR_Y, Z_AX),    // จากนั้นวิ่งตรงในเลนแชร์ต่อไป
+        });
+        var spA2 = BuildSpawner("A2", new Vector3(-SPAWN_FAR - 20f, CAR_Y, Z_A), 90f, stopA, lightA, wpA2, matA);
+        spA2.steerBeforeStopLine = true;
+        spA2.steerStartDistance  = A2_MERGE_DIST;
+
+        // ---------- โมเดลรถ ----------
+        // สร้าง Car.prefab จากโมเดล 3D จริงใหม่ทุกครั้ง แล้วแจกให้ทุก spawner
+        // (ถ้าไม่มีไฟล์โมเดล ฟังก์ชันจะคืน prefab เดิมมาให้ ไม่พัง)
+        GameObject carPrefab = CarPrefabBuilder.Rebuild(matA);
+        if (carPrefab != null)
+        {
+            foreach (var sp in new[] { spA, spA2, spAx, spB, spBx, spCB, spCA })
+            {
+                if (sp == null) continue;
+                Undo.RecordObject(sp, "ABAC Build");
+                sp.carPrefab = carPrefab;
+                EditorUtility.SetDirty(sp);
+            }
+        }
 
         BuildLaneMarkings();
 
@@ -257,6 +297,16 @@ public static class ABACSceneBuilder
         panel.LoadDefaultTestCases();
         EditorUtility.SetDirty(panel);
 
+        // ---------- Custom test case builder (กด N ตอนรันเพื่อเปิด) ----------
+        var custom = GetOrAdd<CustomTestCase>(gc);
+        Undo.RecordObject(custom, "ABAC Build");
+        custom.config = cfg;
+        custom.controlPanel = panel;
+        EditorUtility.SetDirty(custom);
+
+        // ---------- มุมกล้อง ----------
+        BuildCameraRig(gc);
+
         // ---------- Batch Run Panel (UI ฝั่งขวา โผล่เองตอนกดเริ่ม batch) ----------
         var batchPanel = GetOrAdd<BatchRunPanel>(gc);
         Undo.RecordObject(batchPanel, "ABAC Build");
@@ -269,6 +319,7 @@ public static class ABACSceneBuilder
                   $"• 7 เลน / 4 ไฟ (A2 ใช้ร่วมกับ A) / cycle {fixedC.GetCycleLength():F0}s\n" +
                   $"• Control Panel พร้อม test case {panel.testCases.Count} ชุด (กด Play แล้วเห็นเลย)\n" +
                   "• Batch Run Panel ต่อแล้ว — กดเริ่ม batch จะโผล่ทางขวาเอง\n" +
+                  "• มุมกล้อง 8 มุมพร้อมแถบปุ่มกลางล่าง (ปุ่มลัด [ ] เปลี่ยนมุม, V ตามรถ, C กลับภาพรวม)\n" +
                   "• กด ABAC ▸ Validate Scene เพื่อตรวจซ้ำ\n" +
                   "• อย่าลืม Ctrl+S บันทึกซีน");
 
@@ -294,7 +345,8 @@ public static class ABACSceneBuilder
             var sp = lane.spawner;
             if (sp.carPrefab == null) { Debug.LogError($"[ABAC] Spawner {lane.laneName} ไม่มี carPrefab"); problems++; }
             if (sp.spawnPoint == null) { Debug.LogError($"[ABAC] Spawner {lane.laneName} ไม่มี spawnPoint"); problems++; }
-            bool turning = lane.laneName != "A" && lane.laneName != "A2" && lane.laneName != "B";
+            // A2 มี waypoint เหมือนกัน แต่เป็น "เปลี่ยนเลน" ไม่ใช่ "เลี้ยว" — เช็ครวมได้เลยเพราะมันต้องมี waypoint จริง
+            bool turning = lane.laneName != "A" && lane.laneName != "B";
             if (turning && (sp.pathWaypoints == null || sp.pathWaypoints.Length == 0))
             { Debug.LogWarning($"[ABAC] Spawner {lane.laneName} เป็นเลนเลี้ยวแต่ไม่มี waypoint"); }
             if (lane.isSignalized && sp.stopLineTarget == null)
@@ -434,21 +486,124 @@ public static class ABACSceneBuilder
         return null;
     }
 
+    // ---------- camera ----------
+
+    /// <summary>
+    /// ตั้งชุดมุมกล้องให้ครบทุกขาเข้า/ขาออก โดยคำนวณจากพิกัดเลนจริงในไฟล์นี้
+    /// (ถ้าขยับเลนหรือเส้นหยุดแล้วกด Build ใหม่ มุมกล้องจะขยับตามเองโดยไม่ต้องแก้มือ)
+    ///
+    /// หลักการวางมุม: ยืนถอยหลังจากเส้นหยุดไปตามแนวเลน ยกสูงพอเห็นหลังคารถ
+    /// แล้วก้มลงเล็กน้อย — เห็นทั้งคิวที่รออยู่และสิ่งที่เกิดขึ้นกลางแยกในภาพเดียว
+    /// </summary>
+    static void BuildCameraRig(GameObject gc)
+    {
+        var dir = GetOrAdd<CameraDirector>(gc);
+        Undo.RecordObject(dir, "ABAC Build");
+
+        Camera cam = null;
+        var camGO = FindByName("Main Camera");
+        if (camGO != null) cam = camGO.GetComponent<Camera>();
+        if (cam == null) cam = Object.FindFirstObjectByType<Camera>();
+        dir.targetCamera = cam;
+
+        dir.shots = MakeShots();
+        dir.showBar = true;
+        EditorUtility.SetDirty(dir);
+
+        if (cam == null)
+            Debug.LogWarning("[ABAC] ไม่พบกล้องในซีน — CameraDirector จะไปหา Camera.main เองตอนกด Play");
+    }
+
+    /// <summary>
+    /// ตารางมุมกล้อง — แยกออกมาเป็น static ล้วน ๆ เพื่อให้เทสตรวจทิศทางได้โดยไม่ต้องมีซีน
+    ///
+    /// ⭐ แนวคิดของชุดนี้: กล้อง "ตั้งอยู่กลางสามแยก" ทุกมุม เปลี่ยนแค่ทิศที่หันกับความสูง
+    ///    เหมือนกล้อง PTZ ตัวเดียวที่ติดบนเสาไว้กลางแยก แล้วหมุนไปดูทีละขา
+    ///
+    ///    นอกจากดูเป็นระเบียบแล้ว ยังตรงกับสิ่งที่โปรเจกต์เสนอจริง ๆ ด้วย — โดรนเป็นแค่เครื่องมือเก็บข้อมูล
+    ///    ส่วนระบบที่จะติดตั้งจริงคือ "กล้องบนเสาที่แยก" (ดู SP1_REPORT_MATERIAL หัวข้อ System scope)
+    ///    มุมกล้องพวกนี้จึงเป็นภาพที่กล้องตัวจริงจะเห็น ไม่ใช่มุมลอยที่ไม่มีทางติดตั้งได้
+    ///
+    /// yaw -90 = หันไปทางตะวันตก (ดูขาเข้า A/Ax ที่วิ่งเข้าหาเรา)
+    /// yaw  90 = หันไปทางตะวันออก (ดูขาเข้า B/Bx)
+    /// yaw   0 = หันไปทางเหนือ (ดูทางออกมหาลัย CB/CA)
+    /// </summary>
+    public static List<CameraDirector.Shot> MakeShots()
+    {
+        float jx = ABAC_X, jz = ROAD_Z;          // กลางสามแยก
+        float zMidA = (Z_A + Z_AX) / 2f;         // กึ่งกลางระหว่างเลนใน/เลนนอก ฝั่งขาเข้าตะวันตก
+        float zMidB = (Z_B + Z_BX) / 2f;         // กึ่งกลางฝั่งขาเข้าตะวันออก
+        float xMidC = (X_CB + X_CA) / 2f;        // กึ่งกลางสองเลนขาออกจากมหาลัย
+
+        const float MAST = 8.5f;                 // ความสูงเสากล้องสำหรับมุมมองขาเข้า (สูงกว่าหลังคารถชัดเจน)
+        const float LOW  = 6.0f;                 // มุมเจาะเลนเดียว ต่ำลงหน่อยให้เห็นคิวเป็นแถวยาว
+
+        return new List<CameraDirector.Shot>
+        {
+            // ---- ภาพรวม: มองดิ่งลงมาจากเหนือแยกพอดี เห็นคิวทุกขาพร้อมกัน ----
+            new CameraDirector.Shot {
+                label = "Overview", lane = "", canFollow = false, fov = 55f,
+                position = new Vector3(jx, 48f, jz), euler = new Vector3(90f, 0f, 0f) },
+
+            // ---- กลางแยก: ก้มดูตัวสี่เหลี่ยมกลางแยก เห็นจังหวะที่กระแสรถตัดกัน ----
+            new CameraDirector.Shot {
+                label = "Junction", lane = "", canFollow = false, fov = 60f,
+                position = new Vector3(jx, 11f, jz), euler = new Vector3(38f, 215f, 0f) },
+
+            // ---- หันไปทางตะวันตก: ขาเข้า A + Ax วิ่งเข้าหากล้อง ----
+            new CameraDirector.Shot {
+                label = "Approach A / Ax", lane = "A", fov = 62f,
+                position = new Vector3(jx, MAST, zMidA), euler = new Vector3(10f, -90f, 0f) },
+
+            // ---- ⭐ เจาะเลนแชร์: จุดที่ A2 จอดรอไฟแล้วขัง Ax ไว้ข้างหลัง ----
+            new CameraDirector.Shot {
+                label = "Shared Lane", lane = "Ax", fov = 55f, followBack = 9f, followUp = 4f,
+                position = new Vector3(jx, LOW, Z_AX), euler = new Vector3(8f, -90f, 0f) },
+
+            // ---- หันไปทางตะวันออก: ขาเข้า B + Bx ----
+            new CameraDirector.Shot {
+                label = "Approach B / Bx", lane = "B", fov = 62f,
+                position = new Vector3(jx, MAST, zMidB), euler = new Vector3(10f, 90f, 0f) },
+
+            // ---- ⭐ เจาะเลน Bx: คอขวดจริง v/c 1.51 คิวยาวไปถึงสี่แยกถัดไปใน 5.7 นาที ----
+            new CameraDirector.Shot {
+                label = "Bx Bottleneck", lane = "Bx", fov = 55f, followBack = 9f, followUp = 4f,
+                position = new Vector3(jx, LOW, Z_BX), euler = new Vector3(8f, 90f, 0f) },
+
+            // ---- หันไปทางเหนือ: ทางออกมหาลัย CB + CA ----
+            new CameraDirector.Shot {
+                label = "ABAC Exit", lane = "CB", fov = 62f, followBack = 9f, followUp = 4f,
+                position = new Vector3(xMidC, MAST, jz), euler = new Vector3(10f, 0f, 0f) },
+        };
+    }
+
     // ---------- roads ----------
+    // ขนาดพื้นผิว 1 ผืนบนถนน/พื้น (เมตร) — ยิ่งเล็ก ลายยิ่งถี่
+    const float TILE_ROAD   = 8f;
+    const float TILE_GROUND = 10f;
+
     static void BuildRoads()
     {
+        // ยางมะตอย: ผิวด้าน สะท้อนน้อย ไม่มีความเป็นโลหะ
+        Material road = GetOrCreateMaterial("Road_Mat", new Color(0.72f, 0.72f, 0.74f), 0.12f,
+                                            "Asphalt", 400f / TILE_ROAD, ROAD_WIDTH / TILE_ROAD);
+        Material roadAbac = GetOrCreateMaterial("Road_ABAC_Mat", new Color(0.72f, 0.72f, 0.74f), 0.12f,
+                                            "Asphalt", 14f / TILE_ROAD, 200f / TILE_ROAD);
+        Material grass = GetOrCreateMaterial("Ground_Mat", new Color(0.85f, 0.90f, 0.85f), 0.05f,
+                                            "Grass", 600f / TILE_GROUND, 600f / TILE_GROUND);
+
         var ew = GetOrCreate("Road_EastWest", tEnv, PrimitiveType.Cube, true);
         Undo.RecordObject(ew.transform, "ABAC Build");
         ew.transform.position   = new Vector3(ABAC_X, -0.05f, ROAD_Z);
         ew.transform.localScale = new Vector3(400f, 0.1f, ROAD_WIDTH);   // ขยายจาก 8 -> 18 เพื่อให้มีช่องเลี้ยว
-        ApplyMaterial(ew, "Assets/Materials/Road_Mat.mat");
+        SetMaterial(ew, road);
         StripCollider(ew);
 
         var ab = GetOrCreate("Road_ABAC", tEnv, PrimitiveType.Cube, true);
         Undo.RecordObject(ab.transform, "ABAC Build");
         ab.transform.position   = new Vector3(ABAC_X, -0.05f, 100f);
         ab.transform.localScale = new Vector3(14f, 0.1f, 200f);   // ขยายจาก 8 -> 14 (2 เลนเข้า + 2 เลนออก)
-        ApplyMaterial(ab, "Assets/Materials/Road_Mat.mat");
+        SetMaterial(ab, roadAbac);
         StripCollider(ab);
 
         var ground = FindByName("Ground");
@@ -456,7 +611,14 @@ public static class ABACSceneBuilder
         {
             Undo.RecordObject(ground.transform, "ABAC Build");
             ground.transform.localScale = new Vector3(60f, 1f, 60f);
+            SetMaterial(ground, grass);
         }
+
+        // ตึก/ป้อมยาม: ผนังปูนมีหน้าต่าง
+        Material bld = GetOrCreateMaterial("Building", new Color(0.90f, 0.88f, 0.85f), 0.15f,
+                                           "Building", 1f, 1f);
+        SetMaterial(FindByName("ABAC_Building_Left"),  bld);
+        SetMaterial(FindByName("ABAC_Building_Right"), bld);
 
         // ป้อมยาม 2 หลัง ขยับออกนอกถนนที่กว้างขึ้น
         MoveIfExists("ABAC_Building_Left",  new Vector3( 9.5f, 2.9f, 12f));
@@ -616,14 +778,71 @@ public static class ABACSceneBuilder
         return spawner;
     }
 
+    /// <summary>ใส่ material ให้ object (ข้ามถ้าไม่มีตัวใดตัวหนึ่ง)</summary>
+    static void SetMaterial(GameObject go, Material m)
+    {
+        if (go == null || m == null) return;
+        var r = go.GetComponent<Renderer>();
+        if (r == null) return;
+        Undo.RecordObject(r, "ABAC Build");
+        r.sharedMaterial = m;
+        EditorUtility.SetDirty(r);
+    }
+
+    // ---------- textures ----------
+
+    /// <summary>โหลด texture จาก Assets/Textures/ (สร้างไว้ล่วงหน้าเป็นไฟล์ PNG แบบต่อขอบได้)</summary>
+    static Texture2D Tex(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        string path = $"Assets/Textures/{name}.png";
+        Texture2D t = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        if (t == null)
+            Debug.LogWarning($"[ABAC] ไม่พบ texture {path} — จะใช้สีเรียบแทน " +
+                             "(ถ้าเพิ่งก๊อปไฟล์เข้ามา ให้กด Assets ▸ Refresh แล้ว Build ใหม่)");
+        return t;
+    }
+
+    static void ConfigureMaterial(Material m, Color color, float smoothness,
+                                  string textureName, float tileX, float tileY, float metallic)
+    {
+        m.color = color;
+        if (m.HasProperty("_BaseColor"))  m.SetColor("_BaseColor", color);
+        if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smoothness);
+        if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", smoothness);
+        if (m.HasProperty("_Metallic"))   m.SetFloat("_Metallic", metallic);
+
+        Texture2D t = Tex(textureName);
+        if (t != null)
+        {
+            if (m.HasProperty("_MainTex"))  m.SetTexture("_MainTex", t);
+            if (m.HasProperty("_BaseMap"))  m.SetTexture("_BaseMap", t);
+            m.mainTexture = t;
+            m.mainTextureScale = new Vector2(tileX, tileY);
+        }
+    }
+
     // ---------- materials ----------
 
     /// <summary>โหลด material จาก Assets/Materials ถ้าไม่มีก็สร้างใหม่แล้วบันทึกเป็นไฟล์</summary>
-    static Material GetOrCreateMaterial(string name, Color color, float smoothness = 0.3f)
+    /// <summary>
+    /// สร้าง material หรือ "อัปเดตของเดิม" ให้ตรงกับที่ builder กำหนด
+    ///
+    /// ⚠️ ของเดิมเจอไฟล์แล้ว return ทันที ทำให้ material ที่สร้างไว้ก่อนหน้าไม่มีวันได้ texture เลย
+    ///    แม้จะกด Build ใหม่ — ตอนนี้เขียนค่าทับให้ทุกครั้ง builder จึงเป็นแหล่งความจริงจุดเดียว
+    /// </summary>
+    static Material GetOrCreateMaterial(string name, Color color, float smoothness = 0.3f,
+                                        string textureName = null, float tileX = 1f, float tileY = 1f,
+                                        float metallic = 0f)
     {
         string path = $"Assets/Materials/{name}.mat";
         Material m = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (m != null) return m;
+        if (m != null)
+        {
+            ConfigureMaterial(m, color, smoothness, textureName, tileX, tileY, metallic);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
 
         Shader sh = Shader.Find("Standard");
         if (sh == null) sh = Shader.Find("Universal Render Pipeline/Lit");
@@ -634,9 +853,7 @@ public static class ABACSceneBuilder
         }
 
         m = new Material(sh);
-        m.color = color;
-        if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smoothness);
-        if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
+        ConfigureMaterial(m, color, smoothness, textureName, tileX, tileY, metallic);
 
         AssetDatabase.CreateAsset(m, path);
         AssetDatabase.SaveAssets();

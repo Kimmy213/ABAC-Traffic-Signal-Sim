@@ -5,7 +5,7 @@ using System.Collections.Generic;
 /// <summary>
 /// Baseline controller: วนเฟสตายตัวตามลำดับที่กำหนดไว้ ไม่สนใจ demand จริง
 /// รองรับ "เฟสที่เปิดหลายเลนพร้อมกัน" (เช่น A+B กระแสตรงสวนทาง)
-/// เดิมอ้างอิงรอบสัญญาณ 120 วินาที/รอบ ตาม DOH Thailand (2019) — ปัจจุบันปรับเป็น 107s
+/// เดิมอ้างอิงรอบสัญญาณ 120 วินาที/รอบ ตาม DOH Thailand (2019) — ปัจจุบันปรับเป็น 106s
 /// ตามที่ Kimmy จับเวลาจริงหน้างาน + Itim วิเคราะห์วิดีโอยืนยัน (A=40s/B=65s/Bx=20-23s/CB=31s แดง 73.5s)
 /// ดูรายละเอียดที่ LoadABACPreset() — ยืนยันแล้วว่าไฟเป็น fixed-time จริง ไม่ใช่ actuated (ดู reply_to_badin_4.md ข้อ 3)
 /// </summary>
@@ -215,35 +215,42 @@ public class FixedController : MonoBehaviour
     void PrintCycleLength()
     {
         if (config != null) { config.EnsureBuilt(); BuildPhaseCache(); }
-        Debug.Log($"[FixedController] Cycle length = {GetCycleLength():F0}s (เป้าหมาย 107s ตามค่าวัดจริงล่าสุด)");
+        Debug.Log($"[FixedController] Cycle length = {GetCycleLength():F0}s (เป้าหมาย 106s ตาม SP1_HANDOFF_v2)");
     }
 
     /// <summary>
     /// แผนเฟสตายตัวของแยก ABAC — 3 เฟส คุม 5 ไฟ (A ใช้ TrafficLight ร่วมกับ A2) รวม 107 วินาที/รอบ
     ///   P1 A+A2+B  40s  (กระแสตรงสวนทาง + เลนแชร์นอก A2 วิ่งพร้อมกันได้ — A2 ใช้ไฟดวงเดียวกับ A)
-    ///   P2 B+Bx    21s  (ขาตะวันออกตรง + เลี้ยวขวาเข้า ABAC แบบ protected — ⭐ นี่คือคอขวดจริง ดูหมายเหตุด้านล่าง)
+    ///   P2 B+Bx    20s  (ขาตะวันออกตรง + เลี้ยวขวาเข้า ABAC แบบ protected — ⭐ นี่คือคอขวดจริง ดูหมายเหตุด้านล่าง)
     ///   P3 CB      31s  (ระบายรถออกจาก ABAC)
     ///   inter-green 3 ครั้ง x (3s เหลือง + 2s แดงทั้งหมด) = 15s
-    ///   รวม 40+21+31+15 = 107s
+    ///   รวม 40+20+31+15 = 106s
     ///
     ///   ⭐ ค่าชุดนี้มาจาก Kimmy จับเวลาไฟจริงหน้างาน (A=50/B=90-95/Bx=20/CB=31/3/75 ที่นับสด — เชื่อถือ CB
     ///   ได้สุดเพราะมีจอนับถอยหลัง) แล้ว Itim เอาไปเทียบกับวิดีโอที่ Kimmy ถ่ายมา วิเคราะห์ซ้ำได้ A=40s / B=65s /
     ///   Bx=20-23s / CB=31s เขียว, แดง C=73.5s (วัดซ้ำ 2 รอบได้เท่ากันเป๊ะ → ยืนยันเป็น fixed-time จริง ไม่ใช่
-    ///   actuated) เอา 40/21(กลางของ Bx 20-23 ที่ทำให้ผลรวมตรง 107s พอดี)/31 มาลงเป๊ะ ๆ — เช็คคืน: แดงของ CB ที่
-    ///   คำนวณได้จากตารางนี้ = 107-31-3 = 73s ตรงกับที่วัดจากวิดีโอ 73.5s (คลาดแค่ 0.5s)
+    ///   actuated)
     ///
-    ///   ⚠️ Itim คำนวณ v/c จากค่าชุดนี้แล้วพบว่า Bx ล้น (v/c 1.21-1.39, คิวยาวเกิน 78m ที่มีใน 7-11 นาที) ขณะที่
-    ///   A ได้ไฟเขียวเกินความต้องการ 4 เท่า (v/c 0.25) — ข้อเสนอ "ย้ายเขียว 8s จาก A ไป Bx" เป็น**นโยบายที่ควร
+    ///   ⭐ อัปเดตตาม SP1_HANDOFF_v2: Itim ให้ตารางสเตจเต็มมาแล้ว และสั่งให้ **ใช้ Bx = 20s** (ไม่ใช่ 21 หรือ 23)
+    ///   เพราะค่าจับด้วยนาฬิกาได้ 20.0s พอดี ส่วน 23s มาจากการจับอีกวิธี — ช่วงคลาด ±3s นี้ไม่เปลี่ยนข้อสรุป
+    ///   (Bx oversaturated ทั้งช่วง: v/c 1.21 ที่ 23s, 1.51 ที่ 20s) ตารางสเตจจริงที่ตรงกับ preset นี้เป๊ะ ๆ:
+    ///     t=  0-40  A เขียว + B เขียว     |  t= 40-43 A เหลือง (B ยังเขียว)  |  t= 43-45 all-red
+    ///     t= 45-65  Bx เขียว + B เขียว    |  t= 65-68 B+Bx เหลืองพร้อมกัน    |  t= 68-70 all-red
+    ///     t= 70-101 CB เขียว              |  t=101-104 CB เหลือง             |  t=104-106 all-red
+    ///
+    ///   ⚠️ v/c จากค่าชุดนี้ (handoff v2): Bx = **1.51** (ล้น คิวโต 3.7 คัน/รอบ กินที่จอด 78m หมดใน 5.7 นาที
+    ///   แล้วไปบล็อกสี่แยกถัดไป), CB = **1.04** (เต็มพอดี), A และ B = **0.25** ทั้งคู่ (ได้เขียวเกินที่ต้องใช้ 4 เท่า)
+    ///   — ข้อเสนอ "ย้ายเขียว **10s** จาก A ไป Bx" (Bx → v/c 0.95) เป็น**นโยบายที่ควร
     ///   เขียนในรายงาน/ให้ Adaptive หาเจอเอง** ไม่ได้เอามาแก้ preset นี้ตรง ๆ เพราะ Fixed ต้องจำลองปัญหาจริงของ
     ///   ระบบเดิมไว้ ถ้าแก้ preset ให้ฉลาดขึ้นเอง จะเสียจุดประสงค์ของการเทียบ Fixed vs Adaptive ไป
     /// </summary>
-    [ContextMenu("Load ABAC 4-Phase Preset (107s cycle)")]
+    [ContextMenu("Load ABAC 4-Phase Preset (106s cycle)")]
     public void LoadABACPreset()
     {
         phases = new List<FixedPhase>
         {
             new FixedPhase { phaseName = "P1 MainThrough",  greenLanes = new[] { "A", "A2", "B" },  greenDuration = 40f },
-            new FixedPhase { phaseName = "P2 EastRightTurn", greenLanes = new[] { "B", "Bx" }, greenDuration = 21f },
+            new FixedPhase { phaseName = "P2 EastRightTurn", greenLanes = new[] { "B", "Bx" }, greenDuration = 20f },
             new FixedPhase { phaseName = "P3 ABACExit",      greenLanes = new[] { "CB" },      greenDuration = 31f },
         };
         yellowDuration = 3f;
@@ -259,10 +266,19 @@ public class FixedController : MonoBehaviour
     {
         if (!showDebugGUI || !Application.isPlaying) return;
 
-        float w = 260;
-        float x = Screen.width - w - 10;
-        GUI.Box(new Rect(x, 10, w, 40), "");
-        GUI.Label(new Rect(x + 8, 13, w - 16, 20), "FIXED CONTROLLER");
-        GUI.Label(new Rect(x + 8, 30, w - 16, 20), statusText);
+        UITheme.Begin();
+
+        const float w = 288f;
+        float x = Screen.width - w - 12f;
+        Rect card = new Rect(x, 12f, w, 62f);
+        GUI.Box(card, GUIContent.none);
+
+        GUI.Label(new Rect(x + 12f, card.y + 8f, w - 100f, 18f), "FIXED CONTROLLER", UITheme.Title);
+        UITheme.Pill(new Rect(x + w - 86f, card.y + 9f, 74f, 17f),
+                     $"{GetCycleLength():F0}s cycle", UITheme.AccentDark);
+        UITheme.Rule(new Rect(x + 12f, card.y + 31f, w - 24f, 1f));
+        GUI.Label(new Rect(x + 12f, card.y + 37f, w - 24f, 18f), statusText, UITheme.Body);
+
+        UITheme.End();
     }
 }
