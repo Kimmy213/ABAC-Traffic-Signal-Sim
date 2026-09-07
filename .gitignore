@@ -35,3 +35,6 @@ sysinfo.txt
 *.stackdump
 
 *.slnx
+
+# scratch backups
+*.bak_*
