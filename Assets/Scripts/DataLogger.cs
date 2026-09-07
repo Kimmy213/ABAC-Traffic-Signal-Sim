@@ -114,8 +114,10 @@ public class DataLogger : MonoBehaviour
 
     // ===== หัวตารางปัจจุบันของ summary CSV =====
     // ⚠️ ถ้าแก้บรรทัดนี้เมื่อไหร่ ไฟล์เก่าจะถูกย้ายไปเก็บอัตโนมัติ ไม่ append ปนกัน
+    // StartupLostTime / SaturationHeadway = ค่าที่ "ใช้จริงตอนรันรอบนั้น" ไม่ใช่ค่าที่เขียนไว้ในโค้ด
+    // มีไว้เพื่อให้ทุกแถวของผลลัพธ์พิสูจน์ตัวเองได้ว่าใช้ค่าที่วัดจริง (2.95 / 2.31) หรือค่าตำรา
     const string SUMMARY_HEADER =
-        "ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents";
+        "ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents,StartupLostTime,SaturationHeadway";
 
     [ContextMenu("Export Summary CSV (Append)")]
     public void ExportSummaryCSV()
@@ -170,8 +172,13 @@ public class DataLogger : MonoBehaviour
         StringBuilder sb = new StringBuilder();
         if (needHeader) sb.AppendLine(SUMMARY_HEADER);
 
+        AdaptiveController ac = FindFirstObjectByType<AdaptiveController>();
+        string l1 = ac != null ? ac.startupLostTime.ToString("F2")   : "NA";
+        string hh = ac != null ? ac.saturationHeadway.ToString("F2") : "NA";
+
         sb.AppendLine($"{controllerType},{scenarioName},{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}," +
-                       $"{totalSpawnedCount},{GetVehicleCount()},{GetAverageWaitTime():F2},{GetMaxWaitTime():F2},{GetStarvationCount()}");
+                       $"{totalSpawnedCount},{GetVehicleCount()},{GetAverageWaitTime():F2},{GetMaxWaitTime():F2},{GetStarvationCount()}," +
+                       $"{l1},{hh}");
 
         File.AppendAllText(path, sb.ToString());
         Debug.Log($"[DataLogger] Appended summary to: {path}");

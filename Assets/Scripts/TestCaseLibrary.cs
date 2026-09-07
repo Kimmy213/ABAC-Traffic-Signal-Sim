@@ -177,7 +177,7 @@ public static class TestCasePresets
     //    แค่ ~5 ช่วงรถก่อนถึงจุดเลี้ยว = แทรกเข้า "หัวคิว" พอดี คันเดียวหยุดรถเลี้ยวทั้งแถวที่ตามมาทั้งช่วงไฟแดง
     //    ผลคือ "เกิดไม่บ่อยแต่รุนแรงเกือบสูงสุดทุกครั้ง" ไม่ใช่ "บ่อย ๆ แต่หน่วงนิดเดียว"
     //    ทั้งสองแบบให้ค่าเฉลี่ยเท่ากันแต่ queue dynamics คนละเรื่อง — ดูหมายเหตุใน ABACSceneBuilder
-    const float A2_SHARE = 0.054f;
+    public const float A2_SHARE = 0.054f;   // ต้องเท่ากับ ScenarioManager.MEASURED_A2_SHARE เสมอ
 
     public static List<TestCase> BuildDefault()
     {

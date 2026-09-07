@@ -273,12 +273,18 @@ public static class ABACSceneBuilder
         var adaptC = GetOrAdd<AdaptiveController>(gc);
         Undo.RecordObject(adaptC, "ABAC Build");
         adaptC.config = cfg;
+        // ⚠️ ต้องเรียกเหมือนที่ FixedController.LoadABACPreset() ทำ ไม่งั้นค่าที่ซีน serialize ไว้
+        //    (เช่น 1 / 2.5 / 8 ของเก่า) จะค้างอยู่ตลอด แม้จะแก้ค่า default ในไฟล์ .cs แล้วก็ตาม
+        adaptC.LoadMeasuredPreset();
         EditorUtility.SetDirty(adaptC);
 
         var logger = GetOrAdd<DataLogger>(gc);
 
         var sm = GetOrAdd<ScenarioManager>(gc);
         Undo.RecordObject(sm, "ABAC Build");
+        // ⚠️ เหตุผลเดียวกับ AdaptiveController — ถ้าไม่เรียก ค่าที่ซีนค้างไว้ (reps=1, speed=2, share=0.18)
+        //    จะอยู่ต่อไปตลอด ทำให้ batch ได้ 10 runs แทน 270 และใช้สัดส่วนเลนแชร์ที่เลิกใช้แล้ว
+        sm.LoadBatchPreset();
         sm.config = cfg;
         sm.fixedController = fixedC;
         sm.adaptiveController = adaptC;

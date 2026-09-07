@@ -80,13 +80,22 @@ public class ScenarioManager : MonoBehaviour
 
     [Header("Run Settings")]
     [Tooltip("ความยาวของแต่ละ run เป็นวินาทีจำลอง (1800 = 30 นาที)")]
-    public float runDuration = 1800f;
+    public float runDuration = BATCH_RUN_DURATION;
     [Tooltip("จำนวนรอบต่อ scenario (27 x 5 scenario = 135 scenarios)")]
-    public int repetitionsPerScenario = 27;
+    public int repetitionsPerScenario = BATCH_REPETITIONS;
     [Tooltip("เร่งความเร็ว simulation ระหว่าง batch run (1 = ปกติ, 10 = เร็ว 10 เท่า)")]
-    public float simulationSpeed = 10f;
+    public float simulationSpeed = BATCH_SIM_SPEED;
+
+    // ===== ค่ามาตรฐานของ batch — แหล่งความจริงแหล่งเดียว =====
+    // ⚠️ Unity serialize ค่าของ component ที่วางในซีนลง SampleScene.unity แล้วทับค่า default ในสคริปต์เสมอ
+    //    ซีนเคยค้างอยู่ที่ repetitionsPerScenario = 1 (= 10 runs ไม่ใช่ 270) และ simulationSpeed = 2
+    //    แก้ .cs อย่างเดียวไม่พอ ต้องให้ ABACSceneBuilder เรียก LoadBatchPreset() ด้วย
+    public const int   BATCH_REPETITIONS  = 27;
+    public const float BATCH_SIM_SPEED    = 10f;
+    public const float BATCH_RUN_DURATION = 1800f;
+    public const float BATCH_WARMUP       = 120f;
     [Tooltip("เวลาอุ่นเครื่องก่อนเริ่มเก็บข้อมูล (วินาทีจำลอง) — กันช่วงถนนว่างตอนเริ่ม run ทำให้ค่าเพี้ยน")]
-    public float warmupDuration = 120f;
+    public float warmupDuration = BATCH_WARMUP;
 
     [Header("Performance (ปิด GUI ระหว่าง batch เพื่อความเร็ว)")]
     public bool disableGUIDuringBatch = true;
@@ -103,7 +112,14 @@ public class ScenarioManager : MonoBehaviour
     [Tooltip("สัดส่วนรถตรงที่เข้าเลนนอก A2 (เลนแชร์กับ Ax) เทียบกับรถตรงทั้งหมด\n" +
              "5.4% = ค่านับตรงจากคลิป A_morning (รถตรง 56 คัน เข้าเลนใน 53 เข้าเลนแชร์ 3) ตาม SP1_HANDOFF_v2\n" +
              "แทนค่าเดิม 18% ที่ได้จากการอนุมานย้อนจากอัตราการบล็อก")]
-    [Range(0.01f, 0.99f)] public float a2Share = 0.054f;
+    [Range(0.01f, 0.99f)] public float a2Share = MEASURED_A2_SHARE;
+
+    /// <summary>
+    /// สัดส่วนรถตรงที่ไปใช้เลนนอก (เลนแชร์กับ Ax)
+    /// ประวัติค่า: เดา 50/50 -> back-calculate ได้ 18% -> **ตอนนี้ 5.4% จากการนับตรง** (SP1_HANDOFF_v2 §5)
+    /// ต้องตรงกับ TestCasePresets.A2_SHARE เสมอ ไม่งั้น batch กับ test case T1-T13 จะใช้คนละค่า
+    /// </summary>
+    public const float MEASURED_A2_SHARE = 0.054f;
 
     [Header("Scenario Table (กด Load ABAC Scenario Preset ถ้ายังว่าง)")]
     public List<ScenarioDef> scenarios = new List<ScenarioDef>();
@@ -244,8 +260,40 @@ public class ScenarioManager : MonoBehaviour
         }
     }
 
+    /// <summary>ตั้งค่าพารามิเตอร์ batch กลับไปเป็นชุดมาตรฐาน (ABACSceneBuilder เรียกทุกครั้งที่ build ซีน)</summary>
+    [ContextMenu("Load Batch Preset (27 reps / 10x / 1800s / 5.4%)")]
+    public void LoadBatchPreset()
+    {
+        repetitionsPerScenario = BATCH_REPETITIONS;
+        simulationSpeed        = BATCH_SIM_SPEED;
+        runDuration            = BATCH_RUN_DURATION;
+        warmupDuration         = BATCH_WARMUP;
+        a2Share                = MEASURED_A2_SHARE;
+    }
+
+    /// <summary>
+    /// a2Share ที่เพี้ยนทำให้ batch กับ test case T1-T13 ใช้คนละสัดส่วน เทียบผลกันไม่ได้
+    /// จึงบังคับแก้พร้อมขึ้น error (ไม่เหมือน repetitions ที่ลดลงชั่วคราวเพื่อทดสอบได้)
+    /// คืนค่า true ถ้ามีการแก้ = ซีนเพี้ยนอยู่ ต้อง save ซีนใหม่
+    /// </summary>
+    public bool EnforceMeasuredShare()
+    {
+        if (Mathf.Abs(a2Share - MEASURED_A2_SHARE) <= 0.0001f) return false;
+
+        float old = a2Share;
+        a2Share = MEASURED_A2_SHARE;
+        Debug.LogError(
+            $"[ScenarioManager] a2Share ที่ซีนเก็บไว้ ({old:F3}) ไม่ตรงกับค่าที่นับได้จริง " +
+            $"({MEASURED_A2_SHARE:F3}) — แก้ให้อัตโนมัติแล้ว\n" +
+            $"  0.18 คือค่า back-calculate เก่าที่ SP1_HANDOFF_v2 §5 แทนที่ไปแล้วด้วยการนับตรง\n" +
+            $"  ⚠️ แก้แค่ในหน่วยความจำ ให้กด Load Batch Preset ใน Inspector แล้ว Save Scene");
+        return true;
+    }
+
     void Awake()
     {
+        EnforceMeasuredShare();
+
         if (config == null) config = FindFirstObjectByType<IntersectionConfig>();
         if (config != null) config.EnsureBuilt();
     }
@@ -255,6 +303,17 @@ public class ScenarioManager : MonoBehaviour
     [ContextMenu("Start Batch Run")]
     public void StartBatchRun()
     {
+        EnforceMeasuredShare();
+        if (repetitionsPerScenario != BATCH_REPETITIONS)
+        {
+            Debug.LogWarning(
+                $"[ScenarioManager] repetitionsPerScenario = {repetitionsPerScenario} " +
+                $"(ค่ามาตรฐานคือ {BATCH_REPETITIONS}) → จะได้ " +
+                $"{scenarios.Count * repetitionsPerScenario * 2} runs ไม่ใช่ " +
+                $"{scenarios.Count * BATCH_REPETITIONS * 2} runs — " +
+                $"ตั้งใจหรือเปล่า? ถ้าไม่ กด Load Batch Preset ใน Inspector ก่อน");
+        }
+
         if (isRunning)
         {
             Debug.LogWarning("[ScenarioManager] Already running!");

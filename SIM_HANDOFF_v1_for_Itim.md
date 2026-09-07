@@ -71,7 +71,9 @@ A2 and Ax occupy **one physical outer lane**. When A is red, A2 stops at the sto
 
 Modelled as a **late merge**: A2 does not enter the shared lane far upstream, it merges only ~5 car-lengths before the stop line — so it arrives at the **head** of the queue. The resulting blocking is **infrequent but near-maximal**, not frequent-but-mild. That distinction changes the delay distribution's shape, so it matters for the results.
 
-A2's share of straight traffic entering the outer lane = **18 %** (your back-calculation from the observed blocking rate; sensitivity band 13–23 %). Implemented as Poisson thinning: `interval_sub = interval_combined / share`.
+A2's share of straight traffic entering the outer lane = **5.4 %** — your direct count in `SP1_HANDOFF_v2` §5, which supersedes the earlier 18 % back-calculation. Implemented as Poisson thinning: `interval_sub = interval_combined / share`.
+
+> **Correction to the earlier draft of this brief:** it quoted 18 %. The scene file was also still carrying 0.18 while the code used 0.054; both are now on 5.4 %, and a cross-file test asserts the batch and the T1–T13 cases can never diverge on this value again.
 
 ### 4.2 Ax yields to Bx ("inverted light")
 

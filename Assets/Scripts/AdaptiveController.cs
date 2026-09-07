@@ -24,8 +24,23 @@ public class AdaptiveController : MonoBehaviour
     //    ⚠️ ตัวนี้กระทบมากกว่าที่คิด: 2.95s ถูกกินไปจาก "ทุก" เฟสเขียว = 15% ของเฟส Bx ที่ยาว 20s
     //    saturation headway 2.31s/คัน (sd 0.81) = 1561 คัน/ชม./เลน (HCM ให้ 1800)
     //    รถที่ระบายได้ต่อเฟส = (green - 2.95) / 2.31
-    public float startupLostTime = 2.95f;
-    public float saturationHeadway = 2.31f;
+    public float startupLostTime = MEASURED_STARTUP_LOST_TIME;
+    public float saturationHeadway = MEASURED_SATURATION_HEADWAY;
+
+    // ===== ค่าอ้างอิงที่วัดได้จริง — แหล่งความจริงแหล่งเดียวของทั้งโปรเจกต์ =====
+    // ⚠️ Unity เก็บค่าของ component ที่วางไว้ในซีนลง SampleScene.unity (serialize)
+    //    แล้ว "ทับ" ค่า default ในสคริปต์เสมอตอนโหลดซีน
+    //    => แก้ค่า default ในไฟล์ .cs เพียงอย่างเดียว ไม่มีผลกับซีนที่มี component อยู่แล้ว
+    //    นี่คือสาเหตุที่ซีนเคยค้างอยู่ที่ 1 / 2.5 / 8 ทั้งที่โค้ดเขียน 2.95 / 2.31 / 4
+    //    ป้องกันด้วย 3 ชั้น: (1) const ตรงนี้ (2) EnforceMeasuredParameters() ตอน Awake
+    //    (3) ABACSceneBuilder เรียก LoadMeasuredPreset() ทุกครั้งที่ build ซีน
+    public const float MEASURED_STARTUP_LOST_TIME  = 2.95f;   // วัดจริง 39 ตัวอย่าง (HCM default = 2.0)
+    public const float MEASURED_SATURATION_HEADWAY = 2.31f;   // วัดจริง sd 0.81 (HCM default = 2.0)
+    public const float DEFAULT_COUNTING_WINDOW     = 4f;
+
+    [Tooltip("true = บังคับใช้ค่าที่วัดจริงเสมอ ถ้าค่าในซีนเพี้ยนจะแก้ให้อัตโนมัติพร้อมขึ้น error\n" +
+             "ปิดเฉพาะตอนตั้งใจทำ sensitivity analysis (เช่นเทียบ HCM 2.0 กับค่าที่วัดได้)")]
+    public bool useMeasuredParameters = true;
 
     [Tooltip("เขียวต่อเนื่องกลุ่มเดิมได้นานสุดกี่วินาที ก่อนบังคับปล่อยเฟส (max green ตามมาตรฐาน)")]
     public float maxContinuousGreen = 90f;
@@ -37,7 +52,7 @@ public class AdaptiveController : MonoBehaviour
     public int minDemandToJoinGroup = 1;
 
     [Header("Counting Window")]
-    public float countingWindow = 4f;
+    public float countingWindow = DEFAULT_COUNTING_WINDOW;
     public int demandThresholdSkipWait = 3;
 
     [Header("Gap-out")]
@@ -64,8 +79,48 @@ public class AdaptiveController : MonoBehaviour
     private bool forcePhaseChange = false;
     private string statusText = "Idle";
 
+    /// <summary>
+    /// ตั้งค่าพารามิเตอร์เวลาทั้งหมดกลับไปเป็นชุดที่วัดได้จริง
+    /// ABACSceneBuilder เรียกตัวนี้ทุกครั้งที่ build ซีน (แบบเดียวกับที่ FixedController.LoadABACPreset ทำ)
+    /// </summary>
+    [ContextMenu("Load Measured Parameters (2.95 / 2.31 / 4)")]
+    public void LoadMeasuredPreset()
+    {
+        startupLostTime   = MEASURED_STARTUP_LOST_TIME;
+        saturationHeadway = MEASURED_SATURATION_HEADWAY;
+        countingWindow    = DEFAULT_COUNTING_WINDOW;
+    }
+
+    /// <summary>
+    /// ตรวจว่าค่าที่ซีน serialize ไว้ตรงกับค่าที่วัดจริงหรือไม่ ถ้าไม่ตรงจะแก้ให้แล้วขึ้น error ดัง ๆ
+    /// เพื่อไม่ให้ batch 270 รอบวิ่งจนจบด้วยค่าตำราโดยไม่มีใครรู้
+    /// คืนค่า true ถ้ามีการแก้เกิดขึ้น (แปลว่าซีนเพี้ยนอยู่ ต้องไป save ซีนใหม่)
+    /// </summary>
+    public bool EnforceMeasuredParameters()
+    {
+        if (!useMeasuredParameters) return false;
+
+        bool drifted = Mathf.Abs(startupLostTime   - MEASURED_STARTUP_LOST_TIME)  > 0.001f
+                    || Mathf.Abs(saturationHeadway - MEASURED_SATURATION_HEADWAY) > 0.001f;
+        if (!drifted) return false;
+
+        float oldL = startupLostTime, oldH = saturationHeadway;
+        startupLostTime   = MEASURED_STARTUP_LOST_TIME;
+        saturationHeadway = MEASURED_SATURATION_HEADWAY;
+
+        Debug.LogError(
+            $"[AdaptiveController] ค่าที่ซีนเก็บไว้ไม่ตรงกับค่าที่วัดจริง — แก้ให้อัตโนมัติแล้ว\n" +
+            $"  startupLostTime   {oldL} -> {MEASURED_STARTUP_LOST_TIME}\n" +
+            $"  saturationHeadway {oldH} -> {MEASURED_SATURATION_HEADWAY}\n" +
+            $"  ⚠️ การแก้นี้อยู่แค่ในหน่วยความจำ ให้เปิด Inspector ของ AdaptiveController " +
+            $"กด Load Measured Parameters แล้ว Save Scene (Ctrl+S) ไม่งั้นรอบหน้าจะเพี้ยนอีก");
+        return true;
+    }
+
     void Awake()
     {
+        EnforceMeasuredParameters();
+
         if (config == null) config = FindFirstObjectByType<IntersectionConfig>();
         if (config == null)
         {
