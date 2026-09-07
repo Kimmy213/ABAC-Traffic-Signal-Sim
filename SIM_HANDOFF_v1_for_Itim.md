@@ -73,7 +73,9 @@ Modelled as a **late merge**: A2 does not enter the shared lane far upstream, it
 
 A2's share of straight traffic entering the outer lane = **5.4 %** — your direct count in `SP1_HANDOFF_v2` §5, which supersedes the earlier 18 % back-calculation. Implemented as Poisson thinning: `interval_sub = interval_combined / share`.
 
-> **Correction to the earlier draft of this brief:** it quoted 18 %. The scene file was also still carrying 0.18 while the code used 0.054; both are now on 5.4 %, and a cross-file test asserts the batch and the T1–T13 cases can never diverge on this value again.
+Shared-lane length = **32 m (~5 vehicles)**, your §5.6. The lane change is now constrained to happen entirely inside that 32 m: steering begins exactly at the 32 m boundary and the merge completes 20 m before the stop line. Previously it began 42 m out — 10 m upstream of where the shared lane actually exists.
+
+> **Correction to the earlier draft of this brief:** it quoted 18 % throughout. The scene file was also still carrying 0.18 while the code used 0.054. Your figure for what that costs — **26 % of cycles blocked at 5.4 % vs 66 % at 18 %, a 2.5× overstatement of the mechanism §5.6 is built on** — is why this mattered more than a stray constant. Both are now on 5.4 %.
 
 ### 4.2 Ax yields to Bx ("inverted light")
 
@@ -197,26 +199,60 @@ Scenario library: T1–T7 plus T13 (shared-lane blocking demo), plus a **runtime
 
 **Deliberately not modelled — these belong in the report's limitations section:**
 
-1. **The emergency/escape-lane bypass is disabled.** Enabling it let cars pass through one another, and the 18 % A2 share already absorbs part of the same effect (double counting). Stated as a limitation.
+1. **The emergency/escape-lane bypass is disabled.** Enabling it let cars pass through one another, and the 5.4 % A2 share already absorbs part of the same effect (double counting). Stated as a limitation.
 2. **CA blocked by CB (82 % of cycles, per your data)** — in our scene CA and CB are separate physical lanes, so they never block each other. Deferred until after the exhibition. Your point stands: more CB green is the only lever that unblocks CA's 100 veh/15 min.
 3. **The adjacent 4-way intersection is not modelled**, so our Bx delay is a **lower bound**.
 4. **No U-turns, no motorcycles as separate agents, no PCU weighting.** Motorcycle effects are partly absorbed into the measured $\ell_1$ and $h$ (both above HCM defaults, largely because motorcycles filter to the head of the queue and must clear before cars move).
 5. **$D$ is read once, at phase start** — vehicles arriving mid-phase do not extend that phase's $G$. This matches a real stop-line detector, but it is a modelling choice worth stating.
 6. **$h$ and $\ell_1$ were measured on lane B in the morning only** and are applied to every lane. Turning lanes (Ax, Bx, CB) should in theory have a higher headway; unverified.
-7. **T10 MiddayNormal is a counterfactual**: the real signal flashes amber 09:00–15:00, so this scenario compares two controllers against a period when neither is actually running. Kept intentionally, with the caveat stated.
+7. **Guard / officer manual intervention is not modelled** — you confirmed the frequency cannot be measured from the available footage (your §7.9), so this is a closed limitation rather than an open question. Any run in which an officer overrides the signal is outside the model's scope.
+8. **T10 MiddayNormal is a counterfactual**: the real signal flashes amber 09:00–15:00, so this scenario compares two controllers against a period when neither is actually running. Kept intentionally, with the caveat stated.
 
 ---
 
-## 9. Open items
+## 9. Open items — all closed
 
-**Needed from you before the 270-run batch can start** (the batch is on hold until these land):
+Everything this brief asked for has landed. Recorded here so the values have one home:
 
-1. **Midday CB / CA arrival rates**
-2. **A and Ax rates at the true peak** (we only have the 08:15–09:00 window)
-3. **Frequency of guard/officer manual intervention**
-4. **Shared-lane length** (how far back from the stop line Ax and A2 actually share a lane) — this directly sets the late-merge distance
-5. **Lane widths**
+| Item | Answer | Where it is used |
+|---|---|---|
+| Midday CB / CA rates | **10.1 s / 13.2 s** mean interval | T10 MiddayNormal scenario |
+| Shared-lane length | **~5 vehicles ≈ 32 m** (§5.6) | `SHARED_LANE_LENGTH`; sets where A2's lane change may begin |
+| Guard intervention frequency | **Not measurable** — closed as a limitation (§7.9) | §8 item 7 |
+| Lane widths | Not needed | — |
+| A / Ax at true peak | Reuse the Monday figures; no re-shoot before the deadline | MorningPeak scenario, stated as-is |
+| `CB 8.4 / CA 13.4` — morning or evening? | **Evening**, confirmed | Already placed in EveningPeak ✅ |
 
-**One contradiction to confirm in `SP1_HANDOFF_v2`:** §4's code snippet places `CB = 8.4` / `CA = 13.4` on the **MorningPeak** line, but the table labels those figures **evening**, and §6.8 reaffirms CB ≈ CA ≈ 0 for the 08:15–09:00 window. I have put them in **EveningPeak**. Please confirm which is right.
+**Per-vehicle detection events — accepted.** Your `--events` output emitting `{"event":"enter","t","lane","id","class"}` per vehicle is exactly what the ROI needs to stop being an assumption. Plan: replay the same footage window as a scripted scenario, then compare your event stream against the simulated `ROIZone` enter/exit times lane by lane. The simulator already logs `car.assignedLane` per vehicle, so the two streams line up without extra instrumentation. The `class` field also gives us the first real handle on the motorcycle share, which is currently only absorbed implicitly into $\ell_1$ and $h$.
 
-**Also useful, lower priority:** if your YOLOv8 pipeline can output a per-frame vehicle count for a lane, we can validate the simulated ROI count against the detected count on the same footage — that would turn the ROI from an assumption into a measured, calibrated component.
+---
+
+## 10. The scene-serialization bug you caught
+
+Worth recording, because it is a trap specific to Unity and it will recur.
+
+Unity writes every public field of a component into the scene file at the moment the component is placed. On load, those serialized values **override the defaults written in the `.cs` file**. Editing the script alone therefore changes nothing for a component that is already in the scene.
+
+Six fields were stale:
+
+| Field | Scene held | Code intended |
+|---|---:|---:|
+| `startupLostTime` | 1 | **2.95** |
+| `saturationHeadway` | 2.5 | **2.31** |
+| `countingWindow` | 8 | **4** |
+| `repetitionsPerScenario` | 1 | **27** |
+| `simulationSpeed` | 2 | **10** |
+| `a2Share` | 0.18 | **0.054** |
+
+`repetitionsPerScenario: 1` was the worst of them: the batch would have produced **10 runs, not 270**.
+
+`FixedController` escaped only because `ABACSceneBuilder` happened to call `fixedC.LoadABACPreset()` on every build, overwriting whatever the scene held. `AdaptiveController` and `ScenarioManager` had no such call.
+
+**Fixed in three layers, plus the test you asked for:**
+
+1. Scene patched; every field default now binds to a single `const`.
+2. `ABACSceneBuilder` calls `LoadMeasuredPreset()` and `LoadBatchPreset()`, the way it always did for `FixedController`.
+3. `Awake()` compares against the constants, auto-corrects, and logs an error — a batch cannot silently run on textbook values. `useMeasuredParameters = false` disables this for deliberate sensitivity runs.
+4. **`SceneAuditTest` parses `SampleScene.unity` itself** and compares it against the code — `.unity` vs `.cs`, not `.cs` vs `.cs`. You were right that the earlier cross-file test could not have caught this. It works by reflecting over a freshly constructed component and checking *every* serialized scalar field, not just the six known ones, so the next drift is caught too. Verified against the pre-fix scene: **18 failures**. Against the current scene: clean.
+
+`summary_all_runs.csv` also carries `StartupLostTime,SaturationHeadway` per row now, so every result line proves its own calibration.

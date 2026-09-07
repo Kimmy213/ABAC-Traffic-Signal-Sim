@@ -52,8 +52,12 @@ public static class ABACSceneBuilder
     //
     // ⚠️ ค่านี้สำคัญกว่าที่เห็น: มันคือสิ่งที่ทำให้รถ A2 ไป "แทรกหัวคิว" แทนที่จะกระจายอยู่กลางคิว
     //    ถ้า merge ตั้งแต่ไกล จะได้ "บล็อกบ่อยแต่เบา" ซึ่งผิดจากของจริงที่ "บล็อกนาน ๆ ครั้งแต่รุนแรง"
-    public const float A2_MERGE_X   = STOP_A_X - 20f;
-    public const float A2_MERGE_DIST = 22f;
+    // ⭐ ความยาวเลนแชร์จริง = ~5 คันรถ ≈ 32 ม. (Itim ยืนยัน SP1_HANDOFF_v2 §5.6)
+    //    การเปลี่ยนเลนของ A2 ต้องเกิด "ภายใน" ช่วงนี้ทั้งหมด ไม่ใช่เริ่มตั้งแต่ก่อนเลนแชร์จะมีอยู่
+    //    เดิม A2_MERGE_DIST = 22 -> เริ่มหักตั้งแต่ 20+22 = 42 ม. ซึ่งเลยขอบเลนแชร์ไป 10 ม.
+    public const float SHARED_LANE_LENGTH = 32f;
+    public const float A2_MERGE_X    = STOP_A_X - 20f;      // จุดที่ merge เสร็จ (20 ม. ก่อนเส้นหยุด)
+    public const float A2_MERGE_DIST = SHARED_LANE_LENGTH - 20f;   // = 12 ม. -> เริ่มหักที่ขอบเลนแชร์พอดี
     public const float STOP_B_X = 9.5f;
     public const float STOP_C_Z = 10.9f;
 
