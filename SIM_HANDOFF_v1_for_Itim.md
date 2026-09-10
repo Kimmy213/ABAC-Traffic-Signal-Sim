@@ -1,5 +1,7 @@
 # SIM_HANDOFF_v1 — Simulation side → Itim (Ratchnon)
 
+> ⚠️ **SUPERSEDED — 10 September 2026.** The decision logic described in this file is the pre-SODA controller (rest in green, per-vehicle arrival times, counting window, 3 s gap-out). The reference is now **`SODA_BASELINE.md`**. Numbers that are still current (ℓ₁ = 2.95 s, h = 2.31 s/veh, G = clamp(2.95 + D×2.31, 8, 45), the 106 s fixed cycle, the conflict matrix) are unchanged; everything about *how the controller decides* is not.
+
 **From:** Badin (simulation / Unity digital twin)
 **To:** Ratchnon "Itim" (field measurement / YOLOv8 detection) — and to Itim's Claude as context
 **Date:** 2 September 2026

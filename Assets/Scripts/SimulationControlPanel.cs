@@ -467,6 +467,17 @@ public class SimulationControlPanel : MonoBehaviour
             GUILayout.Label($"Demand-responsive \u00B7 green {adaptiveController.gMin:F0}-{adaptiveController.gMax:F0} s" +
                             (adaptiveController.enableConcurrentPhases ? " \u00B7 concurrent phases" : " \u00B7 one lane at a time"), sSmall);
 
+        // ปุ่มเปิด/ปิดแผงขั้นตอนการคิดของอัลกอริทึม (แผงแยกด้านขวา)
+        if (adaptiveController != null)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Decision trace  (D)", sSmall);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button(adaptiveController.showDecisionPanel ? "Hide" : "Show", sBtn, GUILayout.Width(52)))
+                adaptiveController.showDecisionPanel = !adaptiveController.showDecisionPanel;
+            GUILayout.EndHorizontal();
+        }
+
         Divider();
 
         // ---------- test case ----------
@@ -741,6 +752,7 @@ public class SimulationControlPanel : MonoBehaviour
         if (config != null) dataLogger.SetTotalSpawned(config.GetTotalSpawned());
         dataLogger.ExportDetailedCSV();
         dataLogger.ExportSummaryCSV();
+        dataLogger.ExportPhaseCSV();
         Toast("Saved to SimulationResults");
     }
 

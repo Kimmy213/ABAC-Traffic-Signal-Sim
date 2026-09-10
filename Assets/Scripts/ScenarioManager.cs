@@ -462,6 +462,7 @@ public class ScenarioManager : MonoBehaviour
         RecordResult(scenario.name, ctype);
         dataLogger.ExportDetailedCSV();
         dataLogger.ExportSummaryCSV();
+        dataLogger.ExportPhaseCSV();
 
         finishedRuns++;
         elapsedAtLastFinish = ElapsedRealtime;
@@ -485,10 +486,13 @@ public class ScenarioManager : MonoBehaviour
 
     List<bool> DisableAllGUI()
     {
-        List<bool> saved = new List<bool> { dataLogger.showDebugGUI, adaptiveController.showDebugGUI, fixedController.showDebugGUI };
+        List<bool> saved = new List<bool> { dataLogger.showDebugGUI, adaptiveController.showDebugGUI,
+                                            fixedController.showDebugGUI, adaptiveController.showDecisionPanel };
         dataLogger.showDebugGUI = false;
         adaptiveController.showDebugGUI = false;
         fixedController.showDebugGUI = false;
+        // แผงขั้นตอนการคิดต้องปิดตอน batch ด้วย — สร้าง string ทุกเฟส 270 รอบโดยไม่มีใครดู
+        adaptiveController.showDecisionPanel = false;
 
         foreach (ApproachLane lane in config.lanes)
         {
@@ -505,6 +509,7 @@ public class ScenarioManager : MonoBehaviour
         dataLogger.showDebugGUI = saved[i++];
         adaptiveController.showDebugGUI = saved[i++];
         fixedController.showDebugGUI = saved[i++];
+        adaptiveController.showDecisionPanel = saved[i++];
 
         foreach (ApproachLane lane in config.lanes)
         {

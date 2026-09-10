@@ -1,5 +1,7 @@
 # สูตรคำนวณเวลาไฟเขียวของ Adaptive Controller
 
+> ⚠️ **SUPERSEDED — 10 September 2026.** The decision logic described in this file is the pre-SODA controller (rest in green, per-vehicle arrival times, counting window, 3 s gap-out). The reference is now **`SODA_BASELINE.md`**. Numbers that are still current (ℓ₁ = 2.95 s, h = 2.31 s/veh, G = clamp(2.95 + D×2.31, 8, 45), the 106 s fixed cycle, the conflict matrix) are unchanged; everything about *how the controller decides* is not.
+
 **ABAC Smart Traffic Light — Digital Twin (T-intersection, ABAC Bang Na front gate)**
 ที่มาของโค้ด: `Assets/Scripts/AdaptiveController.cs`
 เวอร์ชันเอกสาร: 2 ก.ย. 2026

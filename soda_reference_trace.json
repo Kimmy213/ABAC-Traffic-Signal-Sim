@@ -1,0 +1,509 @@
+{
+  "baseline": "SODA_BASELINE.md",
+  "generated": "2026-09-10",
+  "supersedes": "soda_reference_trace.json of 10 Sep (carried R1-R4 errors, see Appendix A.3)",
+  "conventions": [
+    "T=0 is the last entry into ALL_RED_IDLE; snapshots at 0,2,4,...",
+    "readings are stipulated inputs, not simulated",
+    "G = clamp(max over signals (2.95 + D*2.31), 8, 45), read at green-open",
+    "ties in queueStart resolve by ORIGINAL_SEQUENCE H_A,H_B,H_Bx,H_CB",
+    "gap-out fires at the second consecutive all-zero reading",
+    "no counting window"
+  ],
+  "constants": {
+    "startup_lost_time": 2.95,
+    "saturation_headway": 2.31,
+    "g_min": 8.0,
+    "g_max": 45.0,
+    "snapshot_interval": 2.0,
+    "collect_window": 7.0,
+    "early_exit_head_count": 2,
+    "early_exit_demand": 3,
+    "gap_out_snapshots": 2,
+    "yellow": 3.0,
+    "all_red": 2.0,
+    "max_wait": 45.0,
+    "starvation_select": 42.75,
+    "starvation_interrupt": 40.5,
+    "min_green_before_interrupt": 20.0,
+    "max_continuous_green": 90.0,
+    "original_sequence": [
+      "H_A",
+      "H_B",
+      "H_Bx",
+      "H_CB"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "S1",
+      "title": "one vehicle, quiet junction",
+      "readings": {
+        "0.0": {},
+        "2.0": {},
+        "4.0": {
+          "H_CB": 1
+        },
+        "6.0": {
+          "H_CB": 1
+        },
+        "8.0": {
+          "H_CB": 1
+        },
+        "10.0": {
+          "H_CB": 1
+        },
+        "12.0": {
+          "H_CB": 1
+        },
+        "14.0": {
+          "H_CB": 1
+        },
+        "16.0": {
+          "H_CB": 1
+        },
+        "18.0": {}
+      },
+      "arrivals": [
+        {
+          "t": 3.4,
+          "head": "H_CB"
+        }
+      ],
+      "queue_start": {
+        "H_CB": 4.0
+      },
+      "collect": {
+        "start": 4.0,
+        "end": 11.0,
+        "duration": 7.0,
+        "exit": "ceiling"
+      },
+      "phases": [
+        {
+          "index": 1,
+          "decision_at": 11.0,
+          "q1": "none (7.0 < 42.75)",
+          "leader": "H_CB",
+          "group": [
+            "CB"
+          ],
+          "clearance": 0.0,
+          "green_open": 11.0,
+          "counts_at_green_open": {
+            "CB": 1
+          },
+          "green_given": 8.0,
+          "green_used": 8.0,
+          "green_end": 19.0,
+          "end_reason": "completed",
+          "skipped_heads": 3
+        }
+      ],
+      "close": {
+        "yellow": 19.0,
+        "all_red": 22.0,
+        "idle": 24.0
+      },
+      "round_end": 24.0,
+      "soda_py": "reproduces Q1-Q4 only with the counting window bypassed (D1)"
+    },
+    {
+      "id": "S2",
+      "title": "two heads within one window — early exit (a)",
+      "readings": {
+        "0.0": {},
+        "2.0": {
+          "H_A": 1
+        },
+        "4.0": {
+          "H_A": 1,
+          "H_B": 1
+        },
+        "6.0": {
+          "H_A": 1,
+          "H_B": 1
+        },
+        "8.0": {
+          "H_A": 1,
+          "H_B": 1
+        },
+        "10.0": {
+          "H_A": 1
+        },
+        "12.0": {}
+      },
+      "arrivals": [
+        {
+          "t": 1.2,
+          "head": "H_A"
+        },
+        {
+          "t": 3.1,
+          "head": "H_B"
+        }
+      ],
+      "queue_start": {
+        "H_A": 2.0,
+        "H_B": 4.0
+      },
+      "collect": {
+        "start": 2.0,
+        "end": 4.0,
+        "duration": 2.0,
+        "exit": "early_a_two_heads"
+      },
+      "phases": [
+        {
+          "index": 1,
+          "decision_at": 4.0,
+          "q1": "none",
+          "leader": "H_A",
+          "tie_break": null,
+          "group": [
+            "A",
+            "A2",
+            "B"
+          ],
+          "clearance": 0.0,
+          "green_open": 4.0,
+          "counts_at_green_open": {
+            "A": 1,
+            "A2": 0,
+            "B": 1
+          },
+          "green_given": 8.0,
+          "green_used": 8.0,
+          "green_end": 12.0,
+          "end_reason": "completed"
+        }
+      ],
+      "close": {
+        "yellow": 12.0,
+        "all_red": 15.0,
+        "idle": 17.0
+      },
+      "round_end": 17.0,
+      "soda_py": "reproduces with the window bypassed: leader=A group={A,A2,B} G=8.00"
+    },
+    {
+      "id": "S3",
+      "title": "burst on one head — early exit (b)",
+      "readings": {
+        "0.0": {},
+        "2.0": {
+          "H_Bx": 4
+        },
+        "4.0": {
+          "H_Bx": 3
+        },
+        "6.0": {
+          "H_Bx": 2
+        },
+        "8.0": {
+          "H_Bx": 2
+        },
+        "10.0": {
+          "H_Bx": 1
+        },
+        "12.0": {
+          "H_Bx": 1
+        },
+        "14.0": {}
+      },
+      "arrivals": [
+        {
+          "t": 0.5,
+          "head": "H_Bx"
+        },
+        {
+          "t": 1.1,
+          "head": "H_Bx"
+        },
+        {
+          "t": 1.6,
+          "head": "H_Bx"
+        },
+        {
+          "t": 1.8,
+          "head": "H_Bx"
+        }
+      ],
+      "queue_start": {
+        "H_Bx": 2.0
+      },
+      "collect": {
+        "start": 2.0,
+        "end": 2.0,
+        "duration": 0.0,
+        "exit": "early_b_three_vehicles"
+      },
+      "phases": [
+        {
+          "index": 1,
+          "decision_at": 2.0,
+          "q1": "none",
+          "leader": "H_Bx",
+          "group": [
+            "Bx"
+          ],
+          "clearance": 0.0,
+          "green_open": 2.0,
+          "counts_at_green_open": {
+            "Bx": 4
+          },
+          "green_given": 12.19,
+          "green_used": 12.19,
+          "green_end": 14.19,
+          "end_reason": "completed",
+          "side_effect": "Ax held red 2.0-17.19 (inverted light incl. yellow)"
+        }
+      ],
+      "close": {
+        "yellow": 14.19,
+        "all_red": 17.19,
+        "idle": 19.19
+      },
+      "round_end": 19.19,
+      "soda_py": "reproduces: leader=Bx G=12.19"
+    },
+    {
+      "id": "S4",
+      "title": "morning peak — the round never closes",
+      "readings": {
+        "0.0": {
+          "H_A": 12,
+          "H_B": 5,
+          "H_Bx": 9,
+          "H_CB": 7
+        },
+        "30.67": {
+          "H_A": 10,
+          "H_B": 4,
+          "H_Bx": 9,
+          "H_CB": 7
+        },
+        "35.67": {
+          "H_A": 10,
+          "H_B": 4,
+          "H_Bx": 9,
+          "H_CB": 7
+        },
+        "55.67": {
+          "H_A": 10,
+          "H_B": 3,
+          "H_Bx": 8,
+          "H_CB": 7
+        },
+        "60.67": {
+          "H_A": 10,
+          "H_B": 3,
+          "H_Bx": 8,
+          "H_CB": 7
+        }
+      },
+      "queue_start_initial": {
+        "H_A": 0.0,
+        "H_B": 0.0,
+        "H_Bx": 0.0,
+        "H_CB": 0.0
+      },
+      "collect": {
+        "start": 0.0,
+        "end": 0.0,
+        "duration": 0.0,
+        "exit": "early_a_two_heads"
+      },
+      "phases": [
+        {
+          "index": 1,
+          "decision_at": 0.0,
+          "q1": "none",
+          "q2": "all tied at 0.0 -> priority -> H_A",
+          "leader": "H_A",
+          "group": [
+            "A",
+            "A2",
+            "B"
+          ],
+          "rejected": {
+            "Bx": "conflicts A",
+            "CB": "conflicts A"
+          },
+          "clearance": 0.0,
+          "green_open": 0.0,
+          "counts_at_green_open": {
+            "A": 12,
+            "A2": 0,
+            "B": 5
+          },
+          "green_given": 30.67,
+          "green_used": 30.67,
+          "green_end": 30.67,
+          "end_reason": "completed",
+          "counters_after": {
+            "TieBreaksApplied": 1,
+            "TieBreaksExcludingBx": 1,
+            "StarvationEvents": 0
+          },
+          "queue_start_after": {
+            "H_A": 30.67,
+            "H_B": 30.67,
+            "H_Bx": 0.0,
+            "H_CB": 0.0
+          }
+        },
+        {
+          "index": 2,
+          "decision_at": 30.67,
+          "q1": "none (Bx, CB waited 30.67 < 42.75)",
+          "q2": "Bx(0.0,2) vs CB(0.0,3) tie -> H_Bx",
+          "leader": "H_Bx",
+          "group": [
+            "Bx",
+            "B"
+          ],
+          "rejected": {
+            "CB": "conflicts Bx",
+            "A": "conflicts Bx"
+          },
+          "cut": [
+            "A",
+            "A2"
+          ],
+          "clearance": {
+            "yellow": 30.67,
+            "all_red": 33.67,
+            "green_open": 35.67
+          },
+          "counts_at_green_open": {
+            "Bx": 9,
+            "B": 4
+          },
+          "green_given": 23.74,
+          "interrupt": {
+            "kind": "anti-starvation",
+            "at": 55.67,
+            "reason": "elapsed 20 and CB waited 55.67 >= 40.5"
+          },
+          "green_used": 20.0,
+          "green_end": 55.67,
+          "end_reason": "starvation",
+          "counters_after": {
+            "TieBreaksApplied": 2,
+            "TieBreaksExcludingBx": 1,
+            "StarvationEvents": 1
+          },
+          "queue_start_after": {
+            "H_A": 30.67,
+            "H_B": 55.67,
+            "H_Bx": 55.67,
+            "H_CB": 0.0
+          }
+        },
+        {
+          "index": 3,
+          "decision_at": 55.67,
+          "q1": "CB waited 55.67 >= 42.75 -> STARVATION OVERRIDE",
+          "leader": "H_CB",
+          "group": [
+            "CB"
+          ],
+          "cut": [
+            "Bx",
+            "B"
+          ],
+          "clearance": {
+            "yellow": 55.67,
+            "all_red": 58.67,
+            "green_open": 60.67
+          },
+          "counts_at_green_open": {
+            "CB": 7
+          },
+          "green_given": 19.12,
+          "green_end": 79.79,
+          "end_reason": "completed (assumed; no head waits 40.5 s by then)",
+          "counters_after": {
+            "TieBreaksApplied": 3,
+            "TieBreaksExcludingBx": 1,
+            "StarvationEvents": 2,
+            "QueueStartResets": 4
+          },
+          "note": "Bx(55.67)=B(55.67) counts as a tie; Bx excluded but no group member ties with it"
+        }
+      ],
+      "close": null,
+      "round_end": null,
+      "note": "T never resets. StarvationEvents double-counts one episode (interrupt + override).",
+      "soda_py": "reproduces all three decisions and the ANTI_STARVATION cut at 55.67 (verify_traces.py)"
+    },
+    {
+      "id": "S5",
+      "title": "idle green — gap-out cannot help",
+      "readings": {
+        "0.0": {
+          "H_B": 10,
+          "H_Bx": 3
+        },
+        "2.0": {
+          "H_B": 9,
+          "H_Bx": 2
+        },
+        "4.0": {
+          "H_B": 8,
+          "H_Bx": 2
+        },
+        "6.0": {
+          "H_B": 7,
+          "H_Bx": 1
+        },
+        "8.0": {
+          "H_B": 6,
+          "H_Bx": 1
+        },
+        "10.0": {
+          "H_B": 6
+        },
+        "24.0": {
+          "H_B": 1
+        },
+        "26.0": {}
+      },
+      "queue_start": {
+        "H_B": 0.0,
+        "H_Bx": 0.0
+      },
+      "phases": [
+        {
+          "index": 1,
+          "decision_at": 0.0,
+          "leader": "H_B",
+          "q2": "B and Bx tie at 0.0 -> priority -> H_B",
+          "group": [
+            "B",
+            "Bx"
+          ],
+          "green_open": 0.0,
+          "counts_at_green_open": {
+            "B": 10,
+            "Bx": 3
+          },
+          "green_given": 26.05,
+          "green_used": 26.05,
+          "green_end": 26.05,
+          "end_reason": "completed",
+          "gap_out": "never — B occupied throughout",
+          "lane_empty_at": {
+            "Bx": 10.0,
+            "B": null
+          },
+          "idle_lane_seconds_logged": 16.05,
+          "idle_lane_seconds_analytic": 16.17,
+          "bx_last_departure": 9.88
+        }
+      ],
+      "soda_py": "reproduces: leader=B group={B,Bx} G=26.05"
+    }
+  ]
+}

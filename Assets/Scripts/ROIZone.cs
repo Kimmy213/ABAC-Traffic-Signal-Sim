@@ -87,6 +87,37 @@ public class ROIZone : MonoBehaviour
         return carsInZone.Count;
     }
 
+    // ===================================================================================
+    //  API ที่ controller ใช้ได้ vs. API ที่เป็น ground truth ของ sim เท่านั้น
+    // ===================================================================================
+    //  ⭐ GetSampledCount()  — ตัวเลขเดียวที่กล้อง YOLO ที่ "ไม่มี tracker" ผลิตได้จริง
+    //     คือ "นับหัวรถในกรอบ ณ วินาทีนี้" ไม่ต้องรู้ว่าคันไหนเป็นคันไหน ไม่ต้องจับคู่ข้ามเฟรม
+    //     AdaptiveController ต้องเรียกเฉพาะตัวนี้เท่านั้น
+    //
+    //  🛑 GetOldestArrivalTime / GetLongestWaitTime / GetCarsInZone
+    //     ต้องมี ByteTrack/DeepSORT ต่อท้าย YOLO ถึงจะทำได้ = ต้นทุน hardware ที่รับไม่ไหว
+    //     ยังเก็บไว้เพราะ DataLogger ใช้วัด "ผลการทดลอง" ซึ่งเป็นตัวแปรตาม ไม่ใช่ input ของ controller
+    //     มีเทส (NoTrackerTest) สแกนว่า AdaptiveController ไม่แตะสามตัวนี้
+    // ===================================================================================
+
+    /// <summary>
+    /// snapshot count — จำนวนรถที่มองเห็น ณ วินาทีนี้ ไม่มี ID ไม่มีประวัติ
+    /// นี่คือ "ทุกสิ่งที่ controller มองเห็น" หลังตัด tracker ออก
+    /// </summary>
+    public int GetSampledCount()
+    {
+        if (simulatedCountOverride >= 0) return simulatedCountOverride;
+        return carsInZone.Count;
+    }
+
+    /// <summary>
+    /// -1 = ปิด (ใช้จำนวนรถจริง) · >= 0 = บังคับให้ snapshot คืนค่านี้
+    /// สำหรับเทสอัตโนมัติและการไล่สถานการณ์ด้วยมือใน Editor เท่านั้น
+    /// ⚠️ ต้องเป็น -1 เสมอตอนรัน batch — batch จะไม่แตะฟิลด์นี้
+    /// </summary>
+    [Tooltip("เทสเท่านั้น: -1 = ปิด, >= 0 = บังคับค่าที่ snapshot มองเห็น")]
+    public int simulatedCountOverride = -1;
+
     /// <summary>จำนวนรถเฉพาะ movement เดียว — ใช้ตรวจสอบ/ดีบักเท่านั้น detector จริงทำแบบนี้ไม่ได้</summary>
     public int GetVehicleCount(string lane)
     {
@@ -95,6 +126,7 @@ public class ROIZone : MonoBehaviour
         return n;
     }
 
+    /// <summary>🛑 ต้องมี tracker — ground truth ของ sim เท่านั้น ห้าม controller เรียก</summary>
     public float GetOldestArrivalTime()
     {
         if (carsInZone.Count == 0) return Mathf.Infinity;
@@ -107,6 +139,7 @@ public class ROIZone : MonoBehaviour
         return oldest;
     }
 
+    /// <summary>🛑 ต้องมี tracker — ground truth ของ sim เท่านั้น ห้าม controller เรียก</summary>
     public float GetLongestWaitTime()
     {
         float oldest = GetOldestArrivalTime();
@@ -114,6 +147,7 @@ public class ROIZone : MonoBehaviour
         return Time.time - oldest;
     }
 
+    /// <summary>🛑 ต้องมี tracker — ground truth ของ sim เท่านั้น ห้าม controller เรียก</summary>
     public List<CarAgent> GetCarsInZone()
     {
         return new List<CarAgent>(carsInZone.Keys);

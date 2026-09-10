@@ -132,7 +132,6 @@ public class SceneAuditTest
 
         Exact(ad, "startupLostTime",        2.95,  "วัดจริง ไม่ใช่ 1 ที่เคยค้าง");
         Exact(ad, "saturationHeadway",      2.31,  "วัดจริง ไม่ใช่ 2.5 ของ proposal");
-        Exact(ad, "countingWindow",         4,     "ไม่ใช่ 8");
         Exact(sm, "repetitionsPerScenario", 27,    "270 runs ไม่ใช่ 10");
         Exact(sm, "simulationSpeed",        10,    "ไม่ใช่ 2");
         Exact(sm, "a2Share",                0.054, "นับตรง SP1_HANDOFF_v2 s5 ไม่ใช่ 0.18 ที่ back-calculate");

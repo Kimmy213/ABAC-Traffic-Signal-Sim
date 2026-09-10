@@ -24,6 +24,30 @@ public class DataLogger : MonoBehaviour
         public float timestamp;
     }
 
+    /// <summary>
+    /// หนึ่งเฟสไฟเขียว — บันทึกไว้เพื่อวัด "เขียวเปล่า" ที่ gap-out ปัจจุบันมองไม่เห็น
+    ///
+    /// ที่มา (Ratchnon): gap-out ยิงเมื่อ "ทุกเลนในกลุ่มว่าง" ถ้าเลนหนึ่งว่างก่อน มันจะติดเขียวเปล่ารอ
+    /// อีกเลนจนหมด เช่นกลุ่ม {B=10, Bx=3} -> G = 26.05s แต่ Bx ว่างตั้งแต่ ~9.88s
+    /// = เขียวเปล่า 16.17s และตลอดช่วงนั้น Bx บล็อก A อยู่ (A ชนกับ Bx แต่ไม่ชนกับ B)
+    ///
+    /// SkippedHeads มองเคสนี้ไม่เห็น เพราะเลนนั้น "มีรถ" ตอนเฟสเริ่ม
+    /// ต้องเทียบ greenGiven กับเวลาที่แต่ละเลนว่างจริง จึงจะรู้ว่าคุ้มแก้ไหม
+    /// </summary>
+    private struct PhaseRecord
+    {
+        public int index;
+        public float startTime;
+        public string group;
+        public float greenGiven;      // G ที่สูตรคำนวณให้
+        public float greenUsed;       // เวลาที่ใช้จริง (อาจสั้นกว่าถ้าโดน interrupt)
+        public string endReason;
+        public string laneEmptyAt;    // "B=25.1;Bx=9.9" — วินาทีที่แต่ละเลนว่าง (nan = ไม่เคยว่าง)
+        public float idleLaneSeconds; // ผลรวมเวลาที่เลนว่างแล้วยังติดเขียว = เขียวเปล่าที่กู้คืนได้
+    }
+
+    private List<PhaseRecord> phases = new List<PhaseRecord>();
+
     private List<VehicleRecord> records = new List<VehicleRecord>();
     private int starvationEventCount = 0;
     private float runStartTime;
@@ -55,6 +79,33 @@ public class DataLogger : MonoBehaviour
             timestamp = Time.time - runStartTime
         });
     }
+
+    /// <summary>บันทึกหนึ่งเฟส — AdaptiveController เรียกตอนไฟเขียวจบ</summary>
+    public void LogPhase(int index, float startTime, string group, float greenGiven, float greenUsed,
+                         string endReason, string laneEmptyAt, float idleLaneSeconds)
+    {
+        phases.Add(new PhaseRecord
+        {
+            index = index,
+            startTime = startTime - runStartTime,
+            group = group,
+            greenGiven = greenGiven,
+            greenUsed = greenUsed,
+            endReason = endReason,
+            laneEmptyAt = laneEmptyAt,
+            idleLaneSeconds = idleLaneSeconds
+        });
+    }
+
+    /// <summary>รวมเวลา "เลนว่างแล้วยังติดเขียว" ทั้ง run — ตัวเลขที่ตอบว่าคุ้มแก้ gap-out ไหม</summary>
+    public float GetIdleLaneSeconds()
+    {
+        float t = 0f;
+        foreach (PhaseRecord p in phases) t += p.idleLaneSeconds;
+        return t;
+    }
+
+    public int GetPhaseCount() => phases.Count;
 
     public void LogStarvationEvent(string lane)
     {
@@ -116,8 +167,16 @@ public class DataLogger : MonoBehaviour
     // ⚠️ ถ้าแก้บรรทัดนี้เมื่อไหร่ ไฟล์เก่าจะถูกย้ายไปเก็บอัตโนมัติ ไม่ append ปนกัน
     // StartupLostTime / SaturationHeadway = ค่าที่ "ใช้จริงตอนรันรอบนั้น" ไม่ใช่ค่าที่เขียนไว้ในโค้ด
     // มีไว้เพื่อให้ทุกแถวของผลลัพธ์พิสูจน์ตัวเองได้ว่าใช้ค่าที่วัดจริง (2.95 / 2.31) หรือค่าตำรา
+    // StartupLostTime / SaturationHeadway = ค่าที่ "ใช้จริงตอนรันรอบนั้น" ไม่ใช่ค่าที่เขียนไว้ในโค้ด
+    // มีไว้เพื่อให้ทุกแถวของผลลัพธ์พิสูจน์ตัวเองได้ว่าใช้ค่าที่วัดจริง (2.95 / 2.31) หรือค่าตำรา
+    //
+    // สี่คอลัมน์ท้ายเป็นของ SODA (sampled observation):
+    //   SnapshotInterval  ยืนยันว่า run นี้ใช้ 2 วิจริง (เผื่อทำ sensitivity 1/2/4 วิ)
+    //   CollectCount      COLLECT ถูกเรียกกี่ครั้ง — คาดว่าตอนพีคเกือบ 0 เพราะอยู่ใน SERVE loop ตลอด
+    //   SkippedHeads      หัวไฟที่ count = 0 แล้วถูกข้าม = เวลาที่ประหยัดตรง ๆ เทียบ Fixed
+    //   QueueStartResets  สูงมาก = อยู่ใน saturated regime ตลอด (ลำดับถูกกำหนดโดยกฎ reset)
     const string SUMMARY_HEADER =
-        "ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents,StartupLostTime,SaturationHeadway";
+        "ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents,StartupLostTime,SaturationHeadway,SnapshotInterval,CollectCount,CollectDuration,SkippedHeads,QueueStartResets,IdleLaneSeconds,TieBreaksApplied,TieBreaksExcludingBx";
 
     [ContextMenu("Export Summary CSV (Append)")]
     public void ExportSummaryCSV()
@@ -173,20 +232,49 @@ public class DataLogger : MonoBehaviour
         if (needHeader) sb.AppendLine(SUMMARY_HEADER);
 
         AdaptiveController ac = FindFirstObjectByType<AdaptiveController>();
-        string l1 = ac != null ? ac.startupLostTime.ToString("F2")   : "NA";
-        string hh = ac != null ? ac.saturationHeadway.ToString("F2") : "NA";
+        string l1   = ac != null ? ac.startupLostTime.ToString("F2")   : "NA";
+        string hh   = ac != null ? ac.saturationHeadway.ToString("F2") : "NA";
+        string snap = ac != null ? ac.SnapshotInterval.ToString("F1")  : "NA";
+        string cc   = ac != null ? ac.CollectCount.ToString()          : "NA";
+        string cd   = ac != null ? ac.CollectTotalTime.ToString("F1")  : "NA";
+        string sk   = ac != null ? ac.SkippedHeadTotal.ToString()      : "NA";
+        string qr   = ac != null ? ac.QueueStartResets.ToString()      : "NA";
+        string tb   = ac != null ? ac.TieBreaksApplied.ToString()      : "NA";
+        string tbx  = ac != null ? ac.TieBreaksExcludingBx.ToString()  : "NA";
 
         sb.AppendLine($"{controllerType},{scenarioName},{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}," +
                        $"{totalSpawnedCount},{GetVehicleCount()},{GetAverageWaitTime():F2},{GetMaxWaitTime():F2},{GetStarvationCount()}," +
-                       $"{l1},{hh}");
+                       $"{l1},{hh},{snap},{cc},{cd},{sk},{qr},{GetIdleLaneSeconds():F1},{tb},{tbx}");
 
         File.AppendAllText(path, sb.ToString());
         Debug.Log($"[DataLogger] Appended summary to: {path}");
     }
 
+    [ContextMenu("Export Phase Trace CSV")]
+    public void ExportPhaseCSV()
+    {
+        if (phases.Count == 0) return;
+
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine("ControllerType,Scenario,PhaseIndex,StartTime,Group,GreenGiven,GreenUsed,EndReason,LaneEmptyAt,IdleLaneSeconds");
+        foreach (PhaseRecord p in phases)
+        {
+            sb.AppendLine($"{controllerType},{scenarioName},{p.index},{p.startTime:F2},{p.group}," +
+                          $"{p.greenGiven:F2},{p.greenUsed:F2},{p.endReason},{p.laneEmptyAt},{p.idleLaneSeconds:F2}");
+        }
+
+        string folder = GetExportFolder();
+        string path = Path.Combine(folder,
+            $"phases_{controllerType}_{scenarioName}_{System.DateTime.Now:yyyyMMdd_HHmmss}.csv");
+        File.WriteAllText(path, sb.ToString());
+        Debug.Log($"[DataLogger] Exported {phases.Count} phases to: {path} " +
+                  $"(idle-lane total {GetIdleLaneSeconds():F1}s)");
+    }
+
     [ContextMenu("Reset Run Data")]
     public void ResetRun()
     {
+        phases.Clear();
         records.Clear();
         starvationEventCount = 0;
         runStartTime = Time.time;
