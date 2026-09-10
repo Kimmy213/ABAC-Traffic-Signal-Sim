@@ -167,7 +167,31 @@ public class CarAgent : MonoBehaviour
         return (approachSpeed * approachSpeed) / (2f * decelRate);
     }
 
+    // ===== sub-stepping: ความละเอียดของการเคลื่อนที่ต้องไม่ขึ้นกับ timeScale =====
+    // เดิม integrate ครั้งเดียวต่อเฟรมด้วย Time.deltaTime ซึ่ง = เวลาจริงต่อเฟรม x timeScale
+    // ที่ 10x / 60 fps หนึ่งเฟรม = 0.167 วิ -> รถ 14 m/s ขยับทีละ 2.3 ม. การตัดสินใจเบรก/เส้นหยุด
+    // ถูกประเมินแค่ทุก 2.3 ม. จึงเลยเลน เลยเส้นหยุด (สังเกตได้จริงที่ 10x, 2x แทบไม่เป็น)
+    // ตอนนี้ซอยเวลาของแต่ละเฟรมเป็นก้าวละไม่เกิน MAX_STEP (= Unity fixed timestep) เสมอ
+    // -> ที่ 1x หรือ 10x รถตัดสินใจทุก 0.02 วิจำลองเท่ากัน ผลจึงไม่ขึ้นกับความเร็วที่รัน
+    public const float MAX_STEP = 0.02f;
+    const int MAX_SUBSTEPS = 50;            // กัน spiral of death ถ้าเฟรมช้าผิดปกติ (Unity cap deltaTime ที่ 0.333 s อยู่แล้ว)
+    private float stepDt = 0f;
+
     void Update()
+    {
+        float remaining = Time.deltaTime;
+        int steps = 0;
+        while (remaining > 0f && steps < MAX_SUBSTEPS)
+        {
+            stepDt = Mathf.Min(remaining, MAX_STEP);
+            Step();
+            remaining -= stepDt;
+            steps++;
+        }
+    }
+
+    /// <summary>หนึ่งก้าวของการจำลอง ยาว stepDt วินาที</summary>
+    void Step()
     {
         SyncLightState();
 
@@ -181,6 +205,14 @@ public class CarAgent : MonoBehaviour
         DecideSpeed();
         Steer();
         MoveForward();
+    }
+
+    /// <summary>จำนวนก้าวที่หนึ่งเฟรมจะถูกซอย — public static เพื่อให้เทสตรวจได้โดยไม่ต้องมี Unity</summary>
+    public static int SubStepsFor(float frameDt, float maxStep = MAX_STEP)
+    {
+        if (frameDt <= 0f) return 0;
+        int n = Mathf.CeilToInt(frameDt / maxStep);
+        return Mathf.Min(n, MAX_SUBSTEPS);
     }
 
     // ===== อ่านสถานะไฟเองทุกเฟรม =====
@@ -236,21 +268,21 @@ public class CarAgent : MonoBehaviour
 
         Quaternion desired = Quaternion.LookRotation(toTarget.normalized, Vector3.up);
         transform.rotation = Quaternion.RotateTowards(
-            transform.rotation, desired, steerRate * Time.deltaTime);
+            transform.rotation, desired, steerRate * stepDt);
     }
 
     float ComputeDesiredSpeed()
     {
         if (hasCleared || stopLineTarget == null)
         {
-            return Mathf.MoveTowards(currentSpeed, approachSpeed, acceleration * Time.deltaTime);
+            return Mathf.MoveTowards(currentSpeed, approachSpeed, acceleration * stepDt);
         }
 
         if (signedDistToStopPoint < -0.3f)
         {
             hasCleared = true;
             isStopped = false;
-            return Mathf.MoveTowards(currentSpeed, approachSpeed, acceleration * Time.deltaTime);
+            return Mathf.MoveTowards(currentSpeed, approachSpeed, acceleration * stepDt);
         }
 
         float brakeDistance = GetRequiredBrakeDistance();
@@ -260,7 +292,7 @@ public class CarAgent : MonoBehaviour
             if (!lightIsGreen)
             {
                 // ===== ไม่มี snap เป็น 0 อีกแล้ว → ปล่อยไล่ตาม decelRate ต่อเนื่อง = เกิดไถลธรรมชาติ =====
-                float speed = currentSpeed - decelRate * Time.deltaTime;
+                float speed = currentSpeed - decelRate * stepDt;
                 speed = Mathf.Max(0f, speed);
                 if (speed <= 0.05f) isStopped = true;
                 return speed;
@@ -269,7 +301,7 @@ public class CarAgent : MonoBehaviour
             {
                 if (isStopped)
                 {
-                    reactionTimer += Time.deltaTime;
+                    reactionTimer += stepDt;
                     if (reactionTimer >= reactionDelay)
                     {
                         isStopped = false;
@@ -279,7 +311,7 @@ public class CarAgent : MonoBehaviour
                         return 0f;
                     }
                 }
-                return Mathf.MoveTowards(currentSpeed, approachSpeed, acceleration * Time.deltaTime);
+                return Mathf.MoveTowards(currentSpeed, approachSpeed, acceleration * stepDt);
             }
         }
         else
@@ -349,7 +381,7 @@ public class CarAgent : MonoBehaviour
         if (desiredSpeed > turnCap)
         {
             // ค่อย ๆ ลดตาม decelRate ไม่ใช่ตัดความเร็วทันที จะได้ดูเป็นธรรมชาติ
-            float eased = Mathf.Max(turnCap, currentSpeed - decelRate * Time.deltaTime);
+            float eased = Mathf.Max(turnCap, currentSpeed - decelRate * stepDt);
             desiredSpeed = Mathf.Min(desiredSpeed, eased);
         }
 
@@ -364,7 +396,7 @@ public class CarAgent : MonoBehaviour
             if (cushion <= 0f)
             {
                 // ===== เบรกฉุกเฉิน: แรงกว่าปกติแต่ยังไม่ใช่ snap ทันที → ไถลนิดหน่อยตามนิสัย =====
-                float emergencySpeed = currentSpeed - (decelRate * emergencyDecelMultiplier) * Time.deltaTime;
+                float emergencySpeed = currentSpeed - (decelRate * emergencyDecelMultiplier) * stepDt;
                 emergencySpeed = Mathf.Max(0f, emergencySpeed);
                 desiredSpeed = Mathf.Min(desiredSpeed, emergencySpeed);
                 if (emergencySpeed <= 0.1f) isStopped = true;
@@ -526,7 +558,7 @@ public class CarAgent : MonoBehaviour
 
     void MoveForward()
     {
-        transform.Translate(Vector3.forward * currentSpeed * Time.deltaTime);
+        transform.Translate(Vector3.forward * currentSpeed * stepDt);
     }
 
     // ===== เรียกจาก TrafficLight ตอนไฟเปลี่ยนสถานะ =====

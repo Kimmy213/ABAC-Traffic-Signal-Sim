@@ -317,7 +317,7 @@ public class AdaptiveController : MonoBehaviour
 
     /// <summary>
     /// ตรวจว่าค่าที่ซีน serialize ไว้ตรงกับค่าที่วัดจริงหรือไม่ ถ้าไม่ตรงจะแก้ให้แล้วขึ้น error ดัง ๆ
-    /// เพื่อไม่ให้ batch 270 รอบวิ่งจนจบด้วยค่าตำราโดยไม่มีใครรู้
+    /// เพื่อไม่ให้ batch 216 รอบวิ่งจนจบด้วยค่าตำราโดยไม่มีใครรู้
     /// </summary>
     public bool EnforceMeasuredParameters()
     {

@@ -38,3 +38,7 @@ sysinfo.txt
 
 # scratch backups
 *.bak_*
+
+# Unity crash-recovery snapshots (stale scene copies)
+Assets/_Recovery/
+Assets/_Recovery.meta

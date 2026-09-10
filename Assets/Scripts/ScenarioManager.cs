@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
-/// รัน batch experiment: 5 scenario x 27 repetition x 2 controller = 270 runs
+/// รัน batch experiment: 4 scenario x 27 repetition x 2 controller = 216 runs (Night ตัดออก 10 ก.ย.)
 /// ใช้ seed เดียวกันคู่ Fixed/Adaptive เพื่อให้ paired t-test valid
 /// อ่านรายชื่อเลนจาก IntersectionConfig จึงรองรับทั้ง 3 เลนเดิมและ 7 เลนเต็มระบบ (รวม A2 shared lane)
 /// </summary>
@@ -81,16 +81,21 @@ public class ScenarioManager : MonoBehaviour
     [Header("Run Settings")]
     [Tooltip("ความยาวของแต่ละ run เป็นวินาทีจำลอง (1800 = 30 นาที)")]
     public float runDuration = BATCH_RUN_DURATION;
-    [Tooltip("จำนวนรอบต่อ scenario (27 x 5 scenario = 135 scenarios)")]
+    [Tooltip("จำนวนรอบต่อ scenario (27 x 4 scenario = 108 scenarios = 216 runs)")]
     public int repetitionsPerScenario = BATCH_REPETITIONS;
     [Tooltip("เร่งความเร็ว simulation ระหว่าง batch run (1 = ปกติ, 10 = เร็ว 10 เท่า)")]
     public float simulationSpeed = BATCH_SIM_SPEED;
 
     // ===== ค่ามาตรฐานของ batch — แหล่งความจริงแหล่งเดียว =====
     // ⚠️ Unity serialize ค่าของ component ที่วางในซีนลง SampleScene.unity แล้วทับค่า default ในสคริปต์เสมอ
-    //    ซีนเคยค้างอยู่ที่ repetitionsPerScenario = 1 (= 10 runs ไม่ใช่ 270) และ simulationSpeed = 2
+    //    ซีนเคยค้างอยู่ที่ repetitionsPerScenario = 1 (= 8 runs ไม่ใช่ 216) และ simulationSpeed = 2
     //    แก้ .cs อย่างเดียวไม่พอ ต้องให้ ABACSceneBuilder เรียก LoadBatchPreset() ด้วย
     public const int   BATCH_REPETITIONS  = 27;
+    // 10x ได้เพราะ CarAgent sub-step ที่ ≤ 0.02 วิแล้ว (ก่อนหน้านั้นรถเลยเลนที่ 10x เพราะก้าวละ 2.3 ม.)
+    // สิ่งเดียวที่ยังขึ้นกับ timeScale คือจังหวะ trigger เข้า/ออก ROI ซึ่งละเอียดระดับเฟรม (~0.17 วิ ที่ 10x/60fps)
+    // -> error ของ WaitTime รายคัน ±0.17 วิ ไม่มีทิศทาง เทียบกับ snapshot 2 วิ ถือว่าเล็กน้อย
+    // Kimmy เลือก 10x วันที่ 10 ก.ย. หลัง sub-stepping (batch 216 runs ≈ 11.5 ชม. แทน 23)
+    // validation 1x/5x/10x ด้วย seed เดียวกัน (SODA_BASELINE §8.6) ยังแนะนำให้ทำและบันทึกผลไว้ในรายงาน
     public const float BATCH_SIM_SPEED    = 10f;
     public const float BATCH_RUN_DURATION = 1800f;
     public const float BATCH_WARMUP       = 120f;
@@ -491,7 +496,7 @@ public class ScenarioManager : MonoBehaviour
         dataLogger.showDebugGUI = false;
         adaptiveController.showDebugGUI = false;
         fixedController.showDebugGUI = false;
-        // แผงขั้นตอนการคิดต้องปิดตอน batch ด้วย — สร้าง string ทุกเฟส 270 รอบโดยไม่มีใครดู
+        // แผงขั้นตอนการคิดต้องปิดตอน batch ด้วย — สร้าง string ทุกเฟส 216 รอบโดยไม่มีใครดู
         adaptiveController.showDecisionPanel = false;
 
         foreach (ApproachLane lane in config.lanes)
@@ -532,19 +537,21 @@ public class ScenarioManager : MonoBehaviour
     // ที่เหลือ (EveningPeak, ABACEvent, Night) ยังเป็นสมมติฐานจาก bucket — ยังไม่มีข้อมูลวัด
     // MorningPeak CB/CA = closed — แก้แล้ว: เลน C ปิดแค่ 08:30-09:00 (~15-30 นาที) ไม่ใช่ทั้งเช้า แต่ตรงกับ
     //   ช่วง peak จริง (08:15-09:00, จบทันทีหลัง 09:00 ไม่ใช่ 07:00-08:30 ตามที่เดาไว้แต่แรก) จึงยังใช้ closed ได้
-    // MiddayNormal และ scenario อื่น ๆ CB/CA ยังเป็นสมมติฐาน (รอฟุตเทจเลน C วันจันทร์จาก Itim)
+    // MiddayNormal CB/CA = 10.1 / 13.2 s วัดจริงจาก Itim (10 ก.ย.) — เดิมใช้ low=7 ค้างไว้ทั้งที่ได้ตัวเลขมาแล้ว
+    // scenario อื่น ๆ (EveningPeak medium/low, ABACEvent, Night) ยังเป็นระดับสมมติ ไม่ใช่ค่าที่วัด
     // ⚠️ ยืนยันแล้ว: 09:00-15:00 ไฟกระพริบเหลืองจริง (ไม่ใช่ fixed-time) — MiddayNormal (11:37-12:00) อยู่ในช่วงนี้
     //   ผล Fixed vs Adaptive ของ MiddayNormal จึงเป็นการเทียบเชิงสมมติ ไม่ใช่สภาพจริงตอนเที่ยง ต้องระบุ caveat ในรายงาน
-    [ContextMenu("Load ABAC Scenario Preset (5 scenarios x 7 lanes)")]
+    [ContextMenu("Load ABAC Scenario Preset (4 scenarios x 7 lanes)")]
     public void LoadABACScenarioPreset()
     {
         scenarios = new List<ScenarioDef>
         {
             MakeScenario("MorningPeak",  A: 18.8f, Ax: 5.1f,   B: 9.0f,  Bx: 9.6f,     CB: closed,  CA: closed),
             MakeScenario("EveningPeak",  A: medium,  Ax: low,      B: high,   Bx: low,      CB: 8.4f,    CA: 13.4f),
-            MakeScenario("MiddayNormal", A: 29.0f, Ax: 9.7f,   B: 20.5f, Bx: 21.4f,    CB: low,     CA: low),
+            MakeScenario("MiddayNormal", A: 29.0f, Ax: 9.7f,   B: 20.5f, Bx: 21.4f,    CB: 10.1f,   CA: 13.2f),
             MakeScenario("ABACEvent",    A: medium,  Ax: veryHigh, B: medium, Bx: veryHigh, CB: high,    CA: high),
-            MakeScenario("Night",        A: veryLow, Ax: veryLow,  B: veryLow, Bx: veryLow, CB: veryLow, CA: veryLow),
+            // Night ตัดออกจาก batch (10 ก.ย. — ตัดสินใจโดย Kimmy): อัตรารถเป็นระดับสมมติล้วน
+            // และอยู่นอก scope ของงาน (ไม่มีปัญหาให้แก้ตอนกลางคืน) ยังมีใน T12 ของ TestCaseLibrary ไว้ทดลองมือ
         };
 
         Debug.Log($"[ScenarioManager] โหลด preset {scenarios.Count} scenarios แล้ว → " +

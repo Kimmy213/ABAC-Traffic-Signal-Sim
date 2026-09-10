@@ -133,7 +133,7 @@ public class SceneAuditTest
         Exact(ad, "startupLostTime",        2.95,  "วัดจริง ไม่ใช่ 1 ที่เคยค้าง");
         Exact(ad, "saturationHeadway",      2.31,  "วัดจริง ไม่ใช่ 2.5 ของ proposal");
         Exact(sm, "repetitionsPerScenario", 27,    "270 runs ไม่ใช่ 10");
-        Exact(sm, "simulationSpeed",        10,    "ไม่ใช่ 2");
+        Exact(sm, "simulationSpeed",        10,    "10x หลัง sub-stepping (Kimmy 10 ก.ย.)");
         Exact(sm, "a2Share",                0.054, "นับตรง SP1_HANDOFF_v2 s5 ไม่ใช่ 0.18 ที่ back-calculate");
 
         // ค่าที่ซีนถืออยู่ต้องตรงกับ const ในโค้ดด้วย (กันแก้ const แล้วลืมแก้ซีน)
@@ -141,6 +141,39 @@ public class SceneAuditTest
         Exact(ad, "saturationHeadway", AdaptiveController.MEASURED_SATURATION_HEADWAY, "ตรงกับ const ในโค้ด");
         Exact(sm, "a2Share",           ScenarioManager.MEASURED_A2_SHARE,              "ตรงกับ const ในโค้ด");
         Exact(sm, "repetitionsPerScenario", ScenarioManager.BATCH_REPETITIONS,         "ตรงกับ const ในโค้ด");
+
+        // ===== batch scenario list ที่ซีน serialize ไว้ (ALLOWED ข้าม "scenarios" ใน reflection จึงต้องเจาะเอง) =====
+        Console.WriteLine("\n--- scenario list ในซีน ---");
+        {
+            var names = new List<string>();
+            bool inSm = false, inList = false;
+            string midCB = null, midCA = null, cur = null;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string ln = lines[i];
+                if (ln.Trim() == "m_EditorClassIdentifier: Assembly-CSharp::ScenarioManager") inSm = true;
+                else if (ln.StartsWith("---")) { inSm = false; inList = false; }
+                if (!inSm) continue;
+                if (ln.StartsWith("  scenarios:")) { inList = true; continue; }
+                if (inList && Regex.IsMatch(ln, @"^  [A-Za-z]")) inList = false;
+                if (!inList) continue;
+                if (ln.StartsWith("  - name: ")) { cur = ln.Substring(10).Trim(); names.Add(cur); }
+                if (cur == "MiddayNormal" && ln.StartsWith("    - laneName: ") && i + 1 < lines.Length)
+                {
+                    string lane = ln.Substring(16).Trim();
+                    string val = lines[i + 1].Trim().Replace("meanInterval:", "").Trim();
+                    if (lane == "CB") midCB = val;
+                    if (lane == "CA") midCA = val;
+                }
+            }
+            Console.WriteLine("    " + string.Join(", ", names.ToArray()));
+            Check(names.Count == 4, $"ซีนมี 4 scenarios ({names.Count})");
+            Check(!names.Contains("Night"), "ไม่มี Night ในซีน (ตัดออก 10 ก.ย.)");
+            Check(names.Contains("MorningPeak") && names.Contains("EveningPeak")
+               && names.Contains("MiddayNormal") && names.Contains("ABACEvent"), "ครบ 4 ตัวที่ต้องมี");
+            Check(midCB == "10.1", $"MiddayNormal CB = 10.1 (วัดจริงจาก Itim) ไม่ใช่ 7 (อ่านได้ {midCB})");
+            Check(midCA == "13.2", $"MiddayNormal CA = 13.2 (วัดจริงจาก Itim) ไม่ใช่ 7 (อ่านได้ {midCA})");
+        }
 
         Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
         return failures;

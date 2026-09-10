@@ -481,6 +481,25 @@ public class SimulationControlPanel : MonoBehaviour
         Divider();
 
         // ---------- test case ----------
+        // ⚠️ ระหว่าง batch ไม่วาดบล็อกนี้เลย
+        //    Unity crash เมื่อ 10 ก.ย. 15:51 เกิดใน IMGUI layout ของหน้าต่างนี้ตอน Play:
+        //      GUI.CallWindowDelegate -> GUILayoutUtility.Layout -> GUIScrollGroup.CalcWidth
+        //        -> GUIWordWrapSizer.CalcWidth -> GUIStyle.CalcMinMaxWidth  [native crash]
+        //    = scroll view ซ้อน scroll view ที่ข้างในมี label แบบ wordWrap (tc.description, sDesc)
+        //    ยังพิสูจน์ไม่ได้ว่านี่คือต้นเหตุแน่นอน แต่ batch รันยาว ~23 ชม.แบบไม่มีคนเฝ้า
+        //    จึงไม่ควรวาดโครงสร้างที่อยู่ใน stack ของ crash ทิ้งไว้ทั้งคืน
+        //    (ไม่กระทบผลการทดลอง — เป็น GUI ล้วน BatchRunPanel ยังโชว์ความคืบหน้าตามปกติ)
+        bool batchRunning = scenarioManager != null && scenarioManager.IsBatchRunning;
+
+        if (batchRunning)
+        {
+            GUILayout.Label($"BATCH RUNNING — {scenarioManager.CompletedRuns}/{scenarioManager.TotalRuns}", sHeader);
+            GUILayout.Label("test-case list and lane table hidden while the batch runs", sMono);
+            GUILayout.EndScrollView();                       // ปิด mainScroll ให้ตรงกับทางออกปกติ
+            GUI.DragWindow(new Rect(0, 0, 10000, 22));
+            return;
+        }
+
         GUILayout.BeginHorizontal();
         GUILayout.Label("TEST CASES", sHeader);
         GUILayout.FlexibleSpace();
@@ -563,7 +582,7 @@ public class SimulationControlPanel : MonoBehaviour
             }
             else
             {
-                if (Btn("Start batch run (270 runs)", false))
+                if (Btn($"Start batch run ({(scenarioManager != null ? scenarioManager.scenarios.Count * scenarioManager.repetitionsPerScenario * 2 : 0)} runs)", false))
                 {
                     Time.timeScale = 1f;
                     state = RunState.Idle;

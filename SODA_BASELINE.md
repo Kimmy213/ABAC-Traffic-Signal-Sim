@@ -437,12 +437,13 @@ The real installation drops every head to red when empty; the simulator now does
 | ~~8.3~~ | ~~Starvation tie direction in C# is the reverse of the agreed Q2 tie-break.~~ **Closed 10 Sep:** `FindStarvingHead` now uses `CompareHeads`; behaviour change made before the batch per §9.3. `soda.py` already used this direction, so D3 is closed on both sides. | Kimmy | done | SodaTest §9 |
 | 8.4 | Per-lane gap-out (S5). | both | after the batch, from `IdleLaneSeconds` | If the per-run mean exceeds ~5 % of the 1,680 s measured window (≈ 84 s), implement and re-run; else report as future work with the measured figure. |
 | 8.5 | Field footage dates for the 39-sample headway measurement and the 298/303 detector validation are not recorded in any document available to the author of this baseline. | Itim | before the report's methods section | Dates added to §4.4 and §7 L5. |
+| 8.6 | Re-validate timeScale after sub-stepping: same scenario and seed at 1× / 5× / 10×, compare `AvgWaitTime`. Kimmy chose 10× for the batch (10 Sep, evening) on the strength of the sub-stepping fix and visual check; the numeric check is still owed. | Kimmy | before the batch (or as a spot check alongside it) | Divergence ≤ ~5 % → 10× confirmed; otherwise stop, set 5×, restart. Record the three numbers in Appendix C0. |
 
 ---
 
 ## 9. Change procedure
 
-This baseline is frozen for the 270-run batch, not forever. A frozen specification that turns out to be wrong and cannot be corrected is worse than no specification.
+This baseline is frozen for the 216-run batch, not forever. A frozen specification that turns out to be wrong and cannot be corrected is worse than no specification.
 
 1. **Who.** Either owner may propose; both must agree. Disagreement is recorded in §8 with a deadline, not resolved by silence.
 2. **What counts as evidence.** A proposal names the section, the current text, the replacement, and one of: a failing test with its output, a log column from a completed run with the value, a field measurement with sample size and date, or a code excerpt showing the document is wrong about the code. Opinion is not evidence.
@@ -461,6 +462,9 @@ This baseline is frozen for the 270-run batch, not forever. A frozen specificati
 | 2026-09-10 | `IdleLaneSeconds`, `TieBreaksApplied`, `TieBreaksExcludingBx`, phase trace CSV | measurement | §4.5, Appendix C |
 | 2026-09-10 | S4 trace corrected (anti-starvation cut at 55.67; override at phase 3); S1/S2 corrected for §6.3 | documentation | Appendix A, R4 |
 | 2026-09-10 | Starvation tie-break aligned with Option A (`FindStarvingHead` → `CompareHeads`) | behaviour, before the batch | SodaTest §9; closes §8.3 / D3 |
+| 2026-09-10 | `CarAgent` motion sub-stepped at ≤ 0.02 s so results do not depend on timeScale; batch speed 10× → 5× | simulation engine, before the batch | GeometryTest §10; Appendix C0 |
+| 2026-09-10 (evening) | Batch speed 5× → 10× — sub-stepping removed the overrun that motivated 5×; `BATCH_SIM_SPEED`, scene `simulationSpeed`, SceneAuditTest all set to 10 | experiment configuration, before the batch (batch at 5× stopped at ~10 s, nothing kept) | GeometryTest §11; SceneAuditTest; Appendix C0; §8.6 still open |
+| 2026-09-10 | Night removed from the batch (216 runs); MiddayNormal CB/CA set to measured 10.1 / 13.2 s | experiment inputs, before the batch | SceneAuditTest; GeometryTest §10 |
 
 ---
 
@@ -523,6 +527,22 @@ Everything below was recomputed from the constants in §4.6 and, where possible,
 | `soda.py`, `test_soda.py` | reference implementation, **behind** on D1–D3 | decision-point checks via `verify_traces.py`; must be updated per §8.2 |
 | `AdaptiveController.cs` (working tree) | **the code** | every [code] tag above |
 | `AdaptiveController.cs` (`origin/main` `0fee0a3`) | stale — pre-SODA | nothing; §8.1 |
+
+---
+
+## Appendix C0 — Batch configuration (as of 10 Sep 2026, evening)
+
+| Item | Value | Provenance |
+|---|---:|---|
+| Scenarios | **4** — MorningPeak, EveningPeak, MiddayNormal, ABACEvent | Night removed 10 Sep by Kimmy: all its rates were placeholder levels and night traffic is outside the project's question. It remains as T12 in the manual test library. [code `ScenarioManager.LoadABACScenarioPreset`] [test GeometryTest §10 — preset count 4, no "Night"] [test SceneAuditTest — the scene's serialized list has 4 entries and no "Night"] |
+| Repetitions per scenario | 27 | [code `BATCH_REPETITIONS`] |
+| Controllers | Fixed, Adaptive (SODA) | |
+| **Runs** | **4 × 27 × 2 = 216** | |
+| Per run | 120 s warm-up (discarded) + 1,800 s measured | [code `BATCH_WARMUP`, `BATCH_RUN_DURATION`] |
+| Pairing | `seed = StableHash(scenario) + rep × 31`; Fixed and Adaptive of the same (scenario, rep) share it | [code `RunSingleExperiment`] |
+| `simulationSpeed` | **10×** (5× for a few hours on 10 Sep, then back to 10×) | Kimmy observed vehicles overrunning lanes and stop lines at 10×; 2× clean, 5× acceptable by eye. Root cause: `CarAgent` integrated once per frame with `Time.deltaTime`, so at 10× / 60 fps each step was 0.167 s ≈ 2.3 m for a 14 m/s vehicle. **Fixed 10 Sep by sub-stepping** — every frame is split into steps of at most `CarAgent.MAX_STEP` = 0.02 s, so decision resolution no longer depends on timeScale. [code `CarAgent.Update` / `Step` / `SubStepsFor`] [test GeometryTest §10 — 1×→1 step, 5×→5, 10×→9, cap 50] With sub-stepping in place Kimmy set the batch back to 10× (10 Sep, evening); at 10× / 60 fps each frame is split into 9 steps of ≤ 0.02 s (≈ 0.26 m per step at 14 m/s). The 1× / 5× / 10× same-seed check (§8.6) is still owed; if it diverges by more than ~5 % the batch stops and restarts at 5×. |
+| MiddayNormal CB / CA | **10.1 s / 13.2 s** mean interval | [measured — Itim, 10 Sep]. Until 10 Sep the scenario still carried the placeholder `low` = 7 s, although `SIM_HANDOFF_v1` §9 claimed the measured values were "used" — that claim was wrong. [test SceneAuditTest — reads 10.1 / 13.2 from the scene] |
+| Wall-clock estimate | 216 × 1,920 s = 414,720 s of simulation → **≈ 11.5 h at 10×** (≈ 23 h at 5×), plus Unity frame overhead — the on-screen estimate is the authority | arithmetic |
 
 ---
 
