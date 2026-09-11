@@ -279,6 +279,15 @@ public class AdaptiveController : MonoBehaviour
         snapshotLoop = null;
         activeGroup.Clear();
         continuousGreenTimer = 0f;
+
+        // ⭐ 11 ก.ย. 2026 — ล้างตัวนับ SODA ด้วย
+        //    ScenarioManager เรียก ForceStop() ก่อนรันรอบ Fixed แต่เดิมไม่ได้ล้างตรงนี้
+        //    แถว Fixed ใน summary_all_runs.csv จึงแบกค่าของ Adaptive รอบก่อนหน้ามาทั้งดุ้น
+        //    (ตรวจ batch 216 รอบแล้วตรงกันเป๊ะ 107 จาก 108 แถว)
+        collectCount = 0; collectTotalDuration = 0f;
+        skippedHeadTotal = 0; queueStartResets = 0;
+        tieBreaksApplied = 0; tieBreaksExcludingBx = 0;
+        phaseCounter = 0;
         SetAllRed();
         state = EyeState.AllRedIdle;
         statusText = "Stopped";
@@ -394,9 +403,12 @@ public class AdaptiveController : MonoBehaviour
 
     void TraceBegin()
     {
+        // ⭐ 11 ก.ย. 2026 — phaseCounter ต้องเดินก่อน early return
+        //    ตอน batch เราปิด showDecisionPanel ทุกรอบ เลขเฟสจึงค้างที่ 0 ทั้งไฟล์
+        //    (คอลัมน์ PhaseIndex ใน phases_*.csv ของ batch 216 รอบเป็น 0 หมดด้วยเหตุนี้)
+        phaseCounter++;
         if (!showDecisionPanel) return;
         EnsureTrace();
-        phaseCounter++;
         foreach (TraceStep t in trace) { t.options.Clear(); t.verdict = ""; t.resolved = false; }
         queueView.Clear();
         activeStepId = "";
@@ -646,6 +658,8 @@ public class AdaptiveController : MonoBehaviour
             if (h.lastCount == 0 && !ContainsAny(nextGroup, h.signals)) skippedHeadTotal++;
 
         // ===== clearance: ตัดเฉพาะเลนที่ต้องเปลี่ยนเป็นแดง =====
+        // เก็บไว้ก่อน activeGroup ถูกเขียนทับ — ใช้รีเซ็ตนาฬิกาของ "หัวที่เพิ่งได้เขียวไป"
+        List<int> servedLastPhase = new List<int>(activeGroup);
         List<int> dropping = Except(activeGroup, nextGroup);
         if (dropping.Count > 0)
         {
@@ -666,6 +680,17 @@ public class AdaptiveController : MonoBehaviour
             continuousGreenTimer = 0f;
         SetGroupState(turningOn, TrafficLight.LightState.Green);
         activeGroup = new List<int>(nextGroup);
+
+        // ⭐ 11 ก.ย. 2026 — หัวที่ "อยู่ในกลุ่มต่อเนื่อง" ต้องรีเซ็ตนาฬิกาด้วย ไม่ใช่แค่หัวที่หลุด
+        //    ก่อนหน้านี้รีเซ็ตเฉพาะ dropping หัวที่ไม่เคยหลุดกลุ่มจึงถือ queueStart เก่าค้าง
+        //    ไม่จำกัดเวลา แล้วชนะทั้ง Q1 (FindStarvingHead) และ Q2 (ChooseLeaderByQueueStart)
+        //    ตลอดกาล — หัวที่อดจริงไม่มีวันได้คิว
+        //    หลักฐาน: phases_Adaptive_EveningPeak_Rep17 t=1104.6->1470.2 (365.5 วิ) H_B อยู่ใน
+        //    กลุ่มติดกัน 24 เฟส H_CB ไม่ได้ไฟเลย รถ CB รอสูงสุด 344 วิ (maxWaitTime = 45)
+        //    ความหมายที่ถูกต้องของ queueStart = "รอมานานแค่ไหนนับจากครั้งล่าสุดที่ได้ไฟเขียว"
+        //    [test QueueClockTest]
+        ResetContinuingHeads(servedLastPhase, dropping);
+
         groupZeroStreak = 0;
         laneEmptyAt.Clear();
         phaseStartTime = Time.time;
@@ -765,6 +790,15 @@ public class AdaptiveController : MonoBehaviour
     /// บั๊กนี้ไม่โผล่ตอนเทสรถน้อย เพราะทุกเลนว่างเป็นระยะแล้ว queueStart reset เอง
     /// แต่พังทันทีตอน MorningPeak — จึงมีเทสเฉพาะ (QueueStartTest)
     /// </summary>
+    /// <summary>
+    /// รีเซ็ตนาฬิกาคิวของหัวที่ "อยู่ในกลุ่มต่อเนื่อง" คือได้ไฟเขียวไปอีกเฟสโดยไม่เคยกลายเป็นแดง
+    /// แยกเป็นเมธอดสาธารณะเพื่อให้ QueueClockTest เรียกลำดับเดียวกับ ServeOnePhase ได้จริง
+    /// </summary>
+    public void ResetContinuingHeads(List<int> servedLastPhase, List<int> dropping)
+    {
+        ResetQueueStartFor(Except(servedLastPhase, dropping));
+    }
+
     public void ResetQueueStartFor(List<int> signals)
     {
         foreach (SignalHead h in heads)

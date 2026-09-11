@@ -1,8 +1,10 @@
 # verify_traces.py — drive soda.py through every decision point of SODA_BASELINE.md §5.
 # Run from the folder that contains soda.py:  python3 verify_traces.py
-# Lines marked "bypassing window" exist only because soda.py still carries the counting window (D1).
-"""Drive soda.py through the decision points of S1-S5 and the spec worked example.
-soda.py has no COLLECT phase, so only Q1-Q4 decisions and end_phase resets are checked here."""
+#
+# 11 Sep 2026 — the counting-window bypasses were removed: Itim closed §8.2, so soda.py no
+# longer has waited_once / waiting_until, and setting them would now raise. COLLECT exists
+# in soda.py as of that update, so the S1 hold that used to appear here is gone.
+"""Drive soda.py through the decision points of S1-S5 and the spec worked example."""
 import soda
 inf = float("inf")
 HEADS = ["A", "A2", "B", "Bx", "CB"]
@@ -21,13 +23,10 @@ def show(tag, d):
 
 print("== S1: CB=1 at t=11.0 (post-COLLECT) ==")
 s = mk({"CB": 1}, {"CB": 4.0})
-d = s.decide(11.0)
-print("  soda.py decide ->", d, "   <- None means counting-window hold (not in C#)")
-s.waited_once = True; s.waiting_until = None   # bypass soda.py's counting window
-d = s.decide(11.0); show("bypassing window", d)
+d = s.decide(11.0); show("S1", d)
 
 print("== S2: A=1 (qs 2.0), B=1 (qs 4.0) at t=4.0 ==")
-s = mk({"A": 1, "B": 1}, {"A": 2.0, "B": 4.0}); s.waited_once = True
+s = mk({"A": 1, "B": 1}, {"A": 2.0, "B": 4.0})
 d = s.decide(4.0); show("S2", d)
 
 print("== S3: Bx=4 (qs 2.0) at t=2.0 ==")
