@@ -189,8 +189,8 @@ public class SodaTest
         // ===============================================================================
         Console.WriteLine("\n=== เทส 3: ตัด tracker ออกจริงไหม ===");
         {
-            string src = File.Exists("Scripts/AdaptiveController.cs")
-                       ? File.ReadAllText("Scripts/AdaptiveController.cs") : null;
+            string src = File.Exists("Assets/Scripts/AdaptiveController.cs")
+                       ? File.ReadAllText("Assets/Scripts/AdaptiveController.cs") : null;
             Check(src != null, "อ่านไฟล์ AdaptiveController.cs ได้");
 
             if (src != null)
@@ -214,7 +214,7 @@ public class SodaTest
             }
 
             // DataLogger ยังต้องใช้ ground truth ต่อไป — ตัวแปรตามของการทดลอง ไม่ใช่ input ของ controller
-            string roiSrc = File.Exists("Scripts/ROIZone.cs") ? File.ReadAllText("Scripts/ROIZone.cs") : "";
+            string roiSrc = File.Exists("Assets/Scripts/ROIZone.cs") ? File.ReadAllText("Assets/Scripts/ROIZone.cs") : "";
             Check(roiSrc.Contains("GetOldestArrivalTime"),
                   "ROIZone ยังเก็บ API ตัวติดตามไว้ (DataLogger ใช้วัดผล ไม่ใช่ controller ใช้ตัดสินใจ)");
             Check(roiSrc.Contains("car.assignedLane"),
@@ -304,20 +304,20 @@ public class SodaTest
 
             // regression: SimulationControlPanel.hideLegacyDebugGUI ปิด showDebugGUI ตั้งแต่ Start
             // ถ้า OnGUI ยัง return เพราะ showDebugGUI อย่างเดียว แผงนี้จะไม่มีวันโผล่ (เคยพลาดมาแล้ว)
-            string ctl = File.Exists("Scripts/AdaptiveController.cs")
-                       ? File.ReadAllText("Scripts/AdaptiveController.cs") : "";
+            string ctl = File.Exists("Assets/Scripts/AdaptiveController.cs")
+                       ? File.ReadAllText("Assets/Scripts/AdaptiveController.cs") : "";
             Check(ctl.Contains("!showDebugGUI && !showDecisionPanel"),
                   "OnGUI ออกก็ต่อเมื่อปิดทั้งสองแผง — แผง trace ไม่ผูกกับ showDebugGUI");
             Check(!ctl.Contains("if (!showDebugGUI || !Application.isPlaying"),
                   "ไม่เหลือเงื่อนไขเดิมที่ปิดแผง trace ไปด้วย");
 
-            string sm = File.Exists("Scripts/ScenarioManager.cs")
-                      ? File.ReadAllText("Scripts/ScenarioManager.cs") : "";
+            string sm = File.Exists("Assets/Scripts/ScenarioManager.cs")
+                      ? File.ReadAllText("Assets/Scripts/ScenarioManager.cs") : "";
             Check(sm.Contains("showDecisionPanel = false"),
                   "batch 270 รอบต้องปิดแผงนี้ (ไม่สร้าง string ทิ้งทุกเฟสโดยไม่มีใครดู)");
 
-            string cp = File.Exists("Scripts/SimulationControlPanel.cs")
-                      ? File.ReadAllText("Scripts/SimulationControlPanel.cs") : "";
+            string cp = File.Exists("Assets/Scripts/SimulationControlPanel.cs")
+                      ? File.ReadAllText("Assets/Scripts/SimulationControlPanel.cs") : "";
             Check(cp.Contains("showDecisionPanel"),
                   "มีปุ่มเปิด/ปิดในแผงควบคุม ไม่ต้องจำ hotkey");
 
@@ -396,8 +396,8 @@ public class SodaTest
             ac6.Snapshot(); ac6.Snapshot(); ac6.Snapshot();
             Check(ac6.SnapshotIndex == i0 + 3, $"snapshotIndex เดินขึ้นทุกครั้งที่ถ่าย ({i0} -> {ac6.SnapshotIndex})");
 
-            string ctl6 = File.Exists("Scripts/AdaptiveController.cs")
-                        ? File.ReadAllText("Scripts/AdaptiveController.cs") : "";
+            string ctl6 = File.Exists("Assets/Scripts/AdaptiveController.cs")
+                        ? File.ReadAllText("Assets/Scripts/AdaptiveController.cs") : "";
             string code6 = Regex.Replace(ctl6, @"//.*?$", "", RegexOptions.Multiline);
             code6 = Regex.Replace(code6, @"/\*.*?\*/", "", RegexOptions.Singleline);
 
@@ -417,8 +417,8 @@ public class SodaTest
         // ===============================================================================
         Console.WriteLine("\n=== เทส 7: ตัวสะสมดีมานด์ตัวเดียว ===");
         {
-            string ctl7 = File.Exists("Scripts/AdaptiveController.cs")
-                        ? File.ReadAllText("Scripts/AdaptiveController.cs") : "";
+            string ctl7 = File.Exists("Assets/Scripts/AdaptiveController.cs")
+                        ? File.ReadAllText("Assets/Scripts/AdaptiveController.cs") : "";
             string code7 = Regex.Replace(ctl7, @"//.*?$", "", RegexOptions.Multiline);
             code7 = Regex.Replace(code7, @"/\*.*?\*/", "", RegexOptions.Singleline);
 

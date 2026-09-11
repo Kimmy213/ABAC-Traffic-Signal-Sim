@@ -149,7 +149,7 @@ public class QueueClockTest
               "ForceStop ล้างตัวนับ -> แถว Fixed ไม่แบกค่าของ Adaptive รอบก่อนหน้า");
 
         // ---- กันไม่ให้หายไปจาก production: ServeOnePhase ต้องเรียก ResetContinuingHeads จริง ----
-        string src = System.IO.File.ReadAllText("Scripts/AdaptiveController.cs");
+        string src = System.IO.File.ReadAllText("Assets/Scripts/AdaptiveController.cs");
         int serve = src.IndexOf("IEnumerator ServeOnePhase");
         int after = serve >= 0 ? src.IndexOf("IEnumerator GreenPhaseWithInterrupts", serve) : -1;
         string body = (serve >= 0 && after > serve) ? src.Substring(serve, after - serve) : "";

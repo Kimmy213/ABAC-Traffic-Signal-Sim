@@ -42,3 +42,6 @@ sysinfo.txt
 # Unity crash-recovery snapshots (stale scene copies)
 Assets/_Recovery/
 Assets/_Recovery.meta
+
+# ผลคอมไพล์ของชุดเทสนอก Unity
+Tests/harness/_build/
