@@ -1,0 +1,7 @@
+ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents,StartupLostTime,SaturationHeadway,SnapshotInterval,CollectCount,CollectDuration,SkippedHeads,QueueStartResets,IdleLaneSeconds,TieBreaksApplied,TieBreaksExcludingBx
+Fixed,MorningPeak_Rep1,2026-09-11 23:52:03,859,868,22.23,92.78,0,2.95,2.31,2.0,0,0.0,0,0,0.0,0,0
+Adaptive,MorningPeak_Rep1,2026-09-12 00:24:04,859,868,12.90,46.96,6,2.95,2.31,2.0,4,13.0,237,132,1094.1,12,6
+Fixed,MorningPeak_Rep1,2026-09-12 00:35:15,859,867,22.28,92.72,0,2.95,2.31,2.0,0,0.0,0,0,0.0,0,0
+Adaptive,MorningPeak_Rep1,2026-09-12 00:41:39,859,870,12.73,43.06,2,2.95,2.31,2.0,3,13.0,230,140,1130.6,20,8
+Fixed,MorningPeak_Rep1,2026-09-12 01:38:44,859,868,22.33,92.84,0,2.95,2.31,2.0,0,0.0,0,0,0.0,0,0
+Adaptive,MorningPeak_Rep1,2026-09-12 01:41:56,859,870,13.31,44.68,8,2.95,2.31,2.0,3,4.0,224,129,1236.3,15,5

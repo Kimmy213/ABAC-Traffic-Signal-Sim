@@ -1,0 +1,13 @@
+ABAC TRAFFIC SIGNAL SIMULATION — Batch Run Summary
+Saved 2026-09-12 01:35:08
+Runs: 2 / 2
+Wall-clock: 12m 48s
+
+Scenario         Pairs     Fixed   Adaptive    Impr%   MaxFixed   MaxAdapt
+--------------------------------------------------------------------------
+MorningPeak         1     22.28      12.73    42.9%      92.72      43.06
+--------------------------------------------------------------------------
+ALL SCENARIOS              22.28      12.73    42.9%
+
+Note: figures are mean waiting time per vehicle, in seconds.
+For significance testing, run Analysis/analyze_results.py against the CSV output.
