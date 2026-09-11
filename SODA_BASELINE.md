@@ -4,8 +4,9 @@
 
 | | |
 |---|---|
+| **Document version** | **v1.4** — 11 September 2026 (see Revision history below) |
 | **Owners** | Kimmy (Module B — Unity simulation, `AdaptiveController.cs`) · Itim / Ratchnon (Module A — detection, `soda.py`) |
-| **Baseline date** | 10 September 2026 |
+| **Frozen spec date** | 10 September 2026 — §1–§7 and Appendix A have not changed since v1.0 |
 | **Supersedes** | `SODA_SPEC_kimmy.md` (v1.0 design), `SODA_v1.1_AS_BUILT.md` (10 Sep), `SODA_Algorithm_Specification.md` |
 | **Companion files** | `soda_reference_trace.json` (machine-readable S1–S5) · `Tests/verify_traces.py` (drives `soda.py` through every decision point below) |
 | **Milestones** | Exhibition 25 Sep 2026 · Defence 14–16 Oct 2026 |
@@ -14,7 +15,26 @@
 > **[code]** file and function · **[test]** the test that fails if the claim is false · **[measured]** the measurement, its sample size and date · **[tuned]** the value, who chose it, and on what grounds.
 > A claim that could not be tagged was either removed or moved to §8 (open) or Appendix A (could not verify).
 
-> ⚠️ **Read §8.1 before anything else.** The `AdaptiveController.cs` on `origin/main` (commit `0fee0a3`) is **not** SODA. It is the pre-SODA controller — rest-in-green, per-vehicle tracker calls, counting window, `gapOutDelay = 3`. SODA v1.1 exists only in Kimmy's uncommitted working tree. The file Itim received and reviewed was the old one. Nothing in this document is true of `origin/main` until that commit lands.
+---
+
+## Revision history
+
+Every edit to this file gets a version number and a date here, before anything else changes. This table tracks **the document**; the change log in §9 tracks **the project** (code, algorithm, experiment inputs). An edit that changes nothing but wording still gets a row.
+
+| Version | Date | What changed | Sections touched | By |
+|---|---|---|---|---|
+| v1.0 | 10 Sep 2026 | First frozen baseline. Reconciled four earlier documents; every claim tagged [code] / [test] / [measured] / [tuned]; traces S1–S5 verified against `soda.py`. | all | Kimmy |
+| v1.1 | 10 Sep 2026 (evening) | Batch speed 5× → 10× after `CarAgent` sub-stepping removed the overrun that had forced 5×. Wall-clock estimate 23 h → 11.5 h. §8.6 left open: the 1× / 5× / 10× same-seed check is still owed. | Appendix C0, §8.6, §9 change log | Kimmy |
+| v1.2 | 11 Sep 2026 | Batch v1 (216 runs) completed and analysed; results recorded. Opened §8.7 (defect found in the output) and §8.8 (two measurement defects). No spec change. | §8, §9 change log | Kimmy |
+| v1.3 | 11 Sep 2026 | §8.7 re-classified after checking §4 against `soda.py`: the defect is a **Unity implementation bug**, not an algorithm change — §4 and `end_phase()` were both already correct, so no §9.1 vote applies. Wording of §8.7 and its change-log line corrected. | §8.7, §9 change log | Kimmy |
+
+| v1.4 | 11 Sep 2026 | §8.1 closed. `origin/main` now carries SODA — the pre-SODA warning banner at the top, the §8.1 row, decision D7 and the file-status table all still said it did not. Verified from the repository's own refs: `refs/heads/main` = `refs/remotes/origin/main` = `2b893e5`, reached through `e65b7d8` (10 Sep, SODA + 10× batch) and two commits on 11 Sep, all authored by Kimmy213. | header banner, §8.1, Appendix A D7, Appendix B file table | Kimmy |
+
+> **§1–§7 and Appendix A are unchanged since v1.0.** Every version above touched only the open-items register (§8), the change log (§9), Appendix C0, the repository-status notes, or wording. The algorithm, the formulas, the measured constants and the worked traces are as they were frozen on 10 September.
+
+---
+
+> ✅ **`origin/main` carries SODA (closed 11 Sep 2026, v1.4).** Until 10 September this document opened with a warning that `origin/main` (`0fee0a3`) still held the pre-SODA controller — rest-in-green, per-vehicle tracker calls, counting window, `gapOutDelay = 3` — and that the file Itim had reviewed was that old one. That is no longer true. `e65b7d8` pushed SODA v1.1 and the 10× batch configuration; `main` and `origin/main` now both point at `2b893e5`. A fresh clone gets the controller this document describes. See §8.1 and Appendix A D7 for what the discrepancy was, since it is the reason several "code wins" resolutions read the way they do.
 
 ---
 
@@ -432,7 +452,7 @@ The real installation drops every head to red when empty; the simulator now does
 
 | # | Question | Owner | Deadline | What closes it |
 |---|---|---|---|---|
-| 8.1 | **The SODA v1.1 controller is uncommitted.** `origin/main` (`0fee0a3`) still carries the pre-SODA `AdaptiveController.cs`; every result reported from a fresh clone would be the old controller. | Kimmy | **before the batch launches** | `git commit` + `git push` of `AdaptiveController.cs`, `DataLogger.cs`, `ROIZone.cs`, `SampleScene.unity`, `Tests/`; Itim confirms `grep ORIGINAL_SEQUENCE Assets/Scripts/AdaptiveController.cs` on a fresh pull. |
+| ~~8.1~~ | ~~**The SODA v1.1 controller is uncommitted.** `origin/main` (`0fee0a3`) still carries the pre-SODA `AdaptiveController.cs`.~~ **Closed 11 Sep 2026.** Pushed as `e65b7d8` on 10 Sep together with the 10× batch configuration; `main` and `origin/main` both at `2b893e5` as of 11 Sep, all commits authored by Kimmy213. A fresh clone now gets SODA. | Kimmy | done | `grep ORIGINAL_SEQUENCE Assets/Scripts/AdaptiveController.cs` on a fresh pull returns the tie-break array — Itim's confirmation is still worth having, but the push itself is verified from the repository refs. |
 | 8.2 | `soda.py` is behind the baseline: it keeps the counting window and fires gap-out one snapshot late (Appendix A, D1–D2), and has no COLLECT. | Itim | before S1–S5 are cited in the report | `verify_traces.py` passes without the window bypass; `test_soda.py` updated; COLLECT + early exit added so S1–S3 timings reproduce end to end. |
 | ~~8.3~~ | ~~Starvation tie direction in C# is the reverse of the agreed Q2 tie-break.~~ **Closed 10 Sep:** `FindStarvingHead` now uses `CompareHeads`; behaviour change made before the batch per §9.3. `soda.py` already used this direction, so D3 is closed on both sides. | Kimmy | done | SodaTest §9 |
 | 8.4 | Per-lane gap-out (S5). | both | after the batch, from `IdleLaneSeconds` | If the per-run mean exceeds ~5 % of the 1,680 s measured window (≈ 84 s), implement and re-run; else report as future work with the measured figure. |
@@ -450,7 +470,7 @@ This baseline is frozen for the 216-run batch, not forever. A frozen specificati
 1. **Who.** Either owner may propose; both must agree. Disagreement is recorded in §8 with a deadline, not resolved by silence.
 2. **What counts as evidence.** A proposal names the section, the current text, the replacement, and one of: a failing test with its output, a log column from a completed run with the value, a field measurement with sample size and date, or a code excerpt showing the document is wrong about the code. Opinion is not evidence.
 3. **Behaviour vs. measurement.** A change that alters what the controller *does* (a rule, a threshold, a tie-break) invalidates every run made before it and must be dated relative to the batch: **before** it, or **after** it with a re-run. A change that only *records* more (a log column, a counter) may land at any time. §6.3 and §4.2 were behaviour changes made before the batch; `IdleLaneSeconds` and the tie counters were measurement changes.
-4. **Where it lands.** Amend this file in place, bump the baseline date in the header, add one line to the change log below, and re-run `run_tests.sh` (8 suites + 2 compile passes) and `verify_traces.py`. Both must be green before the change is announced.
+4. **Where it lands.** Amend this file in place, **bump the document version and add a row to the Revision history at the top** (version, date, what changed, sections touched, who), add one line to the change log below if the project itself changed, and re-run `run_tests.sh` (8 suites + 2 compile passes) and `verify_traces.py`. Both must be green before the change is announced. A version number is never reused and never skipped, so any two copies of this file can be compared by their header alone.
 5. **What never changes without a re-run.** ℓ₁, h, the conflict matrix, the seeded per-lane RNG, and the rule that the logger records `car.assignedLane`. These define the experiment; changing any of them starts a new one.
 
 ### Change log
@@ -498,7 +518,7 @@ Everything below was recomputed from the constants in §4.6 and, where possible,
 | **D4** | Head model. `soda.py` treats A2 as its own head (5 heads); C# has 4 heads with H_A = A + A2 and can never select "A2" alone as leader. | Code wins. For Q4 both take a per-signal max, so G agrees; only leader eligibility differs, and only when A reads 0 and A2 > 0. Not exercised by S1–S5. |
 | **D5** | `SODA_SPEC_kimmy.md`: 5 s idle sampling; stop sampling detected heads; four ordering rules; counting window. | All superseded. §6.1, §6.3. The uploaded `AdaptiveController.cs` still matches this spec, which is how it was identified as pre-SODA. |
 | **D6** | `SODA_v1.1_AS_BUILT.md` §8 says the tie-break is open; the code now implements Option A. | Document was behind the code by one day. Closed here, §4.2. |
-| **D7** | The uploaded `AdaptiveController.cs` (from `origin/main`) has `gapOutDelay = 3f`, `countingWindow`, `GetOldestArrivalTime`, rest-in-green. | **It is not SODA.** §8.1. Every "code wins" resolution above refers to the working-tree file that contains `ORIGINAL_SEQUENCE`, `gapOutSnapshots = 2`, `collectWindow = 7`. |
+| **D7** | The `AdaptiveController.cs` Itim reviewed (from `origin/main` at `0fee0a3`) had `gapOutDelay = 3f`, `countingWindow`, `GetOldestArrivalTime`, rest-in-green. | **It was not SODA**, which is why every "code wins" resolution above refers to the file containing `ORIGINAL_SEQUENCE`, `gapOutSnapshots = 2`, `collectWindow = 7`. **Historical since 11 Sep (v1.4):** that file is now what `origin/main` carries — §8.1 closed. The resolutions are unaffected; only the reason for the caveat has expired. |
 
 ### A.3 Where this author's own earlier drafts were wrong
 
@@ -528,8 +548,8 @@ Everything below was recomputed from the constants in §4.6 and, where possible,
 | `SODA_Algorithm_Specification.md` | superseded | same |
 | `SODA_v1.1_AS_BUILT.md` (10 Sep) | superseded by this file | nothing — its content is here with §8 closed and D2 clarified |
 | `soda.py`, `test_soda.py` | reference implementation, **behind** on D1–D3 | decision-point checks via `verify_traces.py`; must be updated per §8.2 |
-| `AdaptiveController.cs` (working tree) | **the code** | every [code] tag above |
-| `AdaptiveController.cs` (`origin/main` `0fee0a3`) | stale — pre-SODA | nothing; §8.1 |
+| `AdaptiveController.cs` (working tree = `origin/main`, `2b893e5`) | **the code** | every [code] tag above |
+| `AdaptiveController.cs` (`0fee0a3`, superseded 10 Sep) | historical — pre-SODA | nothing; kept only to explain D5 and D7 |
 
 ---
 
