@@ -68,6 +68,12 @@ SCHEMA_7 = ["ControllerType", "Scenario", "RunTimestamp",
 SCHEMA_8 = ["ControllerType", "Scenario", "RunTimestamp",
             "TotalSpawned", "VehiclesCleared", "AvgWaitTime", "MaxWaitTime", "StarvationEvents"]
 
+# 18 คอลัมน์ = สคีมาปัจจุบัน ตรงกับ DataLogger.cs:179 (เพิ่มตัววัดของ SODA เมื่อ 10 ก.ย. 2026)
+SCHEMA_18 = SCHEMA_8 + [
+    "StartupLostTime", "SaturationHeadway", "SnapshotInterval",
+    "CollectCount", "CollectDuration", "SkippedHeads", "QueueStartResets",
+    "IdleLaneSeconds", "TieBreaksApplied", "TieBreaksExcludingBx"]
+
 
 def load_summary(d):
     """
@@ -89,7 +95,9 @@ def load_summary(d):
                 continue
 
             f = [x.strip() for x in line.split(",")]
-            schema = SCHEMA_8 if len(f) == len(SCHEMA_8) else SCHEMA_7 if len(f) == len(SCHEMA_7) else None
+            schema = (SCHEMA_18 if len(f) == len(SCHEMA_18)
+                      else SCHEMA_8 if len(f) == len(SCHEMA_8)
+                      else SCHEMA_7 if len(f) == len(SCHEMA_7) else None)
             if schema is None:
                 skipped += 1
                 continue
@@ -104,8 +112,11 @@ def load_summary(d):
         sys.exit(f"ไม่มีข้อมูลที่อ่านได้ใน {path}")
 
     df = pd.DataFrame(rows)
-    for c in ["TotalSpawned", "VehiclesCleared", "AvgWaitTime", "MaxWaitTime", "StarvationEvents"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+    for c in ["TotalSpawned", "VehiclesCleared", "AvgWaitTime", "MaxWaitTime",
+              "StarvationEvents", "QueueStartResets", "IdleLaneSeconds",
+              "TieBreaksApplied", "TieBreaksExcludingBx", "SkippedHeads", "CollectCount"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
 
     if len(counts) > 1:
         print(f"  ! ไฟล์นี้มีหลายสคีมาปนกัน {counts} "
@@ -177,7 +188,7 @@ def interpret_d(d):
     return "large"
 
 
-def ttest_block(m, col, label, out):
+def ttest_block(m, col, label, out, higher_is_better=False):
     """คืน dict ผลการทดสอบ และเขียนรายงานลง out"""
     fx = m[f"{col}_fixed"].astype(float)
     ad = m[f"{col}_adapt"].astype(float)
@@ -218,8 +229,11 @@ def ttest_block(m, col, label, out):
     out.append(f"  Shapiro-Wilk ของผลต่าง   : p = {p_norm:.6g}"
                + ("  (ผลต่างไม่ normal -> อ้างอิง Wilcoxon ด้วย)" if (not np.isnan(p_norm) and p_norm < 0.05) else ""))
 
-    verdict = "Adaptive ดีกว่าอย่างมีนัยสำคัญ" if (p < 0.05 and diff.mean() > 0) else \
-              "Fixed ดีกว่าอย่างมีนัยสำคัญ" if (p < 0.05 and diff.mean() < 0) else \
+    # diff = Fixed - Adaptive. สำหรับเวลารอ "น้อยกว่าดีกว่า" -> diff > 0 แปลว่า Adaptive ชนะ
+    # แต่ throughput "มากกว่าดีกว่า" -> ต้องกลับด้าน ไม่งั้นรายงานว่า Fixed ชนะทั้งที่ระบายได้น้อยกว่า
+    adaptive_wins = (diff.mean() < 0) if higher_is_better else (diff.mean() > 0)
+    verdict = "Adaptive ดีกว่าอย่างมีนัยสำคัญ" if (p < 0.05 and adaptive_wins) else \
+              "Fixed ดีกว่าอย่างมีนัยสำคัญ" if (p < 0.05 and not adaptive_wins) else \
               "ไม่ต่างกันอย่างมีนัยสำคัญ (p >= 0.05)"
     out.append(f"  => {verdict}")
 
@@ -396,7 +410,7 @@ def main():
 
     if "VehiclesCleared_fixed" in m.columns:
         out.append("\n\n### 3. THROUGHPUT (รถที่ระบายได้) ###")
-        ttest_block(m, "VehiclesCleared", "Vehicles cleared ต่อ run", out)
+        ttest_block(m, "VehiclesCleared", "Vehicles cleared ต่อ run", out, higher_is_better=True)
 
     # ---------- starvation ----------
     out.append("\n\n### 4. STARVATION EVENTS (success criteria) ###")
