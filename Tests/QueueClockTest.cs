@@ -105,11 +105,9 @@ public class QueueClockTest
         {
             lastPhaseStart = Time.time;
             Time.time += 20f;                 // เฟสละ 20 วิ = ค่าที่ log จริงโดน starvation ตัดพอดี
-            var next = Sig(ac, g);
-            var dropping = Except(active, next);
-            ac.ResetQueueStartFor(dropping);                 // clearance: หัวที่กลายเป็นแดง
-            ac.ResetContinuingHeads(active, dropping);       // หัวที่อยู่ต่อ — ตัวที่เคยลืม
-            active = next;
+            // ลำดับเดียวกับ ServeOnePhase: phase end ของกลุ่มเดิม -> แล้วค่อยตัดสินใจกลุ่มใหม่
+            ac.ResetQueueStartFor(active);
+            active = Sig(ac, g);
         }
 
         float now = Time.time;
@@ -134,6 +132,56 @@ public class QueueClockTest
         Console.WriteLine($"      Q2 ChooseLeaderByQueueStart -> {(leader == null ? "null" : leader.name)}");
         Check(leader == hCB, "Q2 ต้องเลือก H_CB เป็น leader ของเฟสถัดไป");
 
+        // ================================================================
+        // ลำดับ reset เทียบกับการตัดสินใจ — เส้นทางที่เทสเดิมไม่เคยเดิน
+        // ================================================================
+
+        Console.WriteLine("\n--- เคส 1: หัวที่เพิ่งได้เขียว ต้องไม่ชนะ Q2 ซ้ำ ---");
+        var ac3 = MakeController();
+        var a3  = Head(ac3, "H_A");  var b3  = Head(ac3, "H_B");
+        var bx3 = Head(ac3, "H_Bx"); var cb3 = Head(ac3, "H_CB");
+
+        // t=6 : A กับ CB มีรถคันแรกใน snapshot เดียวกัน -> queueStart เท่ากันเป๊ะ
+        Time.time = 6f;
+        a3.lastCount = 1;  a3.queueStart = 6f;
+        cb3.lastCount = 1; cb3.queueStart = 6f;
+        b3.lastCount = 0;  b3.queueStart  = float.PositiveInfinity;
+        bx3.lastCount = 0; bx3.queueStart = float.PositiveInfinity;
+        Check(ac3.ChooseLeaderByQueueStart(null) == a3,
+              "เฟส 1: เสมอกัน -> A ชนะด้วย ORIGINAL_SEQUENCE");
+
+        // t=8 : B กับ Bx เริ่มมีรถ
+        Time.time = 8f;
+        b3.lastCount = 5;  b3.queueStart  = 8f;
+        bx3.lastCount = 5; bx3.queueStart = 8f;
+
+        // t=14 : เฟส 1 (เขียว 8 วิ) จบ -> phase end reset ของ {A, A2} ก่อนตัดสินใจ
+        Time.time = 14f;
+        ac3.ResetQueueStartFor(Sig(ac3, "A", "A2"));
+        var lead2 = ac3.ChooseLeaderByQueueStart(null);
+        Console.WriteLine($"      queueStart: A={a3.queueStart:F1} B={b3.queueStart:F1} " +
+                          $"Bx={bx3.queueStart:F1} CB={cb3.queueStart:F1}");
+        Console.WriteLine($"      Q2 -> {(lead2 == null ? "null" : lead2.name)}");
+        Check(lead2 == cb3,
+              "เฟส 2 ต้องได้ CB (คิวเก่าสุดที่เหลือ) ไม่ใช่ A ที่เพิ่งได้เขียวไป 8 วิ");
+
+        Console.WriteLine("\n--- เคส 2: เขียวยาวต้องไม่ทำให้ตัวเองเข้าเกณฑ์ Q1 ---");
+        var ac4 = MakeController();
+        var a4  = Head(ac4, "H_A");  var bx4 = Head(ac4, "H_Bx"); var cb4 = Head(ac4, "H_CB");
+        Time.time = 0f;
+        foreach (var h in ac4.Heads) { h.lastCount = 4; h.queueStart = 0f; }
+        bx4.lastCount = 0; bx4.queueStart = float.PositiveInfinity;   // Bx ว่าง เหลือ CB ที่อดจริง
+
+        // A+A2+B ได้เขียว 44.53 วิ (D = 18 ชนเพดานพอดี) แล้วยังมีรถเหลือ
+        Time.time = 44.53f;
+        Check(ac4.FindStarvingHead(0.95f, null) == a4,
+              "ก่อน reset: A เข้าเกณฑ์ Q1 ด้วยเวลาที่ตัวเองเป็นไฟเขียว = อาการของบั๊ก");
+        ac4.ResetQueueStartFor(Sig(ac4, "A", "A2", "B"));
+        var st4 = ac4.FindStarvingHead(0.95f, null);
+        Console.WriteLine($"      Q1 หลัง phase-end reset -> {(st4 == null ? "null" : st4.name)}");
+        Check(st4 == cb4,
+              "หลัง reset: Q1 ต้องชี้ CB ที่รอไฟแดงจริง 44.53 วิ ไม่ใช่ A ที่เพิ่งได้เขียว 44.53 วิ");
+
         // ---- ตัวนับต้องถูกล้างเมื่อสลับไปคุม Fixed ----
         Console.WriteLine("\n--- ForceStop ต้องล้างตัวนับ SODA ---");
         var ac2 = MakeController();
@@ -153,8 +201,14 @@ public class QueueClockTest
         int serve = src.IndexOf("IEnumerator ServeOnePhase");
         int after = serve >= 0 ? src.IndexOf("IEnumerator GreenPhaseWithInterrupts", serve) : -1;
         string body = (serve >= 0 && after > serve) ? src.Substring(serve, after - serve) : "";
-        Check(body.Contains("ResetContinuingHeads(servedLastPhase, dropping)"),
-              "ServeOnePhase ยังเรียก ResetContinuingHeads(servedLastPhase, dropping) อยู่");
+        int iReset = body.IndexOf("ResetQueueStartFor(activeGroup)");
+        int iQ1    = body.IndexOf("FindStarvingHead");
+        int iQ2    = body.IndexOf("ChooseLeaderByQueueStart");
+        Check(iReset >= 0, "ServeOnePhase เรียก ResetQueueStartFor(activeGroup) เป็น phase-end reset");
+        Check(iReset >= 0 && iQ1 > iReset, "phase-end reset ต้องอยู่ *ก่อน* Q1 (FindStarvingHead)");
+        Check(iReset >= 0 && iQ2 > iReset, "phase-end reset ต้องอยู่ *ก่อน* Q2 (ChooseLeaderByQueueStart)");
+        Check(!body.Contains("ResetContinuingHeads"),
+              "ต้องไม่เหลือการรีเซ็ตแบบแยกสองที่ (รวมเป็นครั้งเดียวที่ต้นเฟสแล้ว)");
 
         int tb = src.IndexOf("void TraceBegin");
         int tbEnd = tb >= 0 ? src.IndexOf("void TraceEnter", tb) : -1;

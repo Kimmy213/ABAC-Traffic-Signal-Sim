@@ -619,6 +619,20 @@ public class AdaptiveController : MonoBehaviour
         // (เทียบได้กับ D_green ในสเปก SODA ที่นับใหม่ก่อนเปิดไฟเขียวทุกเฟส)
         Snapshot();
         greenTimeRemaining = 0f;   // ยังไม่รู้ G ของเฟสนี้ และกำลังจะผ่าน clearance
+
+        // ===== phase end ของ "เฟสก่อนหน้า" — ต้องอยู่ก่อน Q1/Q2/Q3 เสมอ =====
+        // §9 ของ SODA_MASTER และ end_phase() ของ soda.py วางการรีเซ็ตไว้ก่อน decide()
+        // ตรงนี้ activeGroup ยังเป็นกลุ่มของเฟสที่เพิ่งจบ (ถูกเขียนทับด้วย nextGroup ทีหลัง)
+        //
+        // ⚠️ ห้ามย้ายลงไปหลังการตัดสินใจ (เคยเป็นแบบนั้นจนถึง 14 ก.ย. 2026) เพราะ queueStart
+        //    เดินต่อระหว่างที่หัวนั้นเป็นไฟเขียวอยู่ หัวที่เพิ่งได้เขียวจึงเข้า Q1/Q2 ด้วยนาฬิกา
+        //    ที่รวมเวลาบริการของตัวเองไว้ด้วย ผลคือ
+        //      - ชนะ Q2 ซ้ำได้อีกหนึ่งเฟส ทั้งที่เพิ่งได้ไป
+        //      - ถ้าเขียวยาวเกิน 42.75 วิ (D >= 18) มันจะเข้าเกณฑ์ Q1 แล้วสั่ง starvation
+        //        override ให้ "ตัวเอง" ส่วนหัวที่อดจริงแพ้ tie-break
+        //    วัดจาก batch v2: 30 จาก 11,670 เฟสมี GreenGiven >= 42.75 (ABACEvent ทั้งหมด)
+        ResetQueueStartFor(activeGroup);
+
         TraceDecisionInputs();
 
         // ===== Q1: มีใครใกล้อดตายไหม =====
@@ -670,7 +684,6 @@ public class AdaptiveController : MonoBehaviour
 
         // ===== clearance: ตัดเฉพาะเลนที่ต้องเปลี่ยนเป็นแดง =====
         // เก็บไว้ก่อน activeGroup ถูกเขียนทับ — ใช้รีเซ็ตนาฬิกาของ "หัวที่เพิ่งได้เขียวไป"
-        List<int> servedLastPhase = new List<int>(activeGroup);
         List<int> dropping = Except(activeGroup, nextGroup);
         if (dropping.Count > 0)
         {
@@ -681,12 +694,9 @@ public class AdaptiveController : MonoBehaviour
             statusText = "All-Red clearance";
             SetGroupState(dropping, TrafficLight.LightState.Red);
             activeGroup = Except(activeGroup, dropping);
-            // ⚠️ ครึ่งแรกของกฎ "ทุกหัวที่เพิ่งได้เขียว ต้องรีเซ็ตนาฬิกา" (§4 ของ SODA_BASELINE)
-            //    ครึ่งนี้ = หัวที่หลุดไปเป็นแดง · อีกครึ่ง = ResetContinuingHeads(...) ข้างล่าง
-            //    สองบรรทัดรวมกันจึงครอบ servedLastPhase ทั้งหมด ตรงกับ soda.py ที่วน `for h in self.green`
-            //    ลบอันใดอันหนึ่งออก = บั๊ก C1 กลับมา และครั้งก่อนมันทำให้ EveningPeak มีรถรอ 344 วิ
-            //    [test QueueClockTest] [ref Itim, 12 ก.ย. 2026 — baseline §8.10 coupling (b)]
-            ResetQueueStartFor(dropping);
+            // การรีเซ็ตนาฬิกาของหัวที่เพิ่งได้เขียวทำไปแล้วที่ต้น ServeOnePhase ครอบทั้ง
+            // dropping และหัวที่อยู่ต่อในคราวเดียว — ห้ามเพิ่มกลับมาตรงนี้ จะได้ timestamp
+            // ที่บวก clearance เข้าไปด้วย ซึ่งไม่ตรงกับ soda.py ที่ใช้ t ของตอน decide
             yield return StartCoroutine(CountdownPhase(allRedDuration));
         }
 
@@ -704,10 +714,7 @@ public class AdaptiveController : MonoBehaviour
         //    หลักฐาน: phases_Adaptive_EveningPeak_Rep17 t=1104.6->1470.2 (365.5 วิ) H_B อยู่ใน
         //    กลุ่มติดกัน 24 เฟส H_CB ไม่ได้ไฟเลย รถ CB รอสูงสุด 344 วิ (maxWaitTime = 45)
         //    ความหมายที่ถูกต้องของ queueStart = "รอมานานแค่ไหนนับจากครั้งล่าสุดที่ได้ไฟเขียว"
-        //    [test QueueClockTest]
-        // ⚠️ ครึ่งหลังของกฎเดียวกัน — ดูคอมเมนต์ที่ ResetQueueStartFor(dropping) ข้างบน
-        //    ห้ามลบข้างใดข้างหนึ่ง ทั้งคู่ต้องอยู่ครบถึงจะเท่ากับ "ทุกหัวที่เพิ่งได้เขียว"
-        ResetContinuingHeads(servedLastPhase, dropping);
+        //    [test QueueClockTest] — การรีเซ็ตอยู่ที่ต้น ServeOnePhase แล้ว
 
         groupZeroStreak = 0;
         laneEmptyAt.Clear();
@@ -809,20 +816,6 @@ public class AdaptiveController : MonoBehaviour
     /// บั๊กนี้ไม่โผล่ตอนเทสรถน้อย เพราะทุกเลนว่างเป็นระยะแล้ว queueStart reset เอง
     /// แต่พังทันทีตอน MorningPeak — จึงมีเทสเฉพาะ (QueueStartTest)
     /// </summary>
-    /// <summary>
-    /// รีเซ็ตนาฬิกาคิวของหัวที่ "อยู่ในกลุ่มต่อเนื่อง" คือได้ไฟเขียวไปอีกเฟสโดยไม่เคยกลายเป็นแดง
-    /// แยกเป็นเมธอดสาธารณะเพื่อให้ QueueClockTest เรียกลำดับเดียวกับ ServeOnePhase ได้จริง
-    ///
-    /// ⚠️ เมธอดนี้ครอบแค่ "ครึ่งที่ต่อเนื่อง" ไม่ใช่ทั้งกฎ — `ServeOnePhase` ต้องเรียก
-    ///    `ResetQueueStartFor(dropping)` ด้วย จึงจะครบ servedLastPhase
-    ///    ยูเนียนของสองการเรียก = `for h in self.green` ใน `end_phase` ของ soda.py
-    ///    (รวมกรณี dropping ว่าง ซึ่งบรรทัดแรกไม่ทำงานแต่บรรทัดนี้ครอบเต็ม)
-    /// </summary>
-    public void ResetContinuingHeads(List<int> servedLastPhase, List<int> dropping)
-    {
-        ResetQueueStartFor(Except(servedLastPhase, dropping));
-    }
-
     public void ResetQueueStartFor(List<int> signals)
     {
         foreach (SignalHead h in heads)
