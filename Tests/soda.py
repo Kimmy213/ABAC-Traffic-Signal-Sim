@@ -29,9 +29,16 @@ G_MIN, G_MAX = 8.0, 45.0
 SAMPLE_SEC = 2.0              # the detector reports this often
 YELLOW, ALL_RED = 3.0, 2.0
 
-# 0.95 x maxWaitTime (45 s, LOS D). Fires slightly BEFORE the limit so the
-# guarantee is met rather than merely detected after the fact.
-STARVATION_SEC = 42.75
+# maxWaitTime (45 s, LOS D) is the ONE setting. Both starvation thresholds are
+# derived from it as ratios, exactly as the C# does (baseline §8.10 coupling a):
+# hard-coding 42.75 / 40.5 agreed with Unity only while maxWaitTime stayed 45, and
+# would have diverged silently the moment anyone edited it on either side.
+MAX_WAIT_SEC = 45.0
+STARVATION_RATIO = 0.95       # Q1 — fires slightly BEFORE the limit, so the
+                              # guarantee is met rather than detected afterwards
+ANTI_STARVE_RATIO = 0.90      # interrupt — a little earlier again, so a cut
+                              # green has time to clear before the limit
+STARVATION_SEC = STARVATION_RATIO * MAX_WAIT_SEC         # 42.75
 
 # ── COLLECT — the only demand accumulator (v1.1 §5) ─────────────────────────
 # A ceiling, not a target. More traffic exits EARLIER, never later: a burst of
@@ -59,7 +66,7 @@ GAP_OUT_SNAPSHOTS = 2
 GAP_OUT_SEC = GAP_OUT_SNAPSHOTS * SAMPLE_SEC        # 4.0 s, for reporting only
 
 ANTI_STARVE_MIN_GREEN = 20.0  # only interrupt a green that has run this long
-ANTI_STARVE_OTHER_WAIT = 40.5
+ANTI_STARVE_OTHER_WAIT = ANTI_STARVE_RATIO * MAX_WAIT_SEC   # 40.5
 MAX_CONTINUOUS_GREEN = 90.0
 
 # A and A2 share one physical signal head, so they are always in the same group.

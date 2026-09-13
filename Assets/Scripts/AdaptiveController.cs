@@ -670,6 +670,11 @@ public class AdaptiveController : MonoBehaviour
             statusText = "All-Red clearance";
             SetGroupState(dropping, TrafficLight.LightState.Red);
             activeGroup = Except(activeGroup, dropping);
+            // ⚠️ ครึ่งแรกของกฎ "ทุกหัวที่เพิ่งได้เขียว ต้องรีเซ็ตนาฬิกา" (§4 ของ SODA_BASELINE)
+            //    ครึ่งนี้ = หัวที่หลุดไปเป็นแดง · อีกครึ่ง = ResetContinuingHeads(...) ข้างล่าง
+            //    สองบรรทัดรวมกันจึงครอบ servedLastPhase ทั้งหมด ตรงกับ soda.py ที่วน `for h in self.green`
+            //    ลบอันใดอันหนึ่งออก = บั๊ก C1 กลับมา และครั้งก่อนมันทำให้ EveningPeak มีรถรอ 344 วิ
+            //    [test QueueClockTest] [ref Itim, 12 ก.ย. 2026 — baseline §8.10 coupling (b)]
             ResetQueueStartFor(dropping);
             yield return StartCoroutine(CountdownPhase(allRedDuration));
         }
@@ -689,6 +694,8 @@ public class AdaptiveController : MonoBehaviour
         //    กลุ่มติดกัน 24 เฟส H_CB ไม่ได้ไฟเลย รถ CB รอสูงสุด 344 วิ (maxWaitTime = 45)
         //    ความหมายที่ถูกต้องของ queueStart = "รอมานานแค่ไหนนับจากครั้งล่าสุดที่ได้ไฟเขียว"
         //    [test QueueClockTest]
+        // ⚠️ ครึ่งหลังของกฎเดียวกัน — ดูคอมเมนต์ที่ ResetQueueStartFor(dropping) ข้างบน
+        //    ห้ามลบข้างใดข้างหนึ่ง ทั้งคู่ต้องอยู่ครบถึงจะเท่ากับ "ทุกหัวที่เพิ่งได้เขียว"
         ResetContinuingHeads(servedLastPhase, dropping);
 
         groupZeroStreak = 0;
@@ -793,6 +800,11 @@ public class AdaptiveController : MonoBehaviour
     /// <summary>
     /// รีเซ็ตนาฬิกาคิวของหัวที่ "อยู่ในกลุ่มต่อเนื่อง" คือได้ไฟเขียวไปอีกเฟสโดยไม่เคยกลายเป็นแดง
     /// แยกเป็นเมธอดสาธารณะเพื่อให้ QueueClockTest เรียกลำดับเดียวกับ ServeOnePhase ได้จริง
+    ///
+    /// ⚠️ เมธอดนี้ครอบแค่ "ครึ่งที่ต่อเนื่อง" ไม่ใช่ทั้งกฎ — `ServeOnePhase` ต้องเรียก
+    ///    `ResetQueueStartFor(dropping)` ด้วย จึงจะครบ servedLastPhase
+    ///    ยูเนียนของสองการเรียก = `for h in self.green` ใน `end_phase` ของ soda.py
+    ///    (รวมกรณี dropping ว่าง ซึ่งบรรทัดแรกไม่ทำงานแต่บรรทัดนี้ครอบเต็ม)
     /// </summary>
     public void ResetContinuingHeads(List<int> servedLastPhase, List<int> dropping)
     {
