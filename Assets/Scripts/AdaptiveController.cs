@@ -144,6 +144,8 @@ public class AdaptiveController : MonoBehaviour
     private List<int> activeGroup = new List<int>();
     private EyeState state = EyeState.AllRedIdle;
     private float phaseTimeRemaining = 0f;
+    /// <summary>เหลือกี่วินาทีของไฟเขียวเฟสปัจจุบัน — มีค่าเฉพาะใน GreenPhaseWithInterrupts</summary>
+    private float greenTimeRemaining = 0f;
     private float continuousGreenTimer = 0f;
     private bool forcePhaseChange = false;
     private string statusText = "Idle";
@@ -201,8 +203,13 @@ public class AdaptiveController : MonoBehaviour
     /// <summary>ในจำนวนนั้น กี่เฟสที่ tie-break ตัด H_Bx ออกจากกลุ่ม แทนหัวไฟที่เสมอกับมัน</summary>
     public int   TieBreaksExcludingBx => tieBreaksExcludingBx;
     public EyeState CurrentState    => state;
-    /// <summary>วินาทีที่เหลือของช่วงปัจจุบัน (เขียว/เหลือง/แดงทั้งหมด) — สำหรับแสดงผลเท่านั้น</summary>
-    public float PhaseTimeRemaining => phaseTimeRemaining;
+    /// <summary>
+    /// วินาทีที่เหลือของ "ไฟเขียวเฟสนี้" — สำหรับแสดงผลเท่านั้น
+    /// ⚠️ ห้ามใช้ phaseTimeRemaining แทน เพราะตัวนั้นถูก CountdownPhase เขียนทับด้วยเวลาเหลือง/แดง
+    ///    หัวที่เขียวต่อเนื่องข้ามเฟสจะไปอ่านเวลา clearance ของหัวอื่นมาแสดงว่าเป็นเวลาเขียวของตัวเอง
+    /// เป็น 0 ตลอดช่วงตัดสินใจและ clearance เพราะตอนนั้น G ของเฟสใหม่ยังไม่ถูกคำนวณ
+    /// </summary>
+    public float GreenTimeRemaining => greenTimeRemaining;
     /// <summary>หัวไฟทั้งหมด — เปิดให้เทสตรวจสถานะภายในได้</summary>
     public List<SignalHead> Heads   => heads;
     /// <summary>นับรถของหัวไฟหนึ่งดวง (public เพื่อให้เทสเรียกได้)</summary>
@@ -281,6 +288,7 @@ public class AdaptiveController : MonoBehaviour
         snapshotLoop = null;
         activeGroup.Clear();
         continuousGreenTimer = 0f;
+        greenTimeRemaining = 0f;
 
         // ⭐ 11 ก.ย. 2026 — ล้างตัวนับ SODA ด้วย
         //    ScenarioManager เรียก ForceStop() ก่อนรันรอบ Fixed แต่เดิมไม่ได้ล้างตรงนี้
@@ -610,6 +618,7 @@ public class AdaptiveController : MonoBehaviour
         // ยังเป็นการ "นับอย่างเดียว" เหมือนเดิม แค่สั่งถ่ายตอนต้องใช้แทนที่จะรอ tick ถัดไป
         // (เทียบได้กับ D_green ในสเปก SODA ที่นับใหม่ก่อนเปิดไฟเขียวทุกเฟส)
         Snapshot();
+        greenTimeRemaining = 0f;   // ยังไม่รู้ G ของเฟสนี้ และกำลังจะผ่าน clearance
         TraceDecisionInputs();
 
         // ===== Q1: มีใครใกล้อดตายไหม =====
@@ -730,6 +739,7 @@ public class AdaptiveController : MonoBehaviour
 
         statusText = $"Green — {config.DescribeGroup(activeGroup)}";
         yield return StartCoroutine(GreenPhaseWithInterrupts(activeGroup, greenTime));
+        greenTimeRemaining = 0f;   // ครอบทุกทางออกของ GreenPhaseWithInterrupts รวม gap-out และการตัดกลางคัน
         LogPhaseTrace(greenTime);
     }
 
@@ -839,6 +849,7 @@ public class AdaptiveController : MonoBehaviour
             elapsed += dt;
             continuousGreenTimer += dt;
             phaseTimeRemaining = maxGreenTime - elapsed;
+            greenTimeRemaining = maxGreenTime - elapsed;
 
             // ---- Max green ----
             if (continuousGreenTimer >= maxContinuousGreen && AnyDemandOutside(group))

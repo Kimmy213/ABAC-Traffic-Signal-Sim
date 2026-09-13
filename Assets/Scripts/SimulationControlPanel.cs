@@ -636,17 +636,26 @@ public class SimulationControlPanel : MonoBehaviour
         GUILayout.EndHorizontal();
     }
 
+    // ความกว้างคอลัมน์ของตารางเลน — หัวตารางกับแถวข้อมูลต้องใช้ชุดเดียวกัน
+    const float W_LANE = 32f, W_SIGNAL = 78f, W_QUEUE = 32f, W_OLDEST = 56f;
+
     void DrawLaneTable()
     {
         if (config == null) return;
 
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Lane", sSmall, GUILayout.Width(38));
-        GUILayout.Label("Signal", sSmall, GUILayout.Width(92));
-        GUILayout.Label("Queue", sSmall, GUILayout.Width(42));
-        GUILayout.Label("Oldest car", sSmall, GUILayout.Width(66));
+        // ⚠️ ความกว้างสี่ค่านี้ต้องตรงกับแถวข้อมูลด้านล่างเป๊ะ ไม่งั้นคอลัมน์จะเลื่อนจากหัวตาราง
+        //    รวม 198 จากพื้นที่ใน scroll view ~318 (แผงกว้าง 350 หัก padding กับ scrollbar)
+        //    คอลัมน์สุดท้ายกินที่เหลือ ~120 พอสำหรับ "42.8s H_Bx" โดยไม่ตัดบรรทัด
+        GUILayout.Label("Lane", sSmall, GUILayout.Width(W_LANE));
+        GUILayout.Label("Signal", sSmall, GUILayout.Width(W_SIGNAL));
+        GUILayout.Label("Queue", sSmall, GUILayout.Width(W_QUEUE));
+        GUILayout.Label("Oldest car", sSmall, GUILayout.Width(W_OLDEST));
         GUILayout.Label("Queue clock", sSmall);
         GUILayout.EndHorizontal();
+
+        // SODA รันอยู่จริงไหม — ใช้ทั้งคอลัมน์นับถอยหลังและคอลัมน์นาฬิกาคิว
+        bool sodaLive = adaptiveController != null && adaptiveController.enabled;
 
         // สูงพอสำหรับ 6 เลน ถ้าเพิ่มเลนทีหลังจะเลื่อนดูได้
         laneScroll = GUILayout.BeginScrollView(laneScroll, GUILayout.Height(112));
@@ -659,13 +668,13 @@ public class SimulationControlPanel : MonoBehaviour
             float wait = lane.roi != null ? lane.roi.GetLongestWaitTime() : 0f;
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label(lane.laneName, sMono, GUILayout.Width(34));
+            GUILayout.Label(lane.laneName, sMono, GUILayout.Width(W_LANE));
 
             Color oc = GUI.color;
             if (!lane.isSignalized)
             {
                 GUI.color = new Color(.6f, .6f, .65f);
-                GUILayout.Label("free", sMono, GUILayout.Width(88));
+                GUILayout.Label("free", sMono, GUILayout.Width(W_SIGNAL));
             }
             else
             {
@@ -675,31 +684,35 @@ public class SimulationControlPanel : MonoBehaviour
                           : st == TrafficLight.LightState.Yellow ? new Color(1f, .85f, .2f)
                           : new Color(.95f, .4f, .4f);
 
-                // นับถอยหลังของช่วงปัจจุบัน — เขียวเหลือกี่วิ / เหลืองเหลือกี่วิ
+                // นับถอยหลังของไฟเขียว — ใช้ GreenTimeRemaining ไม่ใช่ PhaseTimeRemaining
+                // เพราะตัวหลังถูกเขียนทับด้วยเวลาเหลือง/แดงของ clearance ทำให้หัวที่เขียวต่อเนื่อง
+                // ข้ามเฟสแสดงเวลา clearance ของหัวอื่นว่าเป็นเวลาเขียวของตัวเอง
                 string left = "";
-                if (adaptiveController != null && adaptiveController.enabled
-                    && st != TrafficLight.LightState.Red)
+                if (sodaLive && st == TrafficLight.LightState.Green)
                 {
-                    float r = adaptiveController.PhaseTimeRemaining;
+                    float r = adaptiveController.GreenTimeRemaining;
                     if (r > 0.05f) left = $" {r:F1}s";
                 }
-                GUILayout.Label("███" + left, sMono, GUILayout.Width(88));
+                GUILayout.Label("███" + left, sMono, GUILayout.Width(W_SIGNAL));
             }
             GUI.color = oc;
 
-            GUILayout.Label(queue.ToString(), sMono, GUILayout.Width(40));
+            GUILayout.Label(queue.ToString(), sMono, GUILayout.Width(W_QUEUE));
 
             // ---- รถคันที่เก่าที่สุดในเลน (ground truth ของซิม) ----
             // ⚠️ ไม่ใช่ตัวเลขที่ controller ใช้ตัดสินใจ ดูคอลัมน์ถัดไป
             if (adaptiveController != null && wait > adaptiveController.maxWaitTime * 0.8f)
                 GUI.color = new Color(1f, .5f, .4f);
-            GUILayout.Label($"{wait:F1} s", sMono, GUILayout.Width(64));
+            GUILayout.Label($"{wait:F1} s", sMono, GUILayout.Width(W_OLDEST));
             GUI.color = oc;
 
             // ---- นาฬิกาคิวของหัวไฟ = ตัวเลขจริงที่ Q1/Q2 ใช้ ----
             // ต่างจากคอลัมน์ซ้ายเพราะเป็นของ "เลน" ไม่ใช่ของ "รถ" และรีเซ็ตทุกครั้งที่ได้เสิร์ฟ
             // เลนที่ไม่เคยว่างจะสะสมนาฬิกาเก่าไว้ ทั้งที่รถในเลนอาจเพิ่งมาถึง (SODA_BASELINE §8.11 note)
-            AdaptiveController.SignalHead head = HeadForLane(lane);
+            // sodaLive: ถ้า SODA ไม่ได้รันอยู่ นาฬิกาจะค้างที่ค่าเดิม (ForceStop ฆ่า SnapshotLoop
+            // แต่ไม่ล้าง queueStart) แล้ว Time.time - queueStart จะไต่ขึ้นไม่หยุด จนขึ้นแดงว่าอดตาย
+            // ทั้งที่ตัวคุมไม่ได้ทำงาน — จึงต้องไม่แสดงเลย
+            AdaptiveController.SignalHead head = sodaLive ? HeadForLane(lane) : null;
             if (!lane.isSignalized || head == null)
             {
                 GUI.color = new Color(.6f, .6f, .65f);
@@ -713,10 +726,9 @@ public class SimulationControlPanel : MonoBehaviour
             else
             {
                 float cw = Time.time - head.queueStart;
-                if (adaptiveController != null
-                    && cw >= adaptiveController.maxWaitTime * adaptiveController.starvationSelectThreshold)
+                if (cw >= adaptiveController.maxWaitTime * adaptiveController.starvationSelectThreshold)
                     GUI.color = new Color(1f, .5f, .4f);       // เข้าเกณฑ์ Q1 แล้ว
-                GUILayout.Label($"{cw:F1} s  {head.name}", sMono);
+                GUILayout.Label($"{cw:F1}s {head.name}", sMono);
             }
             GUI.color = oc;
 
