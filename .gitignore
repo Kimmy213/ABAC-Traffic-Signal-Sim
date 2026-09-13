@@ -45,3 +45,6 @@ Assets/_Recovery.meta
 
 # ผลคอมไพล์ของชุดเทสนอก Unity
 Tests/harness/_build/
+
+# zip ที่ทำไว้ส่งให้เพื่อน — เป็นของซ้ำกับที่ track อยู่แล้ว ไม่ต้องเข้า git
+SimulationResults/*.zip
