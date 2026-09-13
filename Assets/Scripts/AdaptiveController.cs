@@ -201,6 +201,8 @@ public class AdaptiveController : MonoBehaviour
     /// <summary>ในจำนวนนั้น กี่เฟสที่ tie-break ตัด H_Bx ออกจากกลุ่ม แทนหัวไฟที่เสมอกับมัน</summary>
     public int   TieBreaksExcludingBx => tieBreaksExcludingBx;
     public EyeState CurrentState    => state;
+    /// <summary>วินาทีที่เหลือของช่วงปัจจุบัน (เขียว/เหลือง/แดงทั้งหมด) — สำหรับแสดงผลเท่านั้น</summary>
+    public float PhaseTimeRemaining => phaseTimeRemaining;
     /// <summary>หัวไฟทั้งหมด — เปิดให้เทสตรวจสถานะภายในได้</summary>
     public List<SignalHead> Heads   => heads;
     /// <summary>นับรถของหัวไฟหนึ่งดวง (public เพื่อให้เทสเรียกได้)</summary>

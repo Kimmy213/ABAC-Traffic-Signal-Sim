@@ -641,10 +641,11 @@ public class SimulationControlPanel : MonoBehaviour
         if (config == null) return;
 
         GUILayout.BeginHorizontal();
-        GUILayout.Label("Lane", sSmall, GUILayout.Width(44));
-        GUILayout.Label("Signal", sSmall, GUILayout.Width(58));
-        GUILayout.Label("Queue", sSmall, GUILayout.Width(46));
-        GUILayout.Label("Longest wait", sSmall);
+        GUILayout.Label("Lane", sSmall, GUILayout.Width(38));
+        GUILayout.Label("Signal", sSmall, GUILayout.Width(92));
+        GUILayout.Label("Queue", sSmall, GUILayout.Width(42));
+        GUILayout.Label("Oldest car", sSmall, GUILayout.Width(66));
+        GUILayout.Label("Queue clock", sSmall);
         GUILayout.EndHorizontal();
 
         // สูงพอสำหรับ 6 เลน ถ้าเพิ่มเลนทีหลังจะเลื่อนดูได้
@@ -658,13 +659,13 @@ public class SimulationControlPanel : MonoBehaviour
             float wait = lane.roi != null ? lane.roi.GetLongestWaitTime() : 0f;
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label(lane.laneName, sMono, GUILayout.Width(38));
+            GUILayout.Label(lane.laneName, sMono, GUILayout.Width(34));
 
             Color oc = GUI.color;
             if (!lane.isSignalized)
             {
                 GUI.color = new Color(.6f, .6f, .65f);
-                GUILayout.Label("free", sMono, GUILayout.Width(58));
+                GUILayout.Label("free", sMono, GUILayout.Width(88));
             }
             else
             {
@@ -673,22 +674,71 @@ public class SimulationControlPanel : MonoBehaviour
                 GUI.color = st == TrafficLight.LightState.Green ? new Color(.35f, .9f, .35f)
                           : st == TrafficLight.LightState.Yellow ? new Color(1f, .85f, .2f)
                           : new Color(.95f, .4f, .4f);
-                GUILayout.Label("███", sMono, GUILayout.Width(52));
+
+                // นับถอยหลังของช่วงปัจจุบัน — เขียวเหลือกี่วิ / เหลืองเหลือกี่วิ
+                string left = "";
+                if (adaptiveController != null && adaptiveController.enabled
+                    && st != TrafficLight.LightState.Red)
+                {
+                    float r = adaptiveController.PhaseTimeRemaining;
+                    if (r > 0.05f) left = $" {r:F1}s";
+                }
+                GUILayout.Label("███" + left, sMono, GUILayout.Width(88));
             }
             GUI.color = oc;
 
-            GUILayout.Label(queue.ToString(), sMono, GUILayout.Width(38));
+            GUILayout.Label(queue.ToString(), sMono, GUILayout.Width(40));
 
-            // ไฮไลต์แดงถ้ารอนานผิดปกติ
+            // ---- รถคันที่เก่าที่สุดในเลน (ground truth ของซิม) ----
+            // ⚠️ ไม่ใช่ตัวเลขที่ controller ใช้ตัดสินใจ ดูคอลัมน์ถัดไป
             if (adaptiveController != null && wait > adaptiveController.maxWaitTime * 0.8f)
                 GUI.color = new Color(1f, .5f, .4f);
-            GUILayout.Label($"{wait:F1} s", sMono);
+            GUILayout.Label($"{wait:F1} s", sMono, GUILayout.Width(64));
+            GUI.color = oc;
+
+            // ---- นาฬิกาคิวของหัวไฟ = ตัวเลขจริงที่ Q1/Q2 ใช้ ----
+            // ต่างจากคอลัมน์ซ้ายเพราะเป็นของ "เลน" ไม่ใช่ของ "รถ" และรีเซ็ตทุกครั้งที่ได้เสิร์ฟ
+            // เลนที่ไม่เคยว่างจะสะสมนาฬิกาเก่าไว้ ทั้งที่รถในเลนอาจเพิ่งมาถึง (SODA_BASELINE §8.11 note)
+            AdaptiveController.SignalHead head = HeadForLane(lane);
+            if (!lane.isSignalized || head == null)
+            {
+                GUI.color = new Color(.6f, .6f, .65f);
+                GUILayout.Label("—", sMono);
+            }
+            else if (float.IsInfinity(head.queueStart))
+            {
+                GUI.color = new Color(.6f, .6f, .65f);
+                GUILayout.Label("empty", sMono);
+            }
+            else
+            {
+                float cw = Time.time - head.queueStart;
+                if (adaptiveController != null
+                    && cw >= adaptiveController.maxWaitTime * adaptiveController.starvationSelectThreshold)
+                    GUI.color = new Color(1f, .5f, .4f);       // เข้าเกณฑ์ Q1 แล้ว
+                GUILayout.Label($"{cw:F1} s  {head.name}", sMono);
+            }
             GUI.color = oc;
 
             GUILayout.EndHorizontal();
         }
 
         GUILayout.EndScrollView();
+
+        GUILayout.Label("Oldest car = รถคันเก่าสุดในเลน (ground truth)  ·  " +
+                        "Queue clock = นาฬิกาของหัวไฟที่ Q1/Q2 ใช้จริง", sSmall);
+    }
+
+    /// <summary>
+    /// หา SignalHead ที่คุมเลนนี้ โดยจับคู่จาก ROI
+    /// A2 กับ Ax ใช้ ROI ร่วมกัน จึงได้ H_A ทั้งคู่ — Ax ถูกกรองออกด้วย isSignalized ก่อนหน้าแล้ว
+    /// </summary>
+    AdaptiveController.SignalHead HeadForLane(ApproachLane lane)
+    {
+        if (adaptiveController == null || lane == null || lane.roi == null) return null;
+        foreach (AdaptiveController.SignalHead h in adaptiveController.Heads)
+            if (h != null && h.rois != null && h.rois.Contains(lane.roi)) return h;
+        return null;
     }
 
     void DrawClearance()
