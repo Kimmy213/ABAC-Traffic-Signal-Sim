@@ -8704,14 +8704,6 @@ MonoBehaviour:
     followBack: 9
     followUp: 4.5
     canFollow: 0
-  - label: Junction
-    lane: 
-    position: {x: -0.52, y: 11, z: 0.88}
-    euler: {x: 38, y: 215, z: 0}
-    fov: 60
-    followBack: 9
-    followUp: 4.5
-    canFollow: 0
   - label: Approach A / Ax
     lane: A
     position: {x: -0.52, y: 8.5, z: 4.75}

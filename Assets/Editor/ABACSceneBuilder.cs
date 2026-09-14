@@ -555,10 +555,6 @@ public static class ABACSceneBuilder
                 label = "Overview", lane = "", canFollow = false, fov = 55f,
                 position = new Vector3(jx, 48f, jz), euler = new Vector3(90f, 0f, 0f) },
 
-            // ---- กลางแยก: ก้มดูตัวสี่เหลี่ยมกลางแยก เห็นจังหวะที่กระแสรถตัดกัน ----
-            new CameraDirector.Shot {
-                label = "Junction", lane = "", canFollow = false, fov = 60f,
-                position = new Vector3(jx, 11f, jz), euler = new Vector3(38f, 215f, 0f) },
 
             // ---- หันไปทางตะวันตก: ขาเข้า A + Ax วิ่งเข้าหากล้อง ----
             new CameraDirector.Shot {
