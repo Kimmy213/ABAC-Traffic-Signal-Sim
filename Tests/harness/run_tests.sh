@@ -39,12 +39,23 @@ run () {  # run <exe> <src> <ชื่อชุด> <flags> <dll> [args]
   ( cd "$ROOT" && mono "$OUT/$1.exe" $6 > /dev/null 2>&1 ) || FAIL=1
 }
 
+# เทสที่ "สร้าง" ออบเจกต์ของ UnityEngine เอง (Transform/GameObject) ต้องคอมไพล์โดย *ไม่* ใส่ stub ซ้ำ
+# ไม่งั้นจะได้ type สองชุดจากคนละแอสเซมบลี แล้ว assign ข้ามกันไม่ได้ (เหตุผลเดียวกับ QueueClockTest)
+run_nostub () {  # run_nostub <exe> <src> <ชื่อชุด> <dll>
+  mcs -target:exe -out:"$OUT/$1.exe" $2 -r:"$OUT/$4" 2>&1 | grep -E ": error" \
+    && { echo "COMPILE FAIL $3"; FAIL=1; return; }
+  echo "=== $3 ==="
+  ( cd "$ROOT" && mono "$OUT/$1.exe" 2>&1 | grep -E "FAIL|PASSED" ) || true
+  ( cd "$ROOT" && mono "$OUT/$1.exe" > /dev/null 2>&1 ) || FAIL=1
+}
+
 run t1 ConflictTest.cs        ConflictTest   ""                     gamecode.dll
 run t2 FixedCycleTest.cs      FixedCycleTest ""                     gamecode.dll
 run t3 BatchMathTest.cs       BatchMathTest  ""                     gamecode.dll
 run t4 EtaTest.cs             EtaTest        ""                     gamecode.dll
 run t5 SharedLaneTest.cs      SharedLaneTest ""                     gamecode.dll
 run t6 GeometryTest.cs        GeometryTest   "-define:UNITY_EDITOR" all_ed.dll
+run_nostub t10 HeadwayTest.cs HeadwayTest    gamecode.dll
 
 # เทียบ ".unity กับ .cs" ไม่ใช่ ".cs กับ .cs" — ตัวที่จับบั๊ก scene-serialization ได้จริง
 run t7 ../SceneAuditTest.cs   SceneAuditTest ""                     gamecode.dll "$SCENE"

@@ -53,6 +53,16 @@ public class CarAgent : MonoBehaviour
     [Tooltip("ระยะห่างด้านข้างสูงสุดที่ยังนับว่า 'อยู่เลนเดียวกัน' (เมตร) — ระยะห่างระหว่างเลนในซีนคือ 3.5 ม. " +
              "ค่านี้จึงต้องน้อยกว่าครึ่งหนึ่งของ 3.5 เพื่อไม่ให้รถคนละเลนเบรกให้กันโดยไม่จำเป็น")]
     public float lookAheadAngle = 1.5f;
+    [Tooltip("ระยะห่างเชิงเวลาที่คนขับพยายามรักษาไว้จากท้ายรถคันหน้า (วินาที)\n" +
+             "ระยะห่างจริง = minGap + desiredTimeHeadway x ความเร็ว — ของเดิมเว้นแค่ minGap คงที่ " +
+             "ไม่ว่าจะวิ่งเร็วแค่ไหน รถจึงวิ่งชิดกัน 2 ม. ที่ 15 m/s ได้ = headway 0.4 วิ/คัน\n\n" +
+             "⭐ ค่านี้คือสิ่งที่กำหนด saturation headway ของทั้งแยก ตั้งให้ผลลัพธ์ตรงกับ 2.31 วิ/คัน " +
+             "ที่วัดจากคลิปจริง (§2.4) — HeadwayTest บังคับไว้ ห้ามแก้โดยไม่รันเทสใหม่")]
+    public float desiredTimeHeadway = MEASURED_TIME_HEADWAY;
+
+    /// <summary>ค่าที่ทำให้ saturation headway ของคิวออกมาเท่ากับ 2.31 s/คัน ที่วัดจากคลิป (HeadwayTest บังคับ)</summary>
+    public const float MEASURED_TIME_HEADWAY = 1.9f;
+
     [Tooltip("มองหารถคันหน้าไกลสุดกี่เมตร — ⚠️ ห้ามตั้งต่ำกว่าระยะเบรกของคนขับแบบ Cautious (~33 ม.) " +
              "ไม่งั้นรถจะเห็นคิวช้าเกินจนเบรกไม่ทัน")]
     public float lookAheadDistance = 50f;
@@ -127,6 +137,13 @@ public class CarAgent : MonoBehaviour
     private float reactionTimer = 0f;
     private TrafficLight.LightState lastSeenLight = TrafficLight.LightState.Red;
     private bool lightInitialized = false;
+
+    // ===== คลื่นออกตัว (startup wave) =====
+    private float startupTimer = 0f;
+    /// <summary>ช้ากว่านี้ถือว่า "จอดอยู่ในคิว" (เมตร/วินาที)</summary>
+    public const float QUEUE_SPEED_EPS = 0.1f;
+    /// <summary>คันหน้าต้องเร็วกว่านี้ถึงจะนับว่า "เริ่มเคลื่อนแล้ว" คันหลังจึงเริ่มจับเวลาตอบสนอง</summary>
+    public const float LEADER_MOVING_SPEED = 0.5f;
 
     void OnEnable()  { allCars.Add(this); }
     void OnDisable() { allCars.Remove(this); }
@@ -402,6 +419,32 @@ public class CarAgent : MonoBehaviour
         float gapAhead;
         CarAgent carAhead = GetCarAhead(out gapAhead);
 
+        // ===== คลื่นออกตัว: คันหลังรอ "เห็นคันหน้าขยับ" ก่อน ไม่ใช่รอไฟเขียว =====
+        // ของจริงคิวไม่ได้พุ่งออกพร้อมกันทั้งแถว คนขับคันที่ 3 ไม่ได้ออกตัวตอนไฟเขียว
+        // แต่ออกตอนเห็นคันที่ 2 เคลื่อน คลื่นการออกตัวจึงไหลถอยหลังไปทีละคัน
+        //
+        // ของเดิมจับ reactionDelay จากจังหวะ "ไฟเขียว" ซึ่งเป็นสัญญาณที่ทุกคันได้พร้อมกัน
+        // ซ้ำร้ายคันที่อยู่ห่างเส้นเกิน brakeDistance ไม่เข้าเงื่อนไขนั้นด้วยซ้ำ
+        // (ComputeDesiredSpeed สาขา else ตั้ง isStopped = false แล้วขอ approachSpeed เลย)
+        // จึงเหลือแค่ car-following กั้นไว้ คิวเลยระบายออกเป็นก้อนเดียว
+        // วัดด้วย HeadwayTest ได้ 0.72 s/คัน เทียบกับที่วัดจากคลิปจริง 2.31 s/คัน
+        if (carAhead != null && currentSpeed <= QUEUE_SPEED_EPS)
+        {
+            if (carAhead.currentSpeed > LEADER_MOVING_SPEED) startupTimer += stepDt;
+            else startupTimer = 0f;                      // คันหน้ายังไม่ขยับ ยังไม่เริ่มนับ
+
+            if (startupTimer < reactionDelay)
+            {
+                isStopped = true;
+                currentSpeed = 0f;
+                return;
+            }
+        }
+        else if (currentSpeed > QUEUE_SPEED_EPS)
+        {
+            startupTimer = 0f;                            // วิ่งอยู่แล้ว ไม่ต้องรอใคร
+        }
+
         if (carAhead != null)
         {
             float leadSpeed = carAhead.currentSpeed;
@@ -419,6 +462,14 @@ public class CarAgent : MonoBehaviour
             {
                 float maxSafeSpeed = Mathf.Sqrt(Mathf.Max(0f, leadSpeed * leadSpeed + 2f * decelRate * cushion));
                 desiredSpeed = Mathf.Min(desiredSpeed, maxSafeSpeed);
+
+                // ===== ระยะห่างต้องโตตามความเร็ว ไม่ใช่ 2 เมตรคงที่ =====
+                // maxSafeSpeed ข้างบนคิดแค่ "เบรกทันไหมถ้าคันหน้าหยุดกึก" ซึ่งด้วย decelRate 9-22 m/s^2
+                // มันยอมให้วิ่งชิดกัน 2 ม. ที่ 15 m/s ได้สบาย ๆ = headway 0.4 วิ/คัน ซึ่งเป็นไปไม่ได้จริง
+                // คนขับจริงเว้นระยะ "เชิงเวลา" คือ gap = minGap + T x v
+                // พลิกกลับเป็นเพดานความเร็ว: v <= (gap - minGap) / T
+                if (desiredTimeHeadway > 0.01f)
+                    desiredSpeed = Mathf.Min(desiredSpeed, cushion / desiredTimeHeadway);
             }
         }
 

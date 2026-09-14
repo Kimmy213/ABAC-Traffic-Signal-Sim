@@ -390,6 +390,7 @@ MonoBehaviour:
   isStopped: 0
   minGap: 2
   lookAheadAngle: 1.5
+  desiredTimeHeadway: 1.9
   lookAheadDistance: 50
   canBypassCrossLaneBlocker: 0
   bypassLateralOffset: {x: 0, y: 0, z: 0}
