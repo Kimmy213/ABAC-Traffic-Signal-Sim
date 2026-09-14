@@ -54,6 +54,15 @@ public class LaneSchedule
     public string laneName = "A";
     public List<ScheduledBurst> bursts = new List<ScheduledBurst>();
 
+    /// <summary>
+    /// จำนวนรถที่ "จอดรออยู่แล้ว" จ่อเส้นหยุดตั้งแต่วินาทีที่ 0 ของการรัน
+    ///
+    /// ต่างจาก ScheduledBurst(0, n, gap) ตรงที่อันนั้นปล่อยรถจากจุดเกิดแล้วรอให้มันขับมาเอง
+    /// คิวจึงใช้เวลาก่อตัวหลายวินาที ส่วนอันนี้วางรถลงตรงตำแหน่งที่มันจะไปจอดพอดีตั้งแต่แรก
+    /// จำเป็นเวลาสร้างเคสจากคลิปจริงที่เริ่มนับตอนมีรถจอดรอไฟแดงอยู่แล้ว
+    /// </summary>
+    public int initialQueue = 0;
+
     public LaneSchedule() { }
     public LaneSchedule(string lane, params ScheduledBurst[] items)
     {
@@ -128,6 +137,14 @@ public class TestCase
         foreach (var s in schedules)
             if (s != null && s.laneName == lane) return s.bursts;
         return new List<ScheduledBurst>();
+    }
+
+    /// <summary>รถที่จอดรออยู่แล้วตอนเริ่มรัน สำหรับเลนนี้ — 0 ถ้าไม่ได้กำหนด</summary>
+    public int GetInitialQueue(string lane)
+    {
+        foreach (var s in schedules)
+            if (s != null && s.laneName == lane) return Mathf.Max(0, s.initialQueue);
+        return 0;
     }
 
     /// <summary>จำนวนรถทั้งหมดที่จะถูกปล่อย (เฉพาะ Scripted)</summary>
@@ -349,7 +366,89 @@ public static class TestCasePresets
         list.Add(Poisson("T12 · Night",       "เบาบางทุกทิศ — สมมติฐานทั้งหมด",
             VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW));
 
+        // ---------- Compare-101 : รอบจริงจากคลิปมุมดิ่ง ----------
+        list.Add(Compare101());
+
         return list;
+    }
+
+    /// <summary>
+    /// Compare-101 — หนึ่งรอบสัญญาณจริงจากคลิปมุมดิ่ง ใช้เทียบ "ไฟจริงทำอะไร" กับ "SODA จะทำอะไร"
+    ///
+    /// ที่มา: `DJI_20260824154642_0021_D.MP4` 24 ส.ค. 2026 · หน้าต่าง **1:02 – 2:49** ของคลิป
+    ///        = วินาทีที่ 62 – 169 ซึ่งเป็นหนึ่งคาบเต็มพอดี (คาบวัดได้ 107.17 วิ)
+    ///        หัว A ไฟเขียวจริงที่ 62.3 วิ ตรงกับต้นหน้าต่าง
+    ///
+    /// ไฟจริงในรอบนี้ (จาก `signal_timeline.json` cycle 0 — เวลานับจากต้นหน้าต่าง)
+    ///     A + A2 + B   เขียว   0.3 –  40.3
+    ///     B  + Bx      เขียว  45.3 –  65.3
+    ///     CB           เขียว  70.3 – 101.3
+    ///
+    /// t = 0 ของเคสนี้คือ 1:02 ของคลิป · รถที่ "จอดรออยู่แล้ว" ถูกปล่อยที่ t = 0 ห่างกัน 0.8 วิ
+    /// เพื่อให้ไปกองที่เส้นหยุดเร็วที่สุด — ⚠️ ซิมวางรถลงกลางถนนไม่ได้ ต้องให้มันขับมาเอง
+    /// คิวจึงใช้เวลาก่อตัวไม่กี่วินาที ไม่ได้ยืนรออยู่ตั้งแต่วินาทีที่ 0 เป๊ะ ๆ
+    ///
+    /// ⚠️ ยอดที่ยังกระทบไม่ลง (นับมือ vs รายการเวลาที่มาถึง) — ดูหมายเหตุใน description
+    /// </summary>
+    static TestCase Compare101()
+    {
+        // เวลาในเคสนับจาก 1:02 ของคลิป -> t = (mm:ss ของคลิป) - 62 วินาที
+        TestCase tc = new TestCase
+        {
+            name = "Compare-101 · รอบจริงจากคลิป",
+            mode = ArrivalMode.Scripted,
+            suggestedDuration = 107f,      // หนึ่งคาบเต็ม 107.17 วิ
+            description =
+              "หนึ่งรอบสัญญาณจริง 1:02–2:49 ของ DJI_20260824154642_0021_D (24 ส.ค. 2026)\n" +
+              "ใช้เทียบภาพจริงใต้ไฟจริง กับสิ่งที่ SODA จะทำ ณ วินาทีเดียวกัน\n\n" +
+              "จอดรออยู่แล้วตอน t=0 (วางจ่อเส้นหยุดจริง ไม่ได้ปล่อยจากจุดเกิด):\n" +
+              "   A 9 · Ax 1 · B 4 · Bx 2 · CB 0 · CA 0   รวม 16 คัน\n\n" +
+              "ทยอยมาถึงเส้นหยุด (วินาทีในเคส · เวลาในคลิป):\n" +
+              "   t16 1:18  CB1        t27 1:29  Ax1 CB1     t32 1:34  CB1\n" +
+              "   t36 1:38  B1         t39 1:41  CA1 Ax1 A1  t43 1:45  CA1\n" +
+              "   t49 1:51  CB1        t53 1:55  Bx1         t55 1:57  Bx1\n" +
+              "   t59 2:01  B1         t60 2:02  B1          t72 2:14  CB5 CA1\n\n" +
+              "ยอดรวมทั้งรอบ: A 10 · Ax 3 · B 7 · Bx 4 · CB 9 · CA 3   — กระทบยอดครบทุกเลน\n" +
+              "(Ax ยอดที่ส่งมาครั้งแรกเขียน 1 แก้เป็น 3 ตามที่ยืนยัน และตรงกับตัวนับอัตโนมัติ)\n\n" +
+              "ไฟจริงในรอบนี้ (นับจาก t=0): A+A2+B 0.3-40.3 · B+Bx 45.3-65.3 · CB 70.3-101.3",
+        };
+
+        // ---- A : จอดรอ 9 · มาเพิ่ม 1 คันที่ t=39 ----
+        tc.schedules.Add(new LaneSchedule("A",
+            new ScheduledBurst(39f, 1, 0f)) { initialQueue = 9 });
+
+        // ---- Ax : จอดรอ 1 · มาเพิ่ม t27, t39 ----
+        tc.schedules.Add(new LaneSchedule("Ax",
+            new ScheduledBurst(27f, 1, 0f),
+            new ScheduledBurst(39f, 1, 0f)) { initialQueue = 1 });
+
+        // ---- B : จอดรอ 4 · มาเพิ่ม t36, t59, t60 ----
+        tc.schedules.Add(new LaneSchedule("B",
+            new ScheduledBurst(36f, 1, 0f),
+            new ScheduledBurst(59f, 1, 0f),
+            new ScheduledBurst(60f, 1, 0f)) { initialQueue = 4 });
+
+        // ---- Bx : จอดรอ 2 · มาเพิ่ม t53, t55 (ทั้งคู่มาถึงตอน Bx เขียวอยู่แล้ว 45.3-65.3) ----
+        tc.schedules.Add(new LaneSchedule("Bx",
+            new ScheduledBurst(53f, 1, 0f),
+            new ScheduledBurst(55f, 1, 0f)) { initialQueue = 2 });
+
+        // ---- CB : ไม่มีใครจอดรอ ทยอยมาทั้ง 9 คัน ----
+        // 5 คันสุดท้ายมาถึงในวินาทีเดียวกัน (2:14) ต้องกางออก 0.8 วิ เพราะยัดจุดเดียวไม่ได้
+        tc.schedules.Add(new LaneSchedule("CB",
+            new ScheduledBurst(16f, 1, 0f),
+            new ScheduledBurst(27f, 1, 0f),
+            new ScheduledBurst(32f, 1, 0f),
+            new ScheduledBurst(49f, 1, 0f),
+            new ScheduledBurst(72f, 5, 0.8f)));
+
+        // ---- CA : ไม่มีใครจอดรอ · t39, t43, t72 ----
+        tc.schedules.Add(new LaneSchedule("CA",
+            new ScheduledBurst(39f, 1, 0f),
+            new ScheduledBurst(43f, 1, 0f),
+            new ScheduledBurst(72f, 1, 0f)));
+
+        return tc;
     }
 
     static TestCase Poisson(string name, string desc,

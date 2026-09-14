@@ -32,6 +32,19 @@ public class CarAgent : MonoBehaviour
     [Header("Runtime State")]
     public float currentSpeed = 0f;
     public bool isStopped = false;
+
+    // ===== วางคิวเริ่มต้น (standing queue) =====
+    // ปกติรถเกิดที่ต้นเลนแล้ววิ่งเข้ามา SetProfileParameters จึงตั้ง currentSpeed = approachSpeed
+    // แต่รถที่ CarSpawner.PlaceStandingQueue วางไว้ "จอดติดไฟแดงอยู่แล้ว" ตั้งแต่วินาทีที่ 0
+    // ถ้าปล่อยให้เกิดมาด้วยความเร็ววิ่ง มันจะไถลเลยเส้นหยุดไปทั้งแถวทั้งที่ไฟยังแดง
+    // (Cautious decel 3 m/s^2 ที่ 13.89 m/s = ไถลไป 32 ม.) ธงนี้ให้ SetProfileParameters
+    // เริ่มที่ความเร็ว 0 และถือว่าหยุดอยู่แล้ว เพื่อให้ reactionDelay ตอนไฟเขียวทำงานตามปกติ
+    [HideInInspector] public bool startAtRest = false;
+
+    /// <summary>ระยะที่ "หน้ารถ" คันแรกของคิวต้องอยู่ก่อนเส้นหยุด (เมตร)
+    /// ต้องมากกว่า |stopOvershoot| ที่ติดลบมากที่สุด (Cautious = -1 ม.) บวกเกณฑ์ -0.3 ใน
+    /// ComputeDesiredSpeed ไม่งั้นรถ Cautious จะถูกนับว่า hasCleared ตั้งแต่เฟรมแรกแล้วฝ่าไฟแดงออกไป</summary>
+    public const float REST_FRONT_MARGIN = 1f;
     private bool hasCleared = false;
     private bool committedThrough = false;   // true = ตัดสินใจฝ่าไฟเหลืองไปแล้ว ไม่หันกลับมาเบรก
 
@@ -149,7 +162,8 @@ public class CarAgent : MonoBehaviour
                 dilemmaZoneFactor = 0.7f;         // ฝ่าเฉพาะหยุดไม่ทันจริง ๆ
                 break;
         }
-        currentSpeed = approachSpeed;
+        currentSpeed = startAtRest ? 0f : approachSpeed;
+        if (startAtRest) { isStopped = true; reactionTimer = 0f; }
     }
 
     Vector3 GetFrontPosition()

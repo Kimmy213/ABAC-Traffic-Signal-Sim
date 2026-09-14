@@ -405,6 +405,47 @@ public class GeometryTest
                   "การเปลี่ยนเลนเกิดในช่วง <= 6 ช่วงรถสุดท้าย (ยังเป็น late merge)");
         }
 
+        // ===== 12) วางคิวเริ่มต้น (standing queue) ต้องจอดนิ่ง ไม่ไถลข้ามเส้นตอนไฟแดง =====
+        //   บั๊กที่เจอจากภาพซีนจริง 15 ก.ย.: Compare-101 เริ่มที่ AllRedIdle แต่รถทั้งแถวออกตัววิ่ง
+        //   สาเหตุคือ SetProfileParameters ตั้ง currentSpeed = approachSpeed ให้รถทุกคันที่เกิดใหม่
+        {
+            Console.WriteLine("\n--- standing queue ---");
+            float margin = CarAgent.REST_FRONT_MARGIN;
+
+            foreach (CarAgent.DriverType t in Enum.GetValues(typeof(CarAgent.DriverType)))
+            {
+                float overshoot = Profile(t, "stopOvershoot");
+                float approach  = Profile(t, "approachSpeed");
+                float decel     = Profile(t, "decelRate");
+
+                // signedDistToStopPoint ของคันหัวคิวตอนวางเสร็จ = margin + stopOvershoot
+                float signed = margin + overshoot;
+                Check(signed >= -0.3f + 0.01f,
+                      $"{t}: หัวคิวยังไม่ถูกนับว่าผ่านเส้น (signed {signed:F2} > -0.3)");
+
+                // ถ้าเกิดมาด้วยความเร็ววิ่ง จะไถลไปไกลแค่ไหน — ใช้ยืนยันว่าทำไมต้องเริ่มที่ 0
+                float skid = approach * approach / (2f * decel);
+                Console.WriteLine($"    {t}: overshoot {overshoot:F1} m | ถ้าไม่เริ่มที่ 0 จะไถล {skid:F1} m");
+                Check(skid > margin,
+                      $"{t}: ไถล {skid:F1} m > margin {margin:F1} m => startAtRest จำเป็นจริง");
+            }
+
+            var f = typeof(CarAgent).GetField("startAtRest");
+            Check(f != null && f.FieldType == typeof(bool), "CarAgent มีธง startAtRest แบบ public");
+
+            var atRest = new CarAgent { driverType = CarAgent.DriverType.Cautious, startAtRest = true };
+            typeof(CarAgent).GetMethod("SetProfileParameters",
+                BindingFlags.NonPublic | BindingFlags.Instance).Invoke(atRest, null);
+            Check(atRest.currentSpeed == 0f, "startAtRest = true -> เกิดมาด้วยความเร็ว 0");
+            Check(atRest.isStopped,          "startAtRest = true -> นับว่าหยุดอยู่ (reactionDelay ตอนไฟเขียวทำงาน)");
+
+            var rolling = new CarAgent { driverType = CarAgent.DriverType.Cautious };
+            typeof(CarAgent).GetMethod("SetProfileParameters",
+                BindingFlags.NonPublic | BindingFlags.Instance).Invoke(rolling, null);
+            Check(rolling.currentSpeed > 1f && !rolling.isStopped,
+                  "รถที่เกิดตามปกติยังวิ่งเข้ามาด้วย approachSpeed เหมือนเดิม");
+        }
+
         Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
         return failures;
     }

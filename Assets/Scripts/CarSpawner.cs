@@ -122,11 +122,19 @@ public class CarSpawner : MonoBehaviour
     /// <summary>สลับไปโหมดสุ่ม Poisson</summary>
     public void UsePoisson(float meanInterval)
     {
+        standingQueue = 0;   // โหมด Poisson ไม่มีคิวตั้งต้น
         arrivalMode = ArrivalMode.Poisson;
         meanArrivalInterval = meanInterval;
     }
 
     /// <summary>สลับไปโหมดปล่อยตามตาราง (deterministic)</summary>
+    /// <summary>
+    /// รถที่ต้อง "วางไว้ให้จอดรออยู่แล้ว" ตอนเริ่มรัน — ตั้งจาก TestCase ผ่าน ApplyTestCase
+    /// ถูกวางใน RestartSpawning() ก่อนตารางจะเริ่มทำงาน
+    /// </summary>
+    private int standingQueue = 0;
+    public void SetStandingQueue(int n) { standingQueue = Mathf.Max(0, n); }
+
     public void UseSchedule(List<ScheduledBurst> bursts)
     {
         arrivalMode = ArrivalMode.Scripted;
@@ -155,6 +163,12 @@ public class CarSpawner : MonoBehaviour
         spawnStarted = true;
         StopAllCoroutines();   // หยุดทั้ง SpawnLoop และ DespawnWhenFar ที่ค้างอยู่
         ClearAllCars();
+
+        // ต้องวางคิวเริ่มต้นก่อน StartCoroutine เสมอ — SpawnLoop รัน body ทันทีจนถึง yield แรก
+        // ถ้าตารางมี burst ที่ atTime = 0 มันจะปล่อยรถทันทีตรงนั้น แล้วรถคันนั้นจะไปอยู่หน้าคิว
+        // ที่เรากำลังจะวาง ซึ่งกลับลำดับกับความจริง
+        if (standingQueue > 0) PlaceStandingQueue(standingQueue);
+
         StartCoroutine(SpawnLoop());
         StartCoroutine(PendingReleaseLoop());
     }
@@ -281,13 +295,57 @@ public class CarSpawner : MonoBehaviour
         }
     }
 
-    void PlaceCar(CarAgent.DriverType driver, bool bypass, Vector3 pos)
+    /// <summary>
+    /// วางรถ count คันให้จอดเรียงจ่อเส้นหยุด เหมือนเพิ่งติดไฟแดงมาสักพักแล้ว
+    ///
+    /// ระยะห่างใช้ carLength + minGap ซึ่งเป็นระยะที่ car-following จะนิ่งอยู่พอดี
+    /// ถ้าวางชิดกว่านั้นรถจะถอยหนีกันตอนเฟรมแรก ถ้าห่างกว่านั้นมันจะขยับเข้ามาชิด
+    ///
+    /// เลนไหลอิสระ (Ax / CA) ไม่มี stopLineTarget — วางจากจุดเกิดแทนแล้วปล่อยให้มันขับเอง
+    /// ซึ่งไม่เป๊ะ แต่เลนพวกนั้นไม่มีไฟให้รออยู่แล้ว คิวจึงไม่ใช่สิ่งที่เคสต้องการความแม่น
+    /// </summary>
+    public int PlaceStandingQueue(int count)
+    {
+        if (count <= 0 || carPrefab == null || spawnPoint == null) return 0;
+
+        // ทิศที่รถคันนี้หันหน้าไป — หมุนรอบแกน Y อย่างเดียว ตามที่ PlaceCar ใช้ตอน Instantiate
+        float yaw = spawnRotationY * Mathf.Deg2Rad;
+        Vector3 fwd = new Vector3(Mathf.Sin(yaw), 0f, Mathf.Cos(yaw));
+
+        CarAgent proto = carPrefab.GetComponent<CarAgent>();
+        float len = proto != null ? proto.carLength : 4f;
+        float gap = proto != null ? proto.minGap    : 2f;
+        float pitch = len + gap;
+
+        // คันหน้าสุด: หน้ารถหยุดก่อนเส้น REST_FRONT_MARGIN เมตร -> ศูนย์กลางถอยมาอีกครึ่งคัน
+        // ห้ามวางให้หน้ารถแตะเส้นพอดี เพราะคนขับแบบ Cautious มี stopOvershoot = -1 ม.
+        // signedDistToStopPoint จะได้ -1 ตั้งแต่เฟรมแรก ต่ำกว่าเกณฑ์ -0.3 => hasCleared = true
+        // แล้วรถจะออกตัวฝ่าไฟแดงทันที (ดู CarAgent.REST_FRONT_MARGIN)
+        Vector3 head = stopLineTarget != null
+                     ? stopLineTarget.position - fwd * (len * 0.5f + CarAgent.REST_FRONT_MARGIN)
+                     : spawnPoint.position;
+
+        if (stopLineTarget == null)
+            Debug.LogWarning($"[CarSpawner:{laneName}] ไม่มี stopLineTarget — วางคิวเริ่มต้นจากจุดเกิดแทน");
+
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 pos = head - fwd * (i * pitch);
+            pos.y = spawnPoint.position.y;      // ยึดระดับถนน ไม่เอา y ของ transform เส้นหยุด
+            PlaceCar(RandomDriverType(), false, pos, atRest: true);
+        }
+        return count;
+    }
+
+    void PlaceCar(CarAgent.DriverType driver, bool bypass, Vector3 pos, bool atRest = false)
     {
         GameObject newCar = Instantiate(carPrefab, pos, Quaternion.Euler(0, spawnRotationY, 0));
         spawnedCars.Add(newCar);
         totalSpawned++;
         CarAgent agent = newCar.GetComponent<CarAgent>();
 
+        // ต้องตั้งก่อน CarAgent.Start() ซึ่ง Unity เรียกท้ายเฟรมนี้ ไม่ใช่ตอน Instantiate
+        agent.startAtRest = atRest;
         agent.driverType = driver;
         agent.stopLineTarget = stopLineTarget;
         agent.assignedLane = laneName;

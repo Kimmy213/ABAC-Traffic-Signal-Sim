@@ -279,6 +279,7 @@ public class IntersectionConfig : MonoBehaviour
             else
             {
                 lane.spawner.UseSchedule(testCase.GetSchedule(lane.laneName));
+                lane.spawner.SetStandingQueue(testCase.GetInitialQueue(lane.laneName));
             }
         }
     }

@@ -59,6 +59,9 @@ namespace UnityEngine
     {
         public static int CeilToInt(float f) => (int)System.Math.Ceiling(f);
         public static int FloorToInt(float f) => (int)System.Math.Floor(f);
+        public const float Rad2Deg = 57.29578f;
+        public static float Sin(float f) => (float)System.Math.Sin(f);
+        public static float Cos(float f) => (float)System.Math.Cos(f);
 
         public static float Max(float a, float b, float c) => Max(Max(a,b),c);
         public static float Exp(float a) => a;
@@ -226,6 +229,7 @@ namespace UnityEngine
 
     public class HeaderAttribute : Attribute { public HeaderAttribute(string s) { } }
     public class TooltipAttribute : Attribute { public TooltipAttribute(string s) { } }
+    public class HideInInspectorAttribute : Attribute { }
     public class RangeAttribute : Attribute { public RangeAttribute(float a, float b) { } }
     public class ContextMenuAttribute : Attribute { public ContextMenuAttribute(string s) { } }
     public class SerializeFieldAttribute : Attribute { }

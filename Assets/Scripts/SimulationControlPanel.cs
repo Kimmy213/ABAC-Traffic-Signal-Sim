@@ -503,6 +503,16 @@ public class SimulationControlPanel : MonoBehaviour
         GUILayout.BeginHorizontal();
         GUILayout.Label("TEST CASES", sHeader);
         GUILayout.FlexibleSpace();
+
+        // ⚠️ ลิสต์นี้ถูก serialize ไว้ในซีนด้วย และ Awake จะสร้างจากโค้ดก็ต่อเมื่อลิสต์ว่างเท่านั้น
+        //    เคสใหม่ที่เพิ่มใน TestCasePresets จึงไม่โผล่เองจนกว่าจะกดปุ่มนี้
+        //    (กับดักเดียวกับค่าพารามิเตอร์ที่ซีนทับซอร์ส — ดู ABAC ▸ Verify Scene Against Code)
+        if (GUILayout.Button("Reload", sBtn, GUILayout.Width(58)))
+        {
+            LoadDefaultTestCases();
+            selectedTestCase = 0;
+            Toast($"โหลดจากโค้ดใหม่ {testCases.Count} เคส");
+        }
         if (GUILayout.Button(showTestList ? "Hide" : "Show", sBtn, GUILayout.Width(52)))
             showTestList = !showTestList;
         GUILayout.EndHorizontal();
