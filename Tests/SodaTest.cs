@@ -180,8 +180,16 @@ public class SodaTest
             Check(streakB >= ac2.gapOutSnapshots, "[3, 0, 0] ต้องตัดเฟส (ว่างติดกัน 2 snapshot)");
 
             Check(ac2.gapOutSnapshots == 2, "ต้องยืนยัน 2 snapshot");
-            Check(Math.Abs(ac2.gapOutSnapshots * ac2.snapshotInterval - 4f) < 0.01f,
-                  $"= {ac2.gapOutSnapshots * ac2.snapshotInterval:F0} วินาที (เดิม 3 วิ — ช้าลง 1 วิเป็นราคาของการยืนยัน)");
+            // หน้าต่างยืนยันไม่ใช่ค่าตั้งเอง มันเป็นผลคูณของสองตัวนี้เสมอ
+            // 14 ก.ย. 2026: snapshotInterval 2 -> 1 วิ หน้าต่างจึงหดจาก 4 วิ เหลือ 2 วิ
+            //   Itim ระบุชัดว่ารู้และยอมรับผลนี้ ("Gap-out still counts 2 readings,
+            //   so it now fires 2 s after a lane empties")
+            // ⚠️ หน้าต่างที่สั้นลงแปลว่าการอ่านพลาดสองครั้งติดจะจบเฟสได้ง่ายขึ้น
+            //    และที่ 1 วิ การพลาดสองครั้งติดมีความสัมพันธ์กันมากกว่าที่ 2 วิ
+            //    (รถถูกรถบรรทุกบังจะถูกบังนานกว่า 1 วินาที) — เฝ้าดูจาก EndReason = gap-out
+            float confirmWindow = ac2.gapOutSnapshots * ac2.snapshotInterval;
+            Check(Math.Abs(confirmWindow - 2f) < 0.01f,
+                  $"หน้าต่างยืนยัน = {confirmWindow:F0} วินาที (2 ครั้ง x {ac2.snapshotInterval:F0} วิ)");
         }
 
         // ===============================================================================

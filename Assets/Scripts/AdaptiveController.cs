@@ -32,7 +32,11 @@ public class AdaptiveController : MonoBehaviour
 
     [Header("Eyes — Sampled Observation")]
     [Tooltip("ถ่าย snapshot ทุกกี่วินาที — นับรถอย่างเดียว ไม่ต้องมี tracker")]
-    public float snapshotInterval = 2f;
+    // 14 ก.ย. 2026: 2 -> 1 วิ (Itim) จับรถได้แม่นกว่า และ gap-out ยิงเร็วขึ้น
+    // ⚠️ ผลพ่วง: gapOutSnapshots ยังเป็น 2 ครั้ง หน้าต่างยืนยันจึงหดจาก 4 วิ เหลือ 2 วิ
+    //    เป็นการตัดสินใจของ Itim โดยรู้ผล ไม่ใช่ผลข้างเคียงที่หลุดมา
+    // ⚠️ ค่านี้ถูก serialize ในซีนด้วย แก้ที่นี่อย่างเดียวไม่มีผล ต้องแก้ SampleScene.unity ด้วย
+    public float snapshotInterval = 1f;
     [Tooltip("เพดานของหน้าต่างเก็บข้อมูล ไม่ใช่ค่าคงที่ — ออกก่อนได้ด้วย early exit")]
     public float collectWindow = 7f;
     [Tooltip("Early exit (ก): พบรถกี่หัวไฟจึงเลิกรอ")]
@@ -163,7 +167,7 @@ public class AdaptiveController : MonoBehaviour
 
     // ===== วัด "เขียวเปล่า" ต่อเฟส (ยังไม่เปลี่ยนพฤติกรรม แค่เก็บหลักฐาน) =====
     // gap-out ปัจจุบันยิงเมื่อ "ทุกเลนในกลุ่มว่าง" เลนที่ว่างก่อนจึงติดเขียวรอเลนอื่นอยู่เฉย ๆ
-    // ความละเอียดเท่ากับ snapshotInterval (2 วิ) ตามที่ detector จริงมองเห็น ไม่ใช่ ground truth
+    // ความละเอียดเท่ากับ snapshotInterval (1 วิ) ตามที่ detector จริงมองเห็น ไม่ใช่ ground truth
     private Dictionary<int, float> laneEmptyAt = new Dictionary<int, float>();
     private float phaseStartTime = 0f;
     private string lastEndReason = "completed";
