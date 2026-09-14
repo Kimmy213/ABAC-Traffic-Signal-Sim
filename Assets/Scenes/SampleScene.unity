@@ -8094,7 +8094,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AdaptiveController
   config: {fileID: 993310865}
-  snapshotInterval: 2
+  snapshotInterval: 1
   collectWindow: 7
   earlyExitHeadCount: 2
   earlyExitDemand: 3
