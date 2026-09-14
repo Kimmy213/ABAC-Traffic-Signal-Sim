@@ -58,6 +58,7 @@ namespace UnityEngine
     public static class Mathf
     {
         public static int CeilToInt(float f) => (int)System.Math.Ceiling(f);
+        public static int FloorToInt(float f) => (int)System.Math.Floor(f);
 
         public static float Max(float a, float b, float c) => Max(Max(a,b),c);
         public static float Exp(float a) => a;

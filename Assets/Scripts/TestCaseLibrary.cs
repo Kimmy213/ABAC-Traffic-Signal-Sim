@@ -104,6 +104,12 @@ public class TestCase
     [Tooltip("ความยาว run ที่แนะนำ (วินาที) — 0 = ไม่จำกัด รันไปเรื่อย ๆ")]
     public float suggestedDuration = 180f;
 
+    /// <summary>
+    /// true = ผู้ใช้สร้างเองตอนรันผ่านแผง CustomTestCase
+    /// ใช้ตัดสินว่าปุ่มลบจะโผล่ไหม — เคสมาตรฐาน T1-T13 ลบไม่ได้ เพราะเอกสารกับเทสอ้างถึงมัน
+    /// </summary>
+    public bool userCreated = false;
+
     [Tooltip("ใช้เมื่อ mode = Poisson")]
     public List<LaneArrivalRate> rates = new List<LaneArrivalRate>();
 

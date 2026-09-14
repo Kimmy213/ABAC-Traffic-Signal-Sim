@@ -519,14 +519,35 @@ public class SimulationControlPanel : MonoBehaviour
             if (showTestList)
             {
                 testScroll = GUILayout.BeginScrollView(testScroll, GUILayout.Height(122));
+                int deleteAt = -1;
                 for (int i = 0; i < testCases.Count; i++)
                 {
                     if (testCases[i] == null) continue;
+
+                    // เคสที่ผู้ใช้สร้างเองมีปุ่มลบ · T1-T13 ไม่มี เพราะรายงานกับเทสอ้างถึงมัน
+                    bool own = testCases[i].userCreated;
+                    if (own) GUILayout.BeginHorizontal();
+
                     if (Btn(testCases[i].name, i == selectedTestCase))
                     {
                         selectedTestCase = i;
                         Toast("Selected — press Restart to apply");
                     }
+
+                    if (own)
+                    {
+                        if (GUILayout.Button("×", sBtn, GUILayout.Width(22))) deleteAt = i;
+                        GUILayout.EndHorizontal();
+                    }
+                }
+
+                if (deleteAt >= 0)
+                {
+                    string gone = testCases[deleteAt].name;
+                    testCases.RemoveAt(deleteAt);
+                    if (selectedTestCase >= testCases.Count) selectedTestCase = testCases.Count - 1;
+                    if (selectedTestCase < 0) selectedTestCase = 0;
+                    Toast($"ลบ \"{gone}\" แล้ว");
                 }
                 GUILayout.EndScrollView();
             }
