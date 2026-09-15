@@ -4,22 +4,22 @@ using UnityEditor;
 using System.Collections.Generic;
 
 /// <summary>
-/// สร้าง Assets/Prefabs/Car.prefab จากโมเดล 3D จริง (Assets/Models/car_low_poly.fbx)
-/// เมนู: ABAC ▸ Rebuild Car Prefab  (ABACSceneBuilder เรียกให้เองตอน Build Scene ด้วย)
+/// Builds Assets/Prefabs/Car.prefab from the real 3D model (Assets/Models/car_low_poly.fbx).
+/// Menu: ABAC > Rebuild Car Prefab (ABACSceneBuilder also calls it during Build Scene).
 ///
-/// ทุกอย่างคำนวณจากตัวโมเดลจริงตอน build ไม่ได้ hard-code ค่าไว้ จึงเปลี่ยนไฟล์โมเดลแล้วกดใหม่ได้เลย:
-///   • ตัดกล้อง/ไฟ/Null ที่ Blender แถมมาในไฟล์ออก (ถ้าไม่ตัด รถทุกคันจะพก Light+Camera ติดตัวไปด้วย)
-///   • ย่อ/ขยายให้ยาว 4 เมตรเท่ากับ CarAgent.carLength พอดี (uniform ไม่บิดสัดส่วน)
-///   • หันหน้ารถไป +Z ตามแกน forward ของ Unity — ดูจาก "ไฟท้ายสีแดง" ว่าอยู่ปลายไหน
-///   • วางให้ล้อแตะพื้นพอดีตอน spawn ที่ y = CAR_Y
-///   • ชี้ให้ CarAgent รู้ว่าชิ้นไหน/ช่องวัสดุไหนคือสีตัวถัง เพื่อให้ทาสีตามเลนได้ถูกช่อง
+/// Everything is computed from the model at build time rather than hard-coded, so swapping the
+/// model file and pressing the menu item again just works:
+///   - strips the cameras, lights and nulls Blender adds (otherwise every car carries a Light and Camera)
+///   - scales it uniformly to 4 m long, matching CarAgent.carLength
+///   - points the nose along +Z, Unity's forward axis, deciding which end is which from the red tail lights
+///   - places it so the wheels touch the ground when spawned at y = CAR_Y
 /// </summary>
 public static class CarPrefabBuilder
 {
     public const string FbxPath    = "Assets/Models/car_low_poly.fbx";
     public const string PrefabPath = "Assets/Prefabs/Car.prefab";
 
-    /// <summary>ความยาวรถเป้าหมาย (เมตร) — ต้องตรงกับ CarAgent.carLength ไม่งั้นระยะห่างคิวจะเพี้ยน</summary>
+    /// <summary>Target car length in metres - must match CarAgent.carLength or queue spacing goes wrong</summary>
     public const float TargetLength = 4f;
 
     /// <summary>Thickness of one bar of the ROI tracking outline (m).</summary>
@@ -45,12 +45,12 @@ public static class CarPrefabBuilder
         GameObject fbx = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
         if (fbx == null)
         {
-            Debug.LogWarning($"[ABAC] ไม่พบโมเดลรถที่ {FbxPath} — ข้ามการสร้าง prefab ใหม่ " +
-                             "(ของเดิมยังใช้ได้ปกติ) ถ้าเพิ่งก๊อปไฟล์เข้ามา ให้กด Assets ▸ Refresh ก่อน");
+            Debug.LogWarning($"[ABAC] no car model at {FbxPath} - skipping the prefab rebuild " +
+                             "(the existing one still works). If the file was just copied in, run Assets > Refresh first.");
             return AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
         }
 
-        // ---------- ประกอบร่างชั่วคราวในซีน ----------
+        // ---------- Assemble a temporary instance in the scene ----------
         GameObject root = new GameObject("Car");
         GameObject model = Object.Instantiate(fbx);
         model.name = "Model";
@@ -65,12 +65,12 @@ public static class CarPrefabBuilder
         rends.RemoveAll(r => r == null || r.GetComponent<MeshFilter>() == null);
         if (rends.Count == 0)
         {
-            Debug.LogError("[ABAC] โมเดลรถไม่มี MeshRenderer เลย — ยกเลิก");
+            Debug.LogError("[ABAC] the car model has no MeshRenderer at all - aborting");
             Object.DestroyImmediate(root);
             return AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
         }
 
-        // ---------- 1) หันแกนยาวของรถให้ตรงกับแกน Z ----------
+        // ---------- 1) Align the car's long axis with Z ----------
         Bounds b = Combined(rends);
         if (b.size.x > b.size.z)
         {
@@ -78,47 +78,47 @@ public static class CarPrefabBuilder
             b = Combined(rends);
         }
 
-        // ---------- 2) หาชิ้นตัวถัง + ช่องวัสดุ ----------
+        // ---------- 2) Find the body part and its material slot ----------
         Renderer body = LargestRenderer(rends);
         int paintSlot = BiggestSubmesh(body);
         int tailSlot  = ReddestSlot(body);
 
-        // ---------- 3) หน้ารถต้องชี้ +Z (ไฟท้ายอยู่ฝั่ง -Z) ----------
-        string facing = "ตรวจไม่ได้ (ไม่พบไฟท้ายสีแดง) — ใช้ทิศตั้งต้นของโมเดล";
+        // ---------- 3) The nose must point +Z (tail lights on the -Z side) ----------
+        string facing = "could not tell (no red tail lights found) - keeping the model's own orientation";
         if (tailSlot >= 0)
         {
             Vector3 tail = SubmeshCentroid(body, tailSlot);
-            if (tail.z > b.center.z)   // ไฟท้ายอยู่ฝั่ง +Z แปลว่ารถหันหลังให้ทิศวิ่ง ต้องกลับ 180°
+            if (tail.z > b.center.z)   // tail lights on the +Z side means the car faces backwards; turn it
             {
                 model.transform.localRotation = Quaternion.Euler(0f, 180f, 0f) * model.transform.localRotation;
                 b = Combined(rends);
-                facing = "หมุน 180° (เดิมไฟท้ายอยู่ฝั่ง +Z = หันหลังให้ทิศวิ่ง)";
+                facing = "rotated 180 degrees (tail lights were on the +Z side, facing backwards)";
             }
-            else facing = "ไม่ต้องหมุน (ไฟท้ายอยู่ฝั่ง -Z อยู่แล้ว)";
+            else facing = "no rotation needed (tail lights already on the -Z side)";
         }
 
-        // ---------- 4) ย่อ/ขยายให้ยาว 4 ม. ----------
+        // ---------- 4) Scale to 4 m long ----------
         float scale = b.size.z > 0.0001f ? TargetLength / b.size.z : 1f;
         model.transform.localScale = Vector3.one * scale;
         b = Combined(rends);
 
-        // ---------- 5) จัดกึ่งกลาง + ให้ล้อแตะพื้น ----------
-        // spawn ที่ y = CAR_Y (0.5) แล้วล้อต้องอยู่ y = 0 พอดี => ก้นรถต้องอยู่ที่ local y = -0.5
+        // ---------- 5) Centre it and put the wheels on the ground ----------
+        // Spawned at y = CAR_Y (0.5), the wheels must sit at y = 0, so the underside is at local y = -0.5
         Vector3 fix = model.transform.position - b.center;
         fix.y = model.transform.position.y - b.min.y - ABACSceneBuilder.CAR_Y;
         model.transform.localPosition = fix;
         b = Combined(rends);
 
-        // ---------- 6) component ที่ระบบต้องใช้ ----------
+        // ---------- 6) Components the system needs ----------
         BoxCollider col = root.AddComponent<BoxCollider>();
         col.size = b.size;
         col.center = b.center - root.transform.position;
         col.isTrigger = false;
 
         Rigidbody rb = root.AddComponent<Rigidbody>();
-        rb.isKinematic = true;      // ขับด้วย transform เอง ไม่ใช้ฟิสิกส์
+        rb.isKinematic = true;      // driven by transform, not by physics
         rb.useGravity = false;
-        // ⚠️ ต้องมี Rigidbody ไม่งั้น OnTriggerEnter ของ ROIZone ไม่ยิง = นับรถไม่ได้ทั้งระบบ
+        // A Rigidbody is required or ROIZone's OnTriggerEnter never fires and nothing gets counted
 
         // ---------- 6.1) green tracking box shown while the vehicle is inside a detection zone ----------
         // Drawn as a WIREFRAME outline, not a solid translucent block.
@@ -144,19 +144,19 @@ public static class CarPrefabBuilder
             if (paintSlot < mats.Length) { mats[paintSlot] = defaultBodyMaterial; body.sharedMaterials = mats; }
         }
 
-        // ---------- 7) บันทึกเป็น prefab ----------
+        // ---------- 7) Save as a prefab ----------
         System.IO.Directory.CreateDirectory(Application.dataPath + "/Prefabs");
         GameObject saved = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
         Object.DestroyImmediate(root);
         AssetDatabase.SaveAssets();
 
-        Debug.Log($"<b>[ABAC] สร้าง Car.prefab จากโมเดลจริงแล้ว</b>\n" +
-                  $"• ตัดของแถมจาก Blender ออก {stripped} ชิ้น (กล้อง/ไฟ/Null)\n" +
-                  $"• ขนาดจริงหลังย่อ: ยาว {b.size.z:F2} × กว้าง {b.size.x:F2} × สูง {b.size.y:F2} ม. (scale {scale:F4})\n" +
-                  $"• ทิศหน้ารถ: {facing}\n" +
-                  $"• ตัวถัง = '{(body != null ? body.name : "-")}' ช่องวัสดุ {paintSlot} " +
-                  $"(ไฟท้าย = ช่อง {tailSlot}) → ทาสีตามเลนที่ช่องนี้ช่องเดียว\n" +
-                  $"• ล้อแตะพื้นพอดีเมื่อ spawn ที่ y = {ABACSceneBuilder.CAR_Y}");
+        Debug.Log($"<b>[ABAC] built Car.prefab from the real model</b>\n" +
+                  $"- stripped {stripped} Blender extras (cameras / lights / nulls)\n" +
+                  $"- size after scaling: {b.size.z:F2} long x {b.size.x:F2} wide x {b.size.y:F2} high m (scale {scale:F4})\n" +
+                  $"- facing: {facing}\n" +
+                  $"- body = '{(body != null ? body.name : "-")}' material slot {paintSlot} " +
+                  $"(tail lights = slot {tailSlot}), so only that slot is painted per lane\n" +
+                  $"- wheels touch the ground when spawned at y = {ABACSceneBuilder.CAR_Y}");
 
         return saved;
     }
@@ -262,7 +262,7 @@ public static class CarPrefabBuilder
         return m;
     }
 
-    /// <summary>ตัดกล้อง/ไฟ/ชิ้นที่ไม่มีเมช ที่ Blender แถมมาในไฟล์ออก</summary>
+    /// <summary>Strips the cameras, lights and mesh-less objects Blender adds to the file</summary>
     static int StripNonCarParts(GameObject model)
     {
         int n = 0;
@@ -284,7 +284,7 @@ public static class CarPrefabBuilder
         return b;
     }
 
-    /// <summary>ชิ้นที่ใหญ่สุด = ตัวถัง (ล้อ/กระจกเล็กกว่าเสมอ)</summary>
+    /// <summary>The largest part is the body (wheels and glass are always smaller)</summary>
     static Renderer LargestRenderer(List<Renderer> rends)
     {
         Renderer best = rends[0];
@@ -298,7 +298,7 @@ public static class CarPrefabBuilder
         return best;
     }
 
-    /// <summary>ช่องวัสดุที่กินพื้นที่มากที่สุดในชิ้นนั้น = สีตัวถัง</summary>
+    /// <summary>The material slot covering the most area in that part is the body paint</summary>
     static int BiggestSubmesh(Renderer r)
     {
         Mesh m = MeshOf(r);
@@ -312,12 +312,12 @@ public static class CarPrefabBuilder
         return best;
     }
 
-    /// <summary>ช่องวัสดุที่ "แดงที่สุด" = ไฟท้าย ใช้ชี้ว่าท้ายรถอยู่ทางไหน</summary>
+    /// <summary>The reddest material slot is the tail lights, which tells us which end is the rear</summary>
     static int ReddestSlot(Renderer r)
     {
         Material[] mats = r != null ? r.sharedMaterials : null;
         if (mats == null) return -1;
-        int best = -1; float bestScore = 0.25f;   // ต้องแดงชัดจริง ไม่งั้นถือว่าไม่เจอ
+        int best = -1; float bestScore = 0.25f;   // must be clearly red, otherwise treat it as not found
         for (int i = 0; i < mats.Length; i++)
         {
             if (mats[i] == null || !mats[i].HasProperty("_Color")) continue;
@@ -328,7 +328,7 @@ public static class CarPrefabBuilder
         return best;
     }
 
-    /// <summary>จุดกึ่งกลางของช่องวัสดุหนึ่ง ในพิกัดโลก</summary>
+    /// <summary>World-space centre of one material slot</summary>
     static Vector3 SubmeshCentroid(Renderer r, int slot)
     {
         Mesh m = MeshOf(r);

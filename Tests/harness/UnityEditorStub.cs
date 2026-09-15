@@ -1,4 +1,4 @@
-// Stub เพิ่มเติมสำหรับ compile-check ตัว Editor script เท่านั้น
+// Extra stubs used only to compile-check the Editor scripts.
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -27,7 +27,7 @@ namespace UnityEditor
     public static class EditorUtility
     {
         public static bool DisplayDialog(string t, string m, string ok, string cancel) => true;
-        public static bool DisplayDialog(string t, string m, string ok) => true;   // overload จริงของ Unity
+        public static bool DisplayDialog(string t, string m, string ok) => true;   // real Unity overload
         public static void SetDirty(UnityEngine.Object o) { }
     }
 

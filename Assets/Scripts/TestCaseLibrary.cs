@@ -1,35 +1,35 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-/// <summary>วิธีปล่อยรถเข้าระบบ</summary>
+/// <summary>How vehicles are released into the system</summary>
 public enum ArrivalMode
 {
-    /// <summary>สุ่มแบบ Poisson — ใช้กับการทดลองเชิงสถิติ 135 scenarios</summary>
+    /// <summary>Poisson random arrivals - used for the 135-scenario statistical experiment</summary>
     Poisson,
-    /// <summary>กำหนดเองว่าเลนไหนปล่อยกี่คันตอนไหน — ผลเหมือนกันเป๊ะทุกครั้ง เหมาะกับการเดโมและตรวจ logic</summary>
+    /// <summary>Hand-written schedule per lane - identical every run, for demos and logic checks</summary>
     Scripted
 }
 
 /// <summary>
-/// "ปล่อยรถ N คัน ที่วินาทีที่ X ห่างกันคันละ Y วินาที"
-/// หน่วยเวลานับจากตอนเริ่ม run
+/// "Release N cars at second X, Y seconds apart"
+/// Times are measured from the start of the run.
 /// </summary>
 [System.Serializable]
 public class ScheduledBurst
 {
-    [Tooltip("เริ่มปล่อยที่วินาทีที่เท่าไหร่ (นับจากเริ่ม run)")]
+    [Tooltip("Second at which the burst starts, measured from the start of the run")]
     public float atTime = 0f;
 
-    [Tooltip("ปล่อยกี่คัน")]
+    [Tooltip("How many cars to release")]
     public int carCount = 1;
 
-    [Tooltip("รถแต่ละคันห่างกันกี่วินาที")]
+    [Tooltip("Seconds between consecutive cars")]
     public float spacing = 2f;
 
-    [Tooltip("true = สุ่ม driver profile ตามสัดส่วน / false = ใช้ profile ที่กำหนดด้านล่าง")]
+    [Tooltip("true = draw a driver profile from the configured mix / false = use the profile set below")]
     public bool randomDriver = true;
 
-    [Tooltip("ใช้เมื่อ randomDriver = false")]
+    [Tooltip("Used when randomDriver = false")]
     public CarAgent.DriverType driverType = CarAgent.DriverType.Normal;
 
     public ScheduledBurst() { }
@@ -43,11 +43,11 @@ public class ScheduledBurst
         randomDriver = false; driverType = type;
     }
 
-    /// <summary>วินาทีที่รถคันสุดท้ายของ burst นี้ออก</summary>
+    /// <summary>Second at which the last car of this burst is released</summary>
     public float EndTime => atTime + Mathf.Max(0, carCount - 1) * spacing;
 }
 
-/// <summary>ตารางปล่อยรถของเลนหนึ่ง</summary>
+/// <summary>Release schedule for one lane</summary>
 [System.Serializable]
 public class LaneSchedule
 {
@@ -55,11 +55,12 @@ public class LaneSchedule
     public List<ScheduledBurst> bursts = new List<ScheduledBurst>();
 
     /// <summary>
-    /// จำนวนรถที่ "จอดรออยู่แล้ว" จ่อเส้นหยุดตั้งแต่วินาทีที่ 0 ของการรัน
+    /// Cars already standing at the stop line at second 0 of the run.
     ///
-    /// ต่างจาก ScheduledBurst(0, n, gap) ตรงที่อันนั้นปล่อยรถจากจุดเกิดแล้วรอให้มันขับมาเอง
-    /// คิวจึงใช้เวลาก่อตัวหลายวินาที ส่วนอันนี้วางรถลงตรงตำแหน่งที่มันจะไปจอดพอดีตั้งแต่แรก
-    /// จำเป็นเวลาสร้างเคสจากคลิปจริงที่เริ่มนับตอนมีรถจอดรอไฟแดงอยู่แล้ว
+    /// Different from ScheduledBurst(0, n, gap), which releases cars at the spawn point and
+    /// waits for them to drive in, so the queue takes several seconds to form. This places them
+    /// directly where they would come to rest. Needed for cases built from a clip that starts
+    /// with vehicles already waiting at a red light.
     /// </summary>
     public int initialQueue = 0;
 
@@ -81,12 +82,12 @@ public class LaneSchedule
     }
 }
 
-/// <summary>อัตราการมาถึงแบบ Poisson ของเลนหนึ่ง</summary>
+/// <summary>Poisson arrival rate for one lane</summary>
 [System.Serializable]
 public class LaneArrivalRate
 {
     public string laneName = "A";
-    [Tooltip("วินาทีเฉลี่ยระหว่างรถแต่ละคัน (ยิ่งน้อย = รถยิ่งเยอะ)")]
+    [Tooltip("Mean seconds between cars (smaller = heavier traffic)")]
     public float meanInterval = 7f;
 
     public LaneArrivalRate() { }
@@ -97,7 +98,7 @@ public class LaneArrivalRate
 }
 
 /// <summary>
-/// ชุดทดสอบหนึ่งชุด — เลือกได้จาก Control Panel ตอน runtime
+/// One test case, selectable from the Control Panel at runtime
 /// </summary>
 [System.Serializable]
 public class TestCase
@@ -105,24 +106,25 @@ public class TestCase
     public string name = "Test";
 
     [TextArea(2, 5)]
-    [Tooltip("อธิบายว่าเทสนี้ตรวจอะไร — แสดงบน Control Panel")]
+    [Tooltip("What this case checks - shown on the Control Panel")]
     public string description = "";
 
     public ArrivalMode mode = ArrivalMode.Scripted;
 
-    [Tooltip("ความยาว run ที่แนะนำ (วินาที) — 0 = ไม่จำกัด รันไปเรื่อย ๆ")]
+    [Tooltip("Suggested run length in seconds - 0 = unlimited")]
     public float suggestedDuration = 180f;
 
     /// <summary>
-    /// true = ผู้ใช้สร้างเองตอนรันผ่านแผง CustomTestCase
-    /// ใช้ตัดสินว่าปุ่มลบจะโผล่ไหม — เคสมาตรฐาน T1-T13 ลบไม่ได้ เพราะเอกสารกับเทสอ้างถึงมัน
+    /// true = created by the user at runtime through the CustomTestCase panel.
+    /// Decides whether the delete button appears - the built-in cases T1-T13 cannot be
+    /// deleted because the documents and the test suites refer to them by name.
     /// </summary>
     public bool userCreated = false;
 
-    [Tooltip("ใช้เมื่อ mode = Poisson")]
+    [Tooltip("Used when mode = Poisson")]
     public List<LaneArrivalRate> rates = new List<LaneArrivalRate>();
 
-    [Tooltip("ใช้เมื่อ mode = Scripted")]
+    [Tooltip("Used when mode = Scripted")]
     public List<LaneSchedule> schedules = new List<LaneSchedule>();
 
     public float GetInterval(string lane, float fallback)
@@ -139,7 +141,7 @@ public class TestCase
         return new List<ScheduledBurst>();
     }
 
-    /// <summary>รถที่จอดรออยู่แล้วตอนเริ่มรัน สำหรับเลนนี้ — 0 ถ้าไม่ได้กำหนด</summary>
+    /// <summary>Cars already queued at the start of the run for this lane - 0 if unset</summary>
     public int GetInitialQueue(string lane)
     {
         foreach (var s in schedules)
@@ -147,7 +149,7 @@ public class TestCase
         return 0;
     }
 
-    /// <summary>จำนวนรถทั้งหมดที่จะถูกปล่อย (เฉพาะ Scripted)</summary>
+    /// <summary>Total cars this case will release (Scripted only)</summary>
     public int TotalScriptedCars
     {
         get
@@ -158,7 +160,7 @@ public class TestCase
         }
     }
 
-    /// <summary>สรุปสั้น ๆ ว่าเลนไหนปล่อยกี่คัน — โชว์บน panel</summary>
+    /// <summary>One-line summary of cars per lane, shown on the panel</summary>
     public string ShortSummary()
     {
         if (mode == ArrivalMode.Poisson)
@@ -177,30 +179,32 @@ public class TestCase
 }
 
 /// <summary>
-/// ชุดทดสอบสำเร็จรูป
+/// Built-in test cases.
 ///
-/// T1-T7 = Scripted (deterministic) — ผลเหมือนเดิมเป๊ะทุกครั้งที่กด ใช้เดโมและตรวจ logic
-/// T8-T12 = Poisson — ชุดเดียวกับที่ใช้รันสถิติ 135 scenarios
+/// T1-T7  = Scripted (deterministic) - identical every run, for demos and logic checks
+/// T8-T12 = Poisson - the same set used for the 135-scenario statistics
 /// </summary>
 public static class TestCasePresets
 {
-    // อัตรา Poisson มาตรฐาน
+    // Standard Poisson rate buckets
     const float VERY_HIGH = 1.5f, HIGH = 2.5f, MEDIUM = 4f, LOW = 7f, VERY_LOW = 15f;
-    // เลน "ปิด" จริง (ยืนยันจาก รปภ.) — ไม่ใช่แค่รถน้อย ใช้ mean interval ใหญ่มาก ๆ แทนศูนย์
-    // เพราะ Poisson ใน CarSpawner หาร rate จาก interval, ตั้ง 0 ตรง ๆ จะกลายเป็น rate ไม่จำกัด (พังคนละทาง)
+    // A genuinely closed lane (confirmed by the security staff), not merely a quiet one.
+    // Uses a very large mean interval rather than zero: CarSpawner derives the Poisson rate by
+    // dividing by the interval, so a literal 0 would produce an unbounded rate instead.
     const float CLOSED = 999999f;
 
-    // สัดส่วนรถตรงที่เข้าเลนนอก (A2 — เลนแชร์กับ Ax) เทียบกับรถตรงทั้งหมด
+    // Share of through traffic that uses the outer lane (A2, shared with Ax).
     //
-    // ประวัติค่า: เดา 50/50 → back-calculate ได้ 18% → **ตอนนี้ 5.4% จากการนับตรง** (SP1_HANDOFF_v2 §5)
-    // Itim นับจากคลิป A_morning: รถตรงทั้งหมด 56 คัน อยู่เลนใน 53 คัน เข้าเลนแชร์แค่ **3 คัน**
-    // นี่คือค่าที่นับมาตรง ๆ ไม่ใช่ค่าที่อนุมานย้อนจากอัตราการบล็อกอีกต่อไป จึงเชื่อถือได้กว่าเดิมมาก
+    // History: guessed 50/50 -> back-calculated 18% -> now 5.4% from a direct count (SP1_HANDOFF_v2 section 5).
+    // Itim counted clip A_morning: 56 through vehicles, 53 in the inner lane, only 3 in the shared lane.
+    // This is counted directly rather than inferred from a blocking rate, so it is far more reliable.
     //
-    // ⚠️ ตัวเลขนี้ต้องอ่านคู่กับพฤติกรรม "merge ช้า" เสมอ — รถ 3 คันนั้นเปลี่ยนเลขเข้ามาตอนเหลือระยะ
-    //    แค่ ~5 ช่วงรถก่อนถึงจุดเลี้ยว = แทรกเข้า "หัวคิว" พอดี คันเดียวหยุดรถเลี้ยวทั้งแถวที่ตามมาทั้งช่วงไฟแดง
-    //    ผลคือ "เกิดไม่บ่อยแต่รุนแรงเกือบสูงสุดทุกครั้ง" ไม่ใช่ "บ่อย ๆ แต่หน่วงนิดเดียว"
-    //    ทั้งสองแบบให้ค่าเฉลี่ยเท่ากันแต่ queue dynamics คนละเรื่อง — ดูหมายเหตุใน ABACSceneBuilder
-    public const float A2_SHARE = 0.054f;   // ต้องเท่ากับ ScenarioManager.MEASURED_A2_SHARE เสมอ
+    // Read together with the late-merge behaviour: those 3 vehicles changed lane with only about
+    // five car lengths left before the turn, inserting at the head of the queue. One of them stops
+    // every turning vehicle behind it for the rest of the red. The result is "rare but nearly
+    // worst-case each time", not "frequent but mild". Both give the same mean and completely
+    // different queue dynamics - see the note in ABACSceneBuilder.
+    public const float A2_SHARE = 0.054f;   // must always equal ScenarioManager.MEASURED_A2_SHARE
 
     public static List<TestCase> BuildDefault()
     {
@@ -343,106 +347,91 @@ public static class TestCasePresets
             }
         });
 
-        // ---------- T8-T12 : Poisson (ชุดเดียวกับการทดลองจริง) ----------
-        // T8/T10 ใช้ค่าที่ Itim วัดจริงจากคลิปโดรน (5 นาที, 13/22 ก.ค. 2569) แทนค่าเดา
-        // ส่วน CB/CA ยังไม่มีข้อมูลวัด — ใช้ bucket เดิมไปก่อน (ดู Questions_for_Itim.md ข้อ 2)
-        // T9/T11/T12 ยังไม่มีข้อมูลวัดเลย (ไม่ใช่ session ที่ Itim ถ่าย) — เป็นสมมติฐานล้วน ๆ
+        // ---------- T8-T12 : Poisson (the same set used for the real experiment) ----------
+        // T8/T10 use rates Itim measured from drone clips (5 min, 13 and 22 Jul 2026) instead of guesses.
+        // CB/CA have no measurement yet, so they keep the old buckets (see Questions_for_Itim.md item 2).
+        // T9/T11/T12 have no measurement at all - those sessions were never filmed - and are assumptions.
         //
-        // พารามิเตอร์ A ที่ส่งเข้า Poisson() คือ "อัตรารถตรงรวม" ก่อนแบ่งเลน — ฟังก์ชันจะหาร 50/50
-        // ให้ A กับ A2 เองข้างล่าง (มาตรฐานการ thin Poisson process: แบ่งครึ่งคัน = mean interval คูณ 2)
-        list.Add(Poisson("T8 · MorningPeak",  "คนเข้ามหาลัยเยอะ — A/Ax/B/Bx เป็นค่าวัดจริงจาก Itim (13 ก.ค. 08:40-09:05, ปรับแก้ตัวเลขรอบ 24 ส.ค. หลังรัน detector ครบ 8 คลิป)\n" +
-            "CB/CA = ปิด — แก้แล้ว: เลน C ขาออกปิดแค่ 08:30-09:00 (~15-30 นาที) ไม่ใช่ทั้งเช้า แต่พอดีตรงกับช่วง peak นี้เป๊ะ (08:15-09:00) จึงยังใช้ CB≈CA≈0 ได้",
+        // The A parameter passed to Poisson() is the combined through-traffic rate before the lane
+        // split; the function halves it between A and A2 below (standard thinning of a Poisson
+        // process: half the vehicles means double the mean interval).
+        list.Add(Poisson("T8 · MorningPeak",  "Heavy inbound campus traffic. A/Ax/B/Bx measured by Itim (13 Jul, 08:40-09:05).\n" +
+            "CB/CA closed: the C exit shuts 08:30-09:00, which coincides with this peak.",
             18.8f, 5.1f, 9.0f, 9.6f, CLOSED, CLOSED));
-        list.Add(Poisson("T9 · EveningPeak",  "คนออกจากมหาลัยเยอะ — ⭐ CB/CA เป็นค่าวัดจริงแล้ว (SP1_HANDOFF_v2 §4 ช่วงเย็น)\n" +
-            "CB 159 คัน = 8.4s/คัน, CA 100 คัน = 13.4s/คัน (สัดส่วน CB:CA = 61:39)\n" +
-            "ส่วน A/Ax/B/Bx ตอนเย็นยังไม่มีข้อมูลวัด ใช้ bucket ประมาณไปก่อน",
+        list.Add(Poisson("T9 · EveningPeak",  "Heavy outbound campus traffic. CB/CA measured: CB 159 veh = 8.4 s/veh,\n" +
+            "CA 100 veh = 13.4 s/veh (CB:CA = 61:39). A/Ax/B/Bx are estimated buckets.",
             MEDIUM, LOW, HIGH, LOW, 8.4f, 13.4f));
-        list.Add(Poisson("T10 · MiddayNormal", "จราจรปกติทุกทิศ — A/Ax/B/Bx เป็นค่าวัดจริงจาก Itim (22 ก.ค. 11:37-12:00, ปรับแก้ตัวเลขรอบ 24 ส.ค.), CB/CA ยังเป็นค่าเดา (รอฟุตเทจเลน C วันจันทร์)\n" +
-            "⚠️ ยืนยันแล้วจากวิดีโอ: 09:00-15:00 ไฟกระพริบเหลืองจริง ไม่ใช่ fixed-time — ช่วงที่ถ่าย midday (11:37-12:00) อยู่ในช่วงกระพริบพอดี\n" +
-            "แปลว่า T10 เทียบกับ 'Fixed' เป็นการเทียบเชิงสมมติ (ถ้าแยกนี้ใช้ fixed-time ตลอดวัน) ไม่ใช่สภาพจริงที่เกิดขึ้นตอนเที่ยง — ต้องระบุ caveat นี้ในรายงานให้ชัด",
+        list.Add(Poisson("T10 · MiddayNormal", "Ordinary traffic on every approach. A/Ax/B/Bx measured by Itim (22 Jul, 11:37-12:00);\n" +
+            "CB/CA still estimated. The real signal flashes amber 09:00-15:00, so comparing T10\n" +
+            "against Fixed is hypothetical - state that caveat in the report.",
             29.0f, 9.7f, 20.5f, 21.4f, LOW, LOW));
-        list.Add(Poisson("T11 · ABACEvent",   "งานใหญ่ เข้าออกหนักพร้อมกัน — สมมติฐานทั้งหมด",
+        list.Add(Poisson("T11 · ABACEvent",   "Large campus event, heavy in and out at once. Entirely assumed.",
             MEDIUM, VERY_HIGH, MEDIUM, VERY_HIGH, HIGH, HIGH));
-        list.Add(Poisson("T12 · Night",       "เบาบางทุกทิศ — สมมติฐานทั้งหมด",
+        list.Add(Poisson("T12 · Night",       "Light traffic on every approach. Entirely assumed.",
             VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW));
 
-        // ---------- Compare-101 : รอบจริงจากคลิปมุมดิ่ง ----------
+        // ---------- Compare-101 : one real cycle from the overhead clip ----------
         list.Add(Compare101());
 
         return list;
     }
 
     /// <summary>
-    /// Compare-101 — หนึ่งรอบสัญญาณจริงจากคลิปมุมดิ่ง ใช้เทียบ "ไฟจริงทำอะไร" กับ "SODA จะทำอะไร"
+    /// Compare-101 - one real signal cycle from the overhead clip, used to compare what the
+    /// real signal did against what SODA would have done at the same second.
     ///
-    /// ที่มา: `DJI_20260824154642_0021_D.MP4` 24 ส.ค. 2026 · หน้าต่าง **1:02 – 2:49** ของคลิป
-    ///        = วินาทีที่ 62 – 169 ซึ่งเป็นหนึ่งคาบเต็มพอดี (คาบวัดได้ 107.17 วิ)
-    ///        หัว A ไฟเขียวจริงที่ 62.3 วิ ตรงกับต้นหน้าต่าง
+    /// Source: DJI_20260824154642_0021_D.MP4, 24 Aug 2026, window 1:02-2:49 of the clip
+    ///         = seconds 62-169, exactly one cycle (measured period 107.17 s).
+    ///         Head A turns green at 62.3 s, which is the start of the window.
     ///
-    /// ไฟจริงในรอบนี้ (จาก `signal_timeline.json` cycle 0 — เวลานับจากต้นหน้าต่าง)
-    ///     A + A2 + B   เขียว   0.3 –  40.3
-    ///     B  + Bx      เขียว  45.3 –  65.3
-    ///     CB           เขียว  70.3 – 101.3
-    ///
-    /// t = 0 ของเคสนี้คือ 1:02 ของคลิป · รถที่ "จอดรออยู่แล้ว" ถูกปล่อยที่ t = 0 ห่างกัน 0.8 วิ
-    /// เพื่อให้ไปกองที่เส้นหยุดเร็วที่สุด — ⚠️ ซิมวางรถลงกลางถนนไม่ได้ ต้องให้มันขับมาเอง
-    /// คิวจึงใช้เวลาก่อตัวไม่กี่วินาที ไม่ได้ยืนรออยู่ตั้งแต่วินาทีที่ 0 เป๊ะ ๆ
-    ///
-    /// ⚠️ ยอดที่ยังกระทบไม่ลง (นับมือ vs รายการเวลาที่มาถึง) — ดูหมายเหตุใน description
+    /// Real signal during this cycle (from signal_timeline.json cycle 0, relative to window start):
+    ///     A + A2 + B   green    0.3 -  40.3
+    ///     B  + Bx      green   45.3 -  65.3
+    ///     CB           green   70.3 - 101.3
     /// </summary>
-    /// <summary>เวลาที่รถใช้วิ่งจากจุดเกิดถึงเส้นหยุดเมื่อไม่มีอะไรขวาง (วินาที)
+
+    /// <summary>Free-flow travel time from the spawn point to the stop line, in seconds.
     ///
-    /// ⭐ สำคัญ: เวลาที่นับจากคลิปคือ "หน้ารถข้ามเส้นหยุดตอนไหน" (กฎการนับข้อ 1 ใน HANDOFF_tally_overhead)
-    /// แต่ ScheduledBurst.atTime คือ "ปล่อยรถออกจากจุดเกิดตอนไหน" สองอย่างนี้ห่างกันทั้งความยาวเลน
-    /// ถ้าเอาเวลาจากคลิปมาใส่ตรง ๆ รถทุกคันจะมาถึงเส้นช้ากว่าของจริงเท่านี้
+    /// Important: times read off the clip are "when the front bumper crosses the stop line"
+    /// (counting rule 1 in HANDOFF_tally_overhead), but ScheduledBurst.atTime is "when the car
+    /// is released at the spawn point". The two are a whole lane length apart, so using clip
+    /// times directly makes every car reach the line this much later than it really did.
     ///
-    /// ระยะ = SPAWN_FAR 200 m - |STOP_A_X| 10.5 m = 189.5 m  (ขา B/Bx และ CB/CA ต่างกันไม่เกิน 1 m)
-    /// ความเร็ววิ่งถ่วงน้ำหนักตามสัดส่วนคนขับ 25/60/15 = 0.25x16.67 + 0.60x15.28 + 0.15x13.89 = 15.42 m/s
-    /// 189.5 / 15.42 = 12.29 s   (GeometryTest ข้อ 13 ล็อกไว้กับพิกัดจริงในซีน)</summary>
+    /// Distance = SPAWN_FAR 200 m - |STOP_A_X| 10.5 m = 189.5 m (B/Bx and CB/CA differ by under 1 m).
+    /// Approach speed weighted by the 25/60/15 driver mix
+    /// = 0.25 x 16.67 + 0.60 x 15.28 + 0.15 x 13.89 = 15.42 m/s.
+    /// 189.5 / 15.42 = 12.29 s. GeometryTest section 13 ties this to the real scene coordinates.</summary>
     public const float SPAWN_TO_STOPLINE_SEC = 12.29f;
 
-    /// <summary>แปลง "เวลาที่หน้ารถข้ามเส้นหยุดในคลิป" เป็น "เวลาที่ต้องปล่อยรถจากจุดเกิด"</summary>
+    /// <summary>Converts a stop-line crossing time from the clip into a spawn time.</summary>
     static float Spawn(float stopLineTime) => Mathf.Max(0f, stopLineTime - SPAWN_TO_STOPLINE_SEC);
 
     static TestCase Compare101()
     {
-        // เวลาในเคสนับจาก 1:02 ของคลิป -> t = (mm:ss ของคลิป) - 62 วินาที
+        // Case time runs from 1:02 of the clip, so t = (clip mm:ss) - 62 seconds.
         TestCase tc = new TestCase
         {
-            name = "Compare-101 · รอบจริงจากคลิป",
+            name = "Compare-101 \u00B7 Real cycle from clip",
             mode = ArrivalMode.Scripted,
-            suggestedDuration = 107f,      // หนึ่งคาบเต็ม 107.17 วิ
+            suggestedDuration = 107f,      // one full cycle, measured 107.17 s
             description =
-              "หนึ่งรอบสัญญาณจริง 1:02–2:49 ของ DJI_20260824154642_0021_D (24 ส.ค. 2026)\n" +
-              "ใช้เทียบภาพจริงใต้ไฟจริง กับสิ่งที่ SODA จะทำ ณ วินาทีเดียวกัน\n\n" +
-              "จอดรออยู่แล้วตอน t=0 (วางจ่อเส้นหยุดจริง ไม่ได้ปล่อยจากจุดเกิด):\n" +
-              "   A 4 · Ax 1 · B 4 · Bx 2 · CB 0 · CA 0   รวม 11 คัน\n" +
-              "   (A แก้จาก 9 เป็น 4 — เท่าที่กล้องเห็นจริงตอน 1:02 คิวยาวเลยขอบเฟรม)\n\n" +
-              "ทยอยมาถึงเส้นหยุด (วินาทีในเคส · เวลาในคลิป) — ตัวเลขนี้คือเวลา *ข้ามเส้นหยุด*\n" +
-              "จุดปล่อยรถจริงถอยไปก่อนหน้า 12.29 วิ ตามเวลาวิ่งจากจุดเกิดถึงเส้น 189.5 ม.:\n" +
-              "   A ใช้เวลาข้ามเส้นที่วัดเองจากคลิป: 17.4 20.0 23.2 26.1 29.7 39.1\n" +
-              "   t16 1:18  CB1        t27 1:29  Ax1 CB1     t32 1:34  CB1\n" +
-              "   t36 1:38  B1         t39 1:41  CA1 Ax1 A1  t43 1:45  CA1\n" +
-              "   t49 1:51  CB1        t53 1:55  Bx1         t55 1:57  Bx1\n" +
-              "   t59 2:01  B1         t60 2:02  B1          t72 2:14  CB5 CA1\n\n" +
-              "ยอดรวมทั้งรอบ: A 10 · Ax 3 · B 7 · Bx 4 · CB 9 · CA 3   — กระทบยอดครบทุกเลน\n" +
-              "(Ax ยอดที่ส่งมาครั้งแรกเขียน 1 แก้เป็น 3 ตามที่ยืนยัน และตรงกับตัวนับอัตโนมัติ)\n\n" +
-              "ไฟจริงในรอบนี้ (นับจาก t=0): A+A2+B 0.3-40.3 · B+Bx 45.3-65.3 · CB 70.3-101.3",
+              "36 cars   A 10 \u00B7 Ax 3 \u00B7 B 7 \u00B7 Bx 4 \u00B7 CB 9 \u00B7 CA 3",
         };
 
-        // ---- A : จอดรอ 4 · ทยอยมาอีก 6 (รวม 10 คันเท่าที่นับได้) ----
+        // ---- A : 4 queued, 6 more arriving (10 in total, matching the count) ----
         //
-        // ⭐ แก้จาก "จอดรอ 9 + มาเพิ่ม 1" ตามที่วัดจากคลิปเมื่อ 15 ก.ย.
+        // Changed from "9 queued + 1 arrival" after measuring the clip on 15 Sep.
         //
-        // ที่ 1:02 (หัว A เขียว) กล้องเห็นรถยนต์ยืนรออยู่ในเลน A แค่ 4 คัน คันท้ายสุดติดขอบซ้าย
-        // ของเฟรมพอดี คิวจึงยาวเลยออกไปนอกภาพ ยืนยันยอด 9 ไม่ได้ ส่วนอีก 6 คันใช้เวลาที่
-        // "หน้ารถข้ามเส้นหยุด" ที่วัดได้จริงจาก virtual detector ที่ x=587 px (นับเฉพาะรถยนต์
-        // คราบทับเส้น >= 0.30 s ตัดมอเตอร์ไซค์ทิ้ง)
+        // At 1:02, when head A turns green, the camera shows only 4 cars standing in lane A and
+        // the last of them is flush against the left edge of frame, so the queue runs off-camera
+        // and the count of 9 cannot be confirmed. The other 6 use stop-line crossing times taken
+        // from a virtual detector at x=587 px, cars only, motorcycles excluded (a blob has to
+        // occupy the line for at least 0.30 s to count).
         //
-        // ทำไมต้องแก้: ถ้าจอดรอ 9 คันจริง ด้วย headway 2.31 s/คัน ที่ calibrate ไว้ คิวจะหมด
-        // ตั้งแต่วินาทีที่ 20 แต่คลิปใช้ถึง 29.7 แปลว่าไม่ได้ยืนรอครบ 9 ตั้งแต่แรก
-        // Compare101Test วัดให้: จอด 9 คลาดเฉลี่ย 5.75 s -> จอด 4 เหลือ 2.10 s
-        // (ถ้าจูนต่อ จอด 2 จะเหลือ 1.14 s แต่ขัดกับที่ตาเห็นว่ามี 4 คันยืนอยู่ จึงไม่เอา)
+        // Why it had to change: 9 standing cars at the calibrated 2.31 s headway would empty the
+        // queue by second 20, but the clip takes until 29.7, so they were not all standing to
+        // begin with. Compare101Test measures it: 9 queued gives 5.75 s mean error, 4 gives 2.10 s.
+        // Fitting 2 would give 1.14 s but contradicts the 4 cars visibly standing, so it is not used.
         tc.schedules.Add(new LaneSchedule("A",
             new ScheduledBurst(Spawn(17.40f), 1, 0f),
             new ScheduledBurst(Spawn(20.00f), 1, 0f),
@@ -451,24 +440,25 @@ public static class TestCasePresets
             new ScheduledBurst(Spawn(29.70f), 1, 0f),
             new ScheduledBurst(Spawn(39.10f), 1, 0f)) { initialQueue = 4 });
 
-        // ---- Ax : จอดรอ 1 · มาเพิ่ม t27, t39 ----
+        // ---- Ax : 1 queued, arrivals at t27 and t39 ----
         tc.schedules.Add(new LaneSchedule("Ax",
             new ScheduledBurst(Spawn(27f), 1, 0f),
             new ScheduledBurst(Spawn(39f), 1, 0f)) { initialQueue = 1 });
 
-        // ---- B : จอดรอ 4 · มาเพิ่ม t36, t59, t60 ----
+        // ---- B : 4 queued, arrivals at t36, t59, t60 ----
         tc.schedules.Add(new LaneSchedule("B",
             new ScheduledBurst(Spawn(36f), 1, 0f),
             new ScheduledBurst(Spawn(59f), 1, 0f),
             new ScheduledBurst(Spawn(60f), 1, 0f)) { initialQueue = 4 });
 
-        // ---- Bx : จอดรอ 2 · มาเพิ่ม t53, t55 (ทั้งคู่มาถึงตอน Bx เขียวอยู่แล้ว 45.3-65.3) ----
+        // ---- Bx : 2 queued, arrivals at t53 and t55 (both land while Bx is green, 45.3-65.3) ----
         tc.schedules.Add(new LaneSchedule("Bx",
             new ScheduledBurst(Spawn(53f), 1, 0f),
             new ScheduledBurst(Spawn(55f), 1, 0f)) { initialQueue = 2 });
 
-        // ---- CB : ไม่มีใครจอดรอ ทยอยมาทั้ง 9 คัน ----
-        // 5 คันสุดท้ายมาถึงในวินาทีเดียวกัน (2:14) ต้องกางออก 0.8 วิ เพราะยัดจุดเดียวไม่ได้
+        // ---- CB : nothing queued, all 9 arrive during the cycle ----
+        // The last 5 arrive in the same second (2:14) and are spread 0.8 s apart,
+        // since they cannot all be released from one point at once.
         tc.schedules.Add(new LaneSchedule("CB",
             new ScheduledBurst(Spawn(16f), 1, 0f),
             new ScheduledBurst(Spawn(27f), 1, 0f),
@@ -476,7 +466,7 @@ public static class TestCasePresets
             new ScheduledBurst(Spawn(49f), 1, 0f),
             new ScheduledBurst(Spawn(72f), 5, 0.8f)));
 
-        // ---- CA : ไม่มีใครจอดรอ · t39, t43, t72 ----
+        // ---- CA : nothing queued, arrivals at t39, t43, t72 ----
         tc.schedules.Add(new LaneSchedule("CA",
             new ScheduledBurst(Spawn(39f), 1, 0f),
             new ScheduledBurst(Spawn(43f), 1, 0f),
@@ -488,16 +478,17 @@ public static class TestCasePresets
     static TestCase Poisson(string name, string desc,
                             float A, float Ax, float B, float Bx, float CB, float CA)
     {
-        // A ที่รับเข้ามาคือ "อัตรารถตรงรวม" (ก่อนมี shared lane) — แบ่งให้ A (เลนใน) กับ A2 (เลนนอก)
-        // ตามสัดส่วน A2_SHARE (18% เลนนอก / 82% เลนใน — ไม่ใช่ 50/50 แล้ว ดูคอมเมนต์ที่ A2_SHARE ด้านบน)
-        // thinning ของ Poisson process: rate ของแต่ละเลน = rate รวม x สัดส่วน -> mean interval = interval รวม / สัดส่วน
-        float aInner = A / (1f - A2_SHARE);   // เลนใน (A) ได้รถเยอะกว่า -> interval สั้นกว่าเดิม
-        float aOuter = A / A2_SHARE;          // เลนนอก/แชร์ (A2) ได้รถน้อยกว่ามาก -> interval ยาวกว่าเดิมเยอะ
+        // The A argument is the combined through-traffic rate, before the shared lane splits it.
+        // It is divided between A (inner) and A2 (outer) by A2_SHARE - not 50/50; see the comment
+        // on A2_SHARE above. Thinning a Poisson process: each lane's rate is the total times its
+        // share, so its mean interval is the total interval divided by that share.
+        float aInner = A / (1f - A2_SHARE);   // inner lane takes most of the traffic -> shorter interval
+        float aOuter = A / A2_SHARE;          // outer/shared lane takes far fewer -> much longer interval
 
         return new TestCase
         {
             name = name,
-            description = desc + "\n(สุ่มแบบ Poisson — เปลี่ยน seed แล้วผลจะต่างกัน ใช้สำหรับสถิติ ไม่ใช่เดโม)",
+            description = desc + "\n(Poisson arrivals - a different seed gives a different run; for statistics, not demos)",
             mode = ArrivalMode.Poisson,
             suggestedDuration = 300f,
             rates = new List<LaneArrivalRate> {

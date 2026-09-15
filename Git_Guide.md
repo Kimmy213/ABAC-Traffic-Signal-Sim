@@ -1,51 +1,51 @@
-# คู่มือใช้ Git กับโปรเจค ABAC Traffic Sim
+# Using Git on the ABAC Traffic Sim project
 
-**สถานะ repo ตอนนี้** (ตรวจจาก `.git/config` แล้ว)
+**Current repo state** (checked against `.git/config`)
 
 | | |
 |---|---|
 | Remote | `https://github.com/Kimmy213/ABAC-Traffic-Signal-Sim.git` |
-| Branch | `main` (track `origin/main` อยู่แล้ว) |
-| โฟลเดอร์ | `C:\Users\USER\Desktop\ProjectSim\frist_try\ABAC_TrafficSim` |
+| Branch | `main` (already tracking `origin/main`) |
+| Folder | `C:\Users\USER\Desktop\ProjectSim\frist_try\ABAC_TrafficSim` |
 
-ตั้งค่าครบแล้ว ไม่ต้อง `git init` หรือ `git remote add` ใหม่ — **push ได้เลย**
+Everything is already configured. No `git init` or `git remote add` needed - **you can push straight away**.
 
 ---
 
-## 1. ขั้นตอนปกติ (จำแค่ 4 คำสั่งนี้พอ)
+## 1. The normal routine (four commands is all you need)
 
-เปิด **Terminal / PowerShell** (หรือใช้ Terminal ใน VS Code ก็ได้) แล้ว:
+Open **Terminal / PowerShell** (or the VS Code terminal) and:
 
 ```bash
 cd C:\Users\USER\Desktop\ProjectSim\frist_try\ABAC_TrafficSim
 
-git status          # 1. ดูว่ามีอะไรเปลี่ยนบ้าง
-git add .           # 2. เลือกไฟล์ทั้งหมดที่เปลี่ยน
-git commit -m "ข้อความอธิบายว่าทำอะไร"    # 3. บันทึกเป็น 1 จุด
-git push            # 4. ส่งขึ้น GitHub
+git status          # 1. see what changed
+git add .           # 2. select every changed file
+git commit -m "a message saying what you did"    # 3. save one point in history
+git push            # 4. send it to GitHub
 ```
 
-**คิดง่าย ๆ:**
+**The mental model:**
 
 ```
-ไฟล์ที่แก้         →  git add   →   staging   →  git commit  →  ประวัติในเครื่อง  →  git push  →  GitHub
-(working dir)                      (เตรียมส่ง)                    (local repo)                    (remote)
+edited files       ->  git add   ->   staging   ->  git commit  ->  local history  ->  git push  ->  GitHub
+(working dir)                       (ready to go)                  (local repo)                    (remote)
 ```
 
-- `add` = เลือกว่าจะเอาอะไรเข้ารอบนี้
-- `commit` = ปั๊มเป็นจุดบันทึกในเครื่อง (ยังไม่ขึ้นเน็ต)
-- `push` = ส่งจุดบันทึกทั้งหมดขึ้น GitHub
+- `add` = choose what goes into this round
+- `commit` = stamp a save point on your machine (still offline)
+- `push` = send every save point to GitHub
 
-⚠️ commit อย่างเดียวยังไม่ขึ้น GitHub นะครับ ต้อง push ด้วย
+Committing alone does not reach GitHub. You have to push as well.
 
 ---
 
-## 2. commit สำหรับงานรอบนี้
+## 2. Commits for this round of work
 
-งานที่เพิ่งทำไปเยอะมาก แนะนำแบ่งเป็นหลาย commit จะอ่านย้อนหลังง่ายกว่า
+A lot has just changed. Splitting it into several commits makes it far easier to read back.
 
 ```bash
-# ระบบ 4-phase
+# the 4-phase system
 git add Assets/Scripts/IntersectionConfig.cs Assets/Scripts/FixedController.cs Assets/Scripts/AdaptiveController.cs
 git commit -m "Expand to 4-phase system with conflict matrix
 
@@ -54,7 +54,7 @@ git commit -m "Expand to 4-phase system with conflict matrix
 - AdaptiveController: FCFS leader + conflict-free group building
 - Fix infinite recursion in Build() that would hang Unity on Play"
 
-# พฤติกรรมรถ
+# vehicle behaviour
 git add Assets/Scripts/CarAgent.cs Assets/Scripts/CarSpawner.cs Assets/Scripts/ROIZone.cs Assets/Scripts/TrafficLight.cs
 git commit -m "Add turning lanes, per-lane RNG, and car colors
 
@@ -62,18 +62,18 @@ git commit -m "Add turning lanes, per-lane RNG, and car colors
 - Per-lane System.Random so Fixed/Adaptive see identical traffic
 - Fix cars not moving on green when light registration was cleared"
 
-# เครื่องมือ
+# tooling
 git add Assets/Editor/ Assets/Scripts/SimulationControlPanel.cs Assets/Scripts/BatchRunPanel.cs Assets/Scripts/TestCaseLibrary.cs
 git commit -m "Add scene builder, control panel, and batch run UI"
 
-# ที่เหลือทั้งหมด
+# everything else
 git add .
 git commit -m "Update scene, materials, docs, and analysis script"
 
 git push
 ```
 
-**อยากง่ายกว่านั้น** ก็รวบเป็นก้อนเดียวได้:
+**If you want it simpler**, one commit is fine:
 
 ```bash
 git add .
@@ -83,126 +83,132 @@ git push
 
 ---
 
-## 3. ⚠️ เรื่อง SimulationResults — อ่านก่อน push
+## 3. About SimulationResults - read before pushing
 
-`.gitignore` ตอนนี้ **ไม่ได้กัน** โฟลเดอร์ `SimulationResults/` ไว้
+`.gitignore` currently **does not exclude** the `SimulationResults/` folder.
 
-ตอนนี้มีไฟล์ทดสอบเก่าอยู่ ~41 ไฟล์ และหลังรันจริง 270 runs จะมี **540+ ไฟล์** ถ้าปล่อยไว้ repo จะรก
+There are about 41 old test files there now, and a real 270-run batch will produce **540 or more**. Left
+alone, the repo gets cluttered.
 
-**แนะนำ:** ลบไฟล์ทดสอบเก่าทิ้งก่อน (มันเป็นข้อมูลจากตอนยังเป็น 3-phase ใช้ไม่ได้แล้ว และไฟล์ `summary_all_runs.csv` ก็มีสคีมาปนกันอยู่)
+**Recommended:** delete the old test files first. They are from the 3-phase era and no longer usable, and
+`summary_all_runs.csv` has mixed schemas in it.
 
 ```bash
-# ลบผลทดสอบเก่าทั้งหมด
+# remove all old test results
 rmdir /s /q SimulationResults          # Windows CMD
-# หรือ
+# or
 Remove-Item -Recurse -Force SimulationResults   # PowerShell
 ```
 
-แล้วตัดสินใจว่าจะเก็บผลจริงลง git ไหม:
+Then decide whether real results belong in git:
 
-**ทางเลือก A — เก็บผลจริงไว้ใน git (แนะนำสำหรับ senior project)**
-ข้อมูลดิบคือหลักฐานงานวิจัย กรรมการขอดูได้ และถ้าเครื่องพังก็ยังมี backup
-ไม่ต้องแก้ `.gitignore` แค่ push ตามปกติหลังรันเสร็จ
+**Option A - keep the real results in git (recommended for a senior project).**
+Raw data is the evidence behind the research, the examiners may ask to see it, and it survives a dead
+laptop. No `.gitignore` change needed; just push as usual after a run.
 
-**ทางเลือก B — เก็บแค่ไฟล์สรุป**
-ถ้ากลัว repo ใหญ่เกิน เพิ่มบรรทัดนี้ท้าย `.gitignore`:
+**Option B - keep only the summary files.**
+If you are worried about repo size, add this to the end of `.gitignore`:
 
 ```gitignore
 # ===== Simulation Output =====
 SimulationResults/detailed_*.csv
 SimulationResults/summary_all_runs_OLD_*.csv
 ```
-แบบนี้จะเก็บแค่ `summary_all_runs.csv`, `batch_summary_*.txt` และโฟลเดอร์ `analysis_output/`
 
-> ไฟล์ CSV เป็น text ล้วน ขนาดเล็กมาก 540 ไฟล์รวมกันน่าจะไม่ถึง 20 MB — **ผมเอน A มากกว่า**
+That keeps `summary_all_runs.csv`, `batch_summary_*.txt` and the `analysis_output/` folder.
+
+> CSVs are plain text and very small; 540 of them should come to under 20 MB. **I lean towards A.**
 
 ---
 
-## 4. ตอน push ครั้งแรกจะโดนถาม login
+## 4. The first push will ask you to log in
 
-GitHub **เลิกรับรหัสผ่านตั้งแต่ปี 2021** ใส่รหัส GitHub ปกติจะไม่ผ่าน
+GitHub **stopped accepting passwords in 2021**, so your ordinary GitHub password will not work.
 
-**วิธีที่ง่ายที่สุดบน Windows:** พอ push แล้วมันจะเด้งหน้าต่าง *Git Credential Manager* ขึ้นมา → กด **"Sign in with your browser"** → login ในเบราว์เซอร์ → จบ ครั้งต่อไปจำให้เอง
+**Easiest on Windows:** when you push, a *Git Credential Manager* window appears. Click
+**"Sign in with your browser"**, log in there, and you are done - it remembers you afterwards.
 
-**ถ้าไม่มีหน้าต่างเด้ง** ต้องสร้าง Personal Access Token เอง:
+**If no window appears**, create a Personal Access Token yourself:
 
-1. ไป https://github.com/settings/tokens
+1. Go to https://github.com/settings/tokens
 2. **Generate new token (classic)**
-3. ติ๊ก scope **`repo`** อย่างเดียวพอ
-4. ตั้งวันหมดอายุ (90 วัน ครอบคลุมถึง defence ตุลาคม)
-5. **ก๊อป token เก็บไว้ทันที** — ปิดหน้าไปแล้วดูซ้ำไม่ได้
-6. เวลา push ถาม username ใส่ `Kimmy213` / ถาม password **ใส่ token** (ไม่ใช่รหัสผ่าน)
+3. Tick the **`repo`** scope; nothing else is needed
+4. Set an expiry (90 days covers the October defence)
+5. **Copy the token immediately** - you cannot see it again once the page closes
+6. When push asks for a username enter `Kimmy213`; when it asks for a password **enter the token**, not your password
 
 ---
 
-## 5. ก่อน push ทุกครั้ง — เช็ค 3 อย่าง
+## 5. Three things to check before every push
 
 ```bash
 git status
 ```
 
-- [ ] **ไม่มี `Library/` หรือ `Temp/` โผล่ในลิสต์** — ถ้าโผล่แปลว่า `.gitignore` มีปัญหา อย่า add
-- [ ] **มีไฟล์ `.meta` ตามมาด้วยทุกไฟล์ใหม่** — Unity ต้องใช้ ถ้าไม่มี reference จะหลุดตอนเปิดในเครื่องอื่น
-- [ ] **`Assets/Scenes/SampleScene.unity` อยู่ในลิสต์** ถ้ากด Build Scene แล้ว Ctrl+S ไปแล้ว
+- [ ] **no `Library/` or `Temp/` in the list** - if they appear, `.gitignore` is broken; do not add
+- [ ] **every new file has its `.meta` alongside** - Unity needs them, or references break on another machine
+- [ ] **`Assets/Scenes/SampleScene.unity` is in the list** if you ran Build Scene and pressed Ctrl+S
 
 ---
 
-## 6. คำสั่งที่ใช้บ่อยอีกชุด
+## 6. Other commands worth knowing
 
 ```bash
-git log --oneline -10        # ดูประวัติ 10 อันล่าสุด
-git diff                     # ดูว่าแก้อะไรไปบ้าง (ที่ยังไม่ add)
-git diff --stat              # ดูแบบสรุปว่าไฟล์ไหนเปลี่ยนกี่บรรทัด
-git add Assets/Scripts/CarAgent.cs    # add แค่ไฟล์เดียว
-git restore ไฟล์             # ยกเลิกการแก้ไฟล์นั้น (ยังไม่ได้ add)
-git restore --staged ไฟล์    # เอาออกจาก staging (แต่ยังแก้อยู่)
+git log --oneline -10        # the last 10 commits
+git diff                     # what you changed (not yet added)
+git diff --stat              # a summary: which files, how many lines
+git add Assets/Scripts/CarAgent.cs    # add one file only
+git restore <file>           # discard changes to that file (not yet added)
+git restore --staged <file>  # take it out of staging (keeping the edit)
 ```
 
 ---
 
-## 7. เจอ error แล้วทำไง
+## 7. What to do when you hit an error
 
-| Error | แปลว่า | แก้ยังไง |
+| Error | What it means | Fix |
 |---|---|---|
-| `Updates were rejected because the remote contains work that you do not have locally` | มีคนอื่น (หรือเครื่องอื่นของเรา) push ไปก่อน | `git pull` แล้วค่อย `git push` ใหม่ |
-| `Please tell me who you are` | ยังไม่ได้ตั้งชื่อ/อีเมล | `git config --global user.name "ชื่อ"` และ `git config --global user.email "อีเมล"` |
-| `Authentication failed` | ใส่รหัสผ่านแทน token | ดูข้อ 4 |
-| `nothing to commit, working tree clean` | ไม่มีอะไรเปลี่ยน (หรือลืม `git add`) | ปกติ ไม่ใช่ error |
-| `fatal: not a git repository` | อยู่ผิดโฟลเดอร์ | `cd` เข้าโฟลเดอร์โปรเจคก่อน |
-| ค้างที่หน้าจอแปลก ๆ มี `~` เต็มไปหมด | มันเปิด vim ให้พิมพ์ commit message | กด `Esc` แล้วพิมพ์ `:wq` กด Enter |
+| `Updates were rejected because the remote contains work that you do not have locally` | someone else (or your other machine) pushed first | `git pull`, then `git push` again |
+| `Please tell me who you are` | name and email not set | `git config --global user.name "name"` and `git config --global user.email "email"` |
+| `Authentication failed` | you entered a password instead of a token | see section 4 |
+| `nothing to commit, working tree clean` | nothing changed (or you forgot `git add`) | normal, not an error |
+| `fatal: not a git repository` | you are in the wrong folder | `cd` into the project folder first |
+| a strange screen full of `~` | it opened vim for the commit message | press `Esc`, type `:wq`, press Enter |
 
 ---
 
-## 8. สลับเครื่อง Windows ↔ Mac
+## 8. Moving between Windows and Mac
 
-เคยทำได้แล้ว วิธีเดิม:
+This already works. The routine is:
 
 ```bash
-# เครื่องที่ทำงานเสร็จ
+# on the machine you just finished on
 git add . && git commit -m "..." && git push
 
-# อีกเครื่อง ก่อนเริ่มทำงานทุกครั้ง
+# on the other machine, before starting work every time
 git pull
 ```
 
-⚠️ **อย่าลืม `git pull` ก่อนเริ่มแก้เสมอ** ถ้าลืมแล้วไปแก้ไฟล์เดียวกันทั้งสองเครื่อง จะเกิด merge conflict ที่แก้ยุ่งยาก โดยเฉพาะไฟล์ `.unity` (scene) ที่ merge ด้วยมือแทบไม่ได้เลย
+**Always `git pull` before you start editing.** Forget it, edit the same file on both machines, and you get
+a merge conflict that is awkward to resolve - especially in a `.unity` scene file, which is almost
+impossible to merge by hand.
 
 ---
 
-## 9. นิสัยที่ควรติด
+## 9. Habits worth forming
 
-- **commit ก่อนกด `ABAC ▸ Build 4-Phase Scene` ทุกครั้ง** — builder แก้ scene จริง ถ้าผลไม่ถูกใจจะได้ย้อนได้ด้วย `git restore Assets/Scenes/SampleScene.unity`
-- **commit ก่อนปล่อยรัน 270 runs** — จะได้รู้แน่ชัดว่าผลชุดนี้มาจากโค้ดเวอร์ชันไหน (สำคัญกับความน่าเชื่อถือของงานวิจัย)
-- **commit ย่อย ๆ บ่อย ๆ ดีกว่าก้อนใหญ่ก้อนเดียว** — ย้อนกลับได้ตรงจุด
-- **เขียน message ให้อ่านรู้เรื่อง** — `"fix bug"` ไม่ช่วยอะไร, `"Fix cars not moving on green light"` ช่วยเยอะ
+- **Commit before pressing `ABAC > Build 4-Phase Scene` every time.** The builder rewrites the real scene, so if you dislike the result you can undo with `git restore Assets/Scenes/SampleScene.unity`.
+- **Commit before starting a 270-run batch.** Then you know exactly which version of the code produced those results, which matters for the credibility of the research.
+- **Many small commits beat one large one.** You can roll back to exactly the right point.
+- **Write a message that means something.** `"fix bug"` helps nobody; `"Fix cars not moving on green light"` helps a lot.
 
-### เคล็ดลับสำหรับ defence
+### A tip for the defence
 
-ก่อนวันสอบ ให้ tag เวอร์ชันที่ใช้เก็บข้อมูลจริงไว้:
+Before the examination, tag the version used to collect the real data:
 
 ```bash
 git tag -a v1.0-final-data -m "Version used for the 270-run experiment"
 git push origin v1.0-final-data
 ```
 
-ถ้ากรรมการถามว่า "ผลนี้มาจากโค้ดตัวไหน" ตอบได้ทันทีว่า tag `v1.0-final-data`
+If the examiners ask which code produced these results, the answer is the `v1.0-final-data` tag.

@@ -1,636 +1,590 @@
-# ABAC Traffic Signal Simulation — Project Status
+# ABAC Traffic Signal Simulation - Project Status
 
-**อัปเดตล่าสุด:** 2 กันยายน 2026 (รอบที่ 9 — SP1_HANDOFF_v2: cycle 106s, saturation/startup ที่วัดจริง, shared lane 5.4% + late merge)
-**Repository:** github.com/Kimmy213/ABAC-Traffic-Signal-Sim (Private)
+**Last updated:** 2 September 2026 (round 9 - SP1_HANDOFF_v2: 106 s cycle, measured saturation and startup values, shared lane 5.4% plus late merge)
+**Repository:** github.com/Kimmy213/ABAC-Traffic-Signal-Sim (private)
 **Engine:** Unity 6 (6000.5.4f1), Built-In Render Pipeline
 
 ---
 
-## รอบที่ 9 (2 ก.ย.) — อัปเดตตาม SP1_HANDOFF_v2 + SP1_REPORT_MATERIAL
+## Round 9 (2 Sep) - updated to SP1_HANDOFF_v2 and SP1_REPORT_MATERIAL
 
-Itim ส่งเอกสารสองฉบับที่ **แทนที่ handoff เดิมและ reply ทั้ง #1-#4** ทุกพารามิเตอร์ในนั้นวัดจริงหมด ไม่มีค่าเดา
+Itim sent two documents that **supersede the original handoff and replies #1-#4**. Every parameter in them
+is measured; none is guessed.
 
-### ค่าที่แก้ตามทันที
+### Values changed immediately
 
-1. **Bx เขียว 21 → 20 วิ, รอบ 107 → 106 วิ** — Itim ให้ตารางสเตจเต็มมาแล้ว ตรงกับ preset ของเราทุกช่วง
-   (`0-40 A+B` / `45-65 Bx+B` / `70-101 CB`) และสั่งให้ใช้ 20 วิ เพราะจับด้วยนาฬิกาได้ 20.0 พอดี
-   ช่วงคลาด ±3 วิ ไม่เปลี่ยนข้อสรุป — Bx ล้นทั้งช่วง (v/c 1.21 ที่ 23 วิ, **1.51** ที่ 20 วิ)
-2. **⭐ saturation headway 2.5 → 2.31 วิ/คัน และ startup lost time 3.0 → 2.95 วิ** — เป็นค่าที่วัดที่แยกนี้เอง
-   (5 เฟสเขียวที่มีคิวเต็ม, 39 ตัวอย่าง) ไม่ใช่ default ของ HCM อีกต่อไป ตรงนี้เป็นจุดขายตอน defence:
-   กรรมการชอบถามว่าเลขมาจากไหน คำตอบคือ "วัดเองที่นี่" — saturation flow 1558 คัน/ชม./เลน (HCM ให้ 1800)
-   startup lost time สูงกว่า HCM 1.5 เท่า สมเหตุสมผลเพราะมอไซค์แทรกมาอยู่หัวแถวต้องรอเคลียร์ก่อน
-   **และมันกินเวลา 2.95 วิจากทุกเฟส = 15% ของเฟส Bx ที่ยาวแค่ 20 วิ**
-3. **arrival rate ใหม่ทุกเลน** — เช้า A=18.8 / Ax=5.1 / B=9.0 / Bx=9.6, กลางวัน A=29.0 / Ax=9.7 / B=20.5 / Bx=21.4
-4. **⭐ EveningPeak ได้ค่า CB/CA จริงแล้ว** (8.4 / 13.4 วิ) จากเดิมที่เป็นค่าเดาล้วน — CB:CA = 61:39
-5. **A2_SHARE 18% → 5.4%** — เปลี่ยนจากค่าที่ *อนุมานย้อน* จากอัตราบล็อก มาเป็นค่าที่ **นับตรง**
-   (คลิป A_morning: รถตรง 56 คัน อยู่เลนใน 53 เข้าเลนแชร์แค่ 3) เชื่อถือได้กว่าเดิมมาก
+1. **Bx green 21 -> 20 s, cycle 107 -> 106 s.** Itim supplied the full stage table, which matches our preset
+   at every point (`0-40 A+B` / `45-65 Bx+B` / `70-101 CB`), and specified 20 s because a stopwatch gave
+   exactly 20.0. The +/-3 s spread does not change the conclusion: Bx is over capacity throughout
+   (v/c 1.21 at 23 s, **1.51** at 20 s).
+2. **Saturation headway 2.5 -> 2.31 s/veh and startup lost time 3.0 -> 2.95 s.** These are measured at this
+   junction (5 fully queued greens, 39 samples), no longer HCM defaults. This is a selling point at the
+   defence: examiners ask where numbers come from, and the answer is "we measured them here". Saturation
+   flow is 1,558 veh/hr/lane against HCM's 1,800, and the startup lost time is 1.5 times HCM - reasonable,
+   because motorcycles filter to the head of the queue and have to clear first.
+   **It costs 2.95 s of every phase, which is 15% of a Bx phase lasting only 20 s.**
+3. **New arrival rates for every lane** - morning A=18.8 / Ax=5.1 / B=9.0 / Bx=9.6; midday A=29.0 / Ax=9.7 / B=20.5 / Bx=21.4.
+4. **EveningPeak now has real CB/CA values** (8.4 / 13.4 s), previously pure guesswork. CB:CA = 61:39.
+5. **A2_SHARE 18% -> 5.4%** - from a value *inferred backwards* from a blocking rate to one **counted
+   directly** (clip A_morning: 56 through vehicles, 53 in the inner lane, only 3 in the shared lane). Far
+   more reliable.
 
-### จุดขัดกันในเอกสาร — ต้องให้ Itim ยืนยัน
+### A contradiction in the documents - needs Itim to confirm
 
-โค้ดตัวอย่างใน §4 เขียนบรรทัด `T8 · MorningPeak` ลงท้ายด้วย `8.4f, 13.4f` แต่ตารางเหนือบรรทัดนั้นเองระบุว่า
-CB/CA สองค่านี้วัด **ตอนเย็น** และ §6 ข้อ 8 ก็ย้ำว่าถ้า MorningPeak คือช่วง 08:15-09:00 แล้ว CB≈CA≈0 ยังถูก
+The example code in section 4 ends the `T8 - MorningPeak` line with `8.4f, 13.4f`, but the table just above
+it states that those two CB/CA values were measured **in the evening**, and section 6 item 8 repeats that
+if MorningPeak means 08:15-09:00 then CB and CA are still about 0.
 
-**ตัดสินใจ:** เก็บ MorningPeak เป็น `CLOSED` ไว้เหมือนเดิม แล้วเอา 8.4/13.4 ไปลง EveningPeak — ฝากเช็คกับ Itim
+**Decision:** keep MorningPeak as `CLOSED` and put 8.4/13.4 into EveningPeak. To be checked with Itim.
 
-### ⭐ Late merge — งานหลักของรอบนี้
+### Late merge - the main work of this round
 
-Itim เตือนตรง ๆ ว่านี่คือ "รายละเอียดที่พลาดกันง่ายที่สุด" และมันจริง
+Itim warned outright that this is "the detail people miss most easily", and he is right.
 
-ของเดิม A2 spawn ในเลนแชร์ตั้งแต่ระยะ 220 ม. แล้ววิ่งมาทั้งเลน → รถกระจายอยู่ **กลางคิว** → ได้
-"บล็อกบ่อยแต่เบา" แต่ของจริงรถ 3 คันนั้นเปลี่ยนเลนเข้ามาตอนเหลือแค่ ~5 ช่วงรถ → แทรกเข้า **หัวคิว** →
-คันเดียวหยุดรถเลี้ยวทั้งแถวตลอดช่วงไฟแดง = "**เกิดนาน ๆ ครั้งแต่รุนแรงเกือบสูงสุดทุกครั้ง**"
+Previously A2 spawned in the shared lane 220 m out and drove the whole way, so vehicles spread **through
+the queue**, giving "frequent but mild blocking". In reality those 3 vehicles change lane with only about
+five car lengths left, cutting in **at the head of the queue**, where one of them stops every turning
+vehicle behind it for the whole red - "**rare, but nearly worst-case every time**".
 
-ค่าเฉลี่ยเท่ากัน แต่ queue dynamics คนละเรื่อง — และเหตุการณ์รุนแรงนั่นแหละที่ดันคิวไปถึงสี่แยกถัดไป
+The mean is the same; the queue dynamics are entirely different - and it is the severe events that push the
+queue back to the next junction.
 
-**⚠️ สำคัญ:** ถ้าลด A2_SHARE เหลือ 5.4% โดยไม่ทำ late merge โมเดลจะแสดงการบล็อก**น้อยกว่าจริงมาก**
-(ค่า 18% เดิมบังเอิญไปชดเชยไว้) สองข้อนี้ต้องแก้คู่กัน ห้ามค้างครึ่งทาง
+**Important:** cutting A2_SHARE to 5.4% *without* the late merge would make the model show **far less
+blocking than reality** (the old 18% happened to compensate). The two changes must be made together; never
+leave it half done.
 
-**ที่ทำ:**
+**What was done:**
 
-- A2 **spawn ในเลนใน (z=3.0)** เหมือนรถตรงทั่วไป ไม่ใช่เลนแชร์แล้ว
-- เพิ่ม `CarAgent.steerBeforeStopLine` — ให้เปลี่ยนเลนได้ทั้งที่ยังไม่ผ่านเส้นหยุด (ปกติห้าม)
-  ทำได้เพราะรถวิ่งขนานแกน X ล้วน การเยื้องด้านข้างไม่กระทบ `signedDistToStopPoint` ที่คิดจากผลต่าง X อย่างเดียว
-- เพิ่ม `CarAgent.steerStartDistance` — **ยังไม่เบียดเข้าเลนจนกว่าจะเหลือระยะตามกำหนด** นี่คือหัวใจของ late merge
-  ตั้งไว้ให้ merge เสร็จที่ **20 ม. ก่อนเส้นหยุด = 3.3 ช่วงรถ** และใช้ระยะเปลี่ยนเลนรวม 42 ม. = 7 ช่วงรถ
+- A2 now **spawns in the inner lane (z=3.0)** like ordinary through traffic, not in the shared lane
+- added `CarAgent.steerBeforeStopLine`, allowing a lane change before the stop line (normally forbidden). This is safe because the cars run parallel to X, so a lateral offset does not affect `signedDistToStopPoint`, which uses only the X difference
+- added `CarAgent.steerStartDistance` - **no edging across until the remaining distance falls below a threshold**. This is the heart of the late merge, set so the merge completes **20 m before the stop line = 3.3 car slots**, over a total lane-change span of 42 m = 7 car slots
 
-**บั๊กที่ต้องกันไปพร้อมกัน:** `LookAheadLimit()` ที่เพิ่มไว้รอบที่ 6 ตัดระยะมองที่ waypoint เมื่อเส้นทางหักเลี้ยว
-ถ้าปล่อยไว้ A2 จะมองไม่เห็นคิวที่อยู่เลยจุดเปลี่ยนเลนแล้วพุ่งชนท้าย เพิ่ม `PathTurnsAway()` แยกให้ออกว่า
-**"หักออกไปคนละทาง" (Ax เลี้ยวเข้ามอ ~90°) กับ "เปลี่ยนเลนแล้ววิ่งตรงต่อ" (A2 ~9°)** ตัดระยะมองเฉพาะกรณีแรก
+**A bug that had to be prevented at the same time:** `LookAheadLimit()`, added in round 6, clips the
+look-ahead at a waypoint when the path turns. Left alone, A2 could not see the queue beyond the lane-change
+point and would rear-end it. `PathTurnsAway()` now distinguishes **"turning away" (Ax into the campus, about
+90 degrees) from "changing lane and continuing straight" (A2, about 9 degrees)**, and clips only the former.
 
-### เลนฉุกเฉิน — ยังปิดไว้ (ตัดสินใจแล้ว)
+### The emergency lane - still disabled (decided)
 
-เหตุผลที่ปิดไปรอบที่ 8 คือ double-counting กับค่า 18% ที่อนุมานย้อนมาจากอัตราบล็อก **ตอนนี้เหตุผลนั้นใช้ไม่ได้แล้ว**
-เพราะ 5.4% เป็นค่านับตรง ไม่ได้อนุมานจากอัตราบล็อก — แต่ตัดสินใจคงไว้ 2 แถวตามหน้างาน และ**เขียนเป็น limitation**
-ในรายงานว่าโมเดล overstate การบล็อก (Itim เสนอทางนี้ไว้เป็นทางเลือกอยู่แล้ว: "consider 60-70% escape, **or document the simplification**")
+It was disabled in round 8 to avoid double-counting against the 18% that had been inferred from the blocking
+rate. **That reason no longer applies**, because 5.4% is a direct count. But the decision is to keep two rows
+as observed on site and **write it up as a limitation** that the model overstates the blocking. Itim had
+already offered this as an option: "consider 60-70% escape, **or document the simplification**".
 
-### ยังไม่ได้ทำ (ตัดสินใจเลื่อน)
+### Not done (deliberately deferred)
 
-**CA โดน CB บล็อก 82% ของรอบ** — หนักกว่าฝั่งขาเข้า (26-29%) อีก ตอนนี้ CA กับ CB อยู่คนละเลนกายภาพในซีน
-(x=3.8 กับ x=1.5) จึงไม่บล็อกกันเลย ต้องย้ายมาแชร์เลนแบบเดียวกับ A2/Ax ถึงจะจำลองได้
-Itim ชี้ว่าเรื่องนี้เปลี่ยนกรอบข้อเสนอด้วย: **การให้ CB เขียวเพิ่มไม่ได้แก้แค่ CB เอง แต่เป็นทางเดียวที่จะปลดบล็อก CA**
-ซึ่งมีรถอีก 100 คัน/15 นาที และไม่มีไฟเป็นของตัวเอง
+**CA is blocked by CB for 82% of the cycle**, worse than the inbound side at 26-29%. CA and CB are currently
+different physical lanes in the scene (x=3.8 and x=1.5) and so never block each other. Modelling it needs
+them sharing a lane the way A2 and Ax do.
+Itim points out that this reframes the proposal too: **giving CB more green does not only help CB, it is the
+only way to unblock CA**, which carries another 100 vehicles per 15 minutes and has no signal of its own.
 
-**ผลทดสอบ:** ทั้ง 6 ชุดผ่านหมด เพิ่มเทสเรขาคณิตของ late merge 5 ข้อ (จุด merge อยู่ก่อนเส้นหยุด, เสร็จภายใน
-6 ช่วงรถ, ไม่ชิดเกิน 2 ช่วงรถ, ช่วงเปลี่ยนเลนรวมไม่เกิน 12 ช่วงรถ, มุมเบน < 45° เพื่อไม่ให้ถูกตัดระยะมอง)
+**Test results:** all 6 suites pass. Five geometry checks were added for the late merge (the merge point is
+before the stop line, completes within 6 car slots, is not closer than 2, the whole span is under 12 slots,
+and the deviation angle is under 45 degrees so the look-ahead is not clipped).
 
-### 🛑 ต้องกด Build Scene ใหม่
+### The scene must be rebuilt
 
-จุด spawn ของ A2 ย้ายเลน และมี waypoint ชุดใหม่ — ทำในโค้ดอย่างเดียวไม่พอ
-ตอนรัน T13 ให้ดูว่า **รถ A2 วิ่งมาในเลนในแล้วค่อยตัดเข้าเลนแชร์ตอนใกล้ถึงเส้นหยุด** ไม่ใช่วิ่งเลนแชร์มาแต่ไกล
-
----
-
-## รอบที่ 8 (25 ส.ค.) — ขาเข้าฝั่งตะวันออกต้องมี 2 แถวเท่านั้น → ปิดกลไกแซงไหล่ทาง
-
-Kimmy แจ้งจากภาพซีนว่า **"เลน A ควรมีแค่ 2 แถว A กับ Ax"** — ถูกต้อง และเป็นผลข้างเคียงจากที่ผมแก้ในรอบที่ 6
-
-ตอนนั้นผมแก้บั๊ก "รถซ้อนกัน" ด้วยการให้รถ Ax ที่สุ่มได้ว่าแซง **เยื้องออกไหล่ทาง 2.3 ม.** ไปวิ่งที่ z=8.8
-ซึ่งทำให้ขาเข้าฝั่งตะวันออกกลายเป็น **3 แถว** (z = 3.0 / 6.5 / 8.8) ทั้งที่ของจริงมี 2 แถว
-
-### ปิดกลไกแซงแล้ว — และมีเหตุผลเชิงโมเดลหนักกว่าเรื่องภาพอีก
-
-ระหว่างแก้เจอปัญหาที่ใหญ่กว่า: **กลไกแซงกับค่า A2_SHARE = 18% เป็นการหักผลเดียวกันสองรอบ**
-
-ย้อนดูที่มา: ค่า 18% ไม่ได้มาจากการนับรถโดยตรง — Itim **back-calculate มาจากอัตราการบล็อกที่สังเกตจริง
-40-60%** โดยใช้โมเดล car-following ล้วน ๆ แปลว่า **18% + ไม่มีการแซง = ได้อัตราบล็อก 40-60% ตามที่วัดจริงอยู่แล้ว**
-
-พอเอากลไกแซง 65% ใส่ทับเข้าไปอีก อัตราบล็อกจะเหลือแค่ประมาณ 14-21% ซึ่ง**ต่ำกว่าที่วัดได้จริงมาก**
-เท่ากับโมเดลจะประเมินปัญหา Ax ต่ำเกินจริง — ผิดทางกับสิ่งที่โปรเจกต์ต้องการพิสูจน์
-
-ทั้งเรื่องภาพ (2 แถว) และเรื่องสถิติ (double-counting) ชี้ไปทางเดียวกัน จึงปิดกลไกแซง:
-`AX_BYPASS_CHANCE = 0` และ `AX_BYPASS_OFFSET_Z = 0`
-
-**โค้ดยังอยู่ครบ** (`CarAgent.canBypassCrossLaneBlocker` / `bypassLateralOffset` / `CarSpawner.laneBypassChance`)
-เผื่ออยากเปิดใช้ทีหลังถ้า Itim ให้ข้อมูลการแทรก/การโบกของ รปภ. มาแยกต่างหาก (ที่ไม่ได้ถูกนับรวมใน 18% ไปแล้ว)
-
-### ผลที่ตามมา
-
-- `ROI_Ax` กลับมาใช้ความกว้างปกติ 3 ม. ที่ z=6.5 (ไม่ต้องกว้าง 8 ม. ครอบไหล่ทางอีก)
-  และมีเทสใหม่บังคับว่า ROI ของเลนนอกต้อง **ไม่** ครอบเลนใน (z=3.0) ด้วย กันการนับรถ A ปนเข้ามา
-- Ax กลับไปโดนบล็อกโดย A2 เต็ม 100% ตามฟิสิกส์ car-following ล้วน ๆ ซึ่งตรงกับสมมติฐานที่ใช้คำนวณ 18%
-
-### เทสใหม่ที่ป้องกันไม่ให้พลาดซ้ำ
-
-- **นับแถวรถบนขาเข้าฝั่งตะวันออกต้องได้ 2 พอดี** — ถ้าใครเผลอเปิด offset กลับมาโดยไม่ตั้งใจ เทสจะแดงทันที
-- **ห้าม `chance > 0` คู่กับ `offset = 0`** — คู่นี้คือบั๊ก "รถวิ่งทะลุกัน" ของรอบที่ 6 เป๊ะ ๆ ตอนนี้ล็อกไว้แล้ว
-- **ถ้าเปิดกลไกแซงกลับมา** กฎเดิม (offset > lookAheadAngle, ไม่ซ้อนทับ, ไม่หลุดขอบถนน) จะถูกตรวจอัตโนมัติ
-  ถ้าปิดอยู่ก็ข้ามไปพร้อมพิมพ์ SKIP ให้เห็นชัดว่าข้ามเพราะอะไร
-
-**ผลทดสอบ:** ทั้ง 6 ชุดผ่านหมด — GeometryTest ยืนยัน `2 แถว (z = 3, 6.5)`
-
-### 🛑 ต้องกด Build Scene ใหม่
-
-กด `ABAC ▸ Build 4-Phase Scene` → `ABAC ▸ Validate Scene` → Ctrl+S
-แล้วดูว่าขาเข้าฝั่งตะวันออกเหลือรถ 2 แถวพอดี
+A2's spawn point moved lane and there is a new waypoint set, so code changes alone are not enough.
+When running T13, check that **A2 vehicles travel in the inner lane and only cut into the shared lane near
+the stop line**, rather than running the shared lane the whole way.
 
 ---
 
-## รอบที่ 7 (25 ส.ค.) — แก้ตามข้อมูลหน้างานของ Kimmy: ROI ร่วม + Ax ให้ทาง Bx
+## Round 8 (25 Aug) - the eastbound approach must have exactly two rows, so shoulder passing is off
 
-Kimmy แจ้งข้อมูลหน้างาน 2 ข้อที่โมเดลเดิมไม่มี ทั้งคู่เป็นการแก้ที่มีผลต่อตัวเลขผลลัพธ์
+Kimmy reported from a screenshot that **"lane A should only have two rows, A and Ax"** - correct, and a side
+effect of my round 6 change.
 
-### 1. A2 กับ Ax ต้องใช้ ROI ตัวเดียวกัน
+Back then I fixed the "overlapping cars" bug by moving an Ax vehicle drawn to pass **2.3 m onto the
+shoulder** at z=8.8, which turned the eastbound approach into **three rows** (z = 3.0 / 6.5 / 8.8) where
+reality has two.
 
-**เหตุผล:** มันคือ**เลนกายภาพเดียวกัน** กล้อง/เครื่องตรวจจับตัวจริงแยกไม่ออกว่าคันไหนจะวิ่งตรง
-คันไหนจะเลี้ยวเข้ามอ ของเดิมแยกเป็น 2 ROI ซ้อนตำแหน่งกัน = ป้อนข้อมูลที่ detector จริงไม่มีทางรู้ได้
-ให้ controller (แถมรอบที่ 6 ผมยังตั้งความกว้างสอง ROI ไม่เท่ากันอีก — 8 ม. กับ 3 ม.)
+### Passing is now disabled - and the modelling reason is stronger than the visual one
 
-**แก้:**
+While fixing it I found a bigger problem: **the passing mechanism and A2_SHARE = 18% discount the same
+effect twice.**
 
-- `ROIZone` เพิ่ม `alsoCountLanes` — ROI ตัวเดียวรับผิดชอบได้หลาย movement (`ROI_Ax` รับทั้ง `Ax` และ `A2`)
-- ลบ `ROI_A2` ออกจากซีน (ถ้าปล่อยไว้จะนับและบันทึกสถิติซ้ำสองรอบ) — builder ลบให้อัตโนมัติ
-- `GetVehicleCount()` คืนจำนวนรถในเลนนอกทั้งหมด = **สิ่งที่ detector จริงเห็น** → Adaptive controller
-  จะเห็น demand ของเฟส A รวมรถ Ax ที่ไม่ได้ต้องการไฟเขียวเลยเข้าไปด้วย **ซึ่งเป็นพฤติกรรมที่ถูกต้อง**
-  ของระบบตรวจจับจริง และเป็นประเด็นที่น่าเขียนในรายงาน (shared-lane detection ambiguity)
-- ⚠️ **สถิติเวลารอยังแยกราย movement ได้ปกติ** เพราะเปลี่ยน `LogVehicle` ให้ใช้ `car.assignedLane`
-  แทน `roi.laneName` — ถ้าไม่แก้จุดนี้ เวลารอของ Ax กับ A2 จะปนกันแล้วแยกไม่ออกอีกเลย
-  ซึ่งเวลารอของ Ax คือตัวชี้วัดหลักของงานทั้งหมด
-- เพิ่ม `GetVehicleCount(lane)` ไว้ตรวจสอบ/ดีบักแยกราย movement (detector จริงทำแบบนี้ไม่ได้)
+Where 18% came from: not a direct count. Itim **back-calculated it from the observed 40-60% blocking rate**
+using a pure car-following model. So **18% with no passing already reproduces the observed 40-60%**.
 
-### 2. Ax เลี้ยวเข้ามอไม่ได้ตอน Bx เขียว
+Adding a 65% passing chance on top drops the blocking rate to roughly 14-21%, **far below what was
+measured**, so the model would understate the Ax problem - the opposite of what the project sets out to show.
 
-**เหตุผล:** Bx ก็เลี้ยวขวาเข้ามอเหมือนกัน กวาดผ่านปากทางเข้า — Ax จึงต้องให้ทาง
-โมเดลเดิมให้ Ax เป็นเลนฟรี 100% ไม่เคยหยุดเพราะไฟเลย
+The visual argument (two rows) and the statistical one (double-counting) point the same way, so passing is
+off: `AX_BYPASS_CHANCE = 0` and `AX_BYPASS_OFFSET_Z = 0`.
 
-**แก้ — เพิ่มแนวคิด "เลนให้ทาง" (yield lane):**
+**The code remains** (`CarAgent.canBypassCrossLaneBlocker` / `bypassLateralOffset` /
+`CarSpawner.laneBypassChance`) in case we want it later, if Itim provides separate data on filtering and on
+the security staff waving vehicles through, which is not already folded into the 18%.
 
-- `CarAgent.lightIsInverted` / `CarSpawner.lightIsInverted` — อ่านไฟของ*อีกกระแส*แบบกลับด้าน
-  (เขาเขียว/เหลือง = เราหยุด, เขาแดง = เราไปได้) `Spawner_Ax` ผูกกับ `Light_Bx` แบบนี้
-- สร้างเส้นหยุดจริงของ Ax: **`StopLine_Ax` ที่ x=-11.0** = จุดเริ่มหักเลี้ยวพอดี
-  (แทน `StopLine_A2_Visual` เดิมที่เป็นแค่เส้นตกแต่ง — builder ลบให้)
-  ตำแหน่งนี้ทำให้**คิวค้างอยู่ในเลนนอก** ตามที่ Kimmy ยืนยัน ไม่ใช่ไปจอดขวางกลางแยก
-- ตอน Bx เหลืองก็ยังไปไม่ได้ (รถ Bx ยังเคลียร์ปากทางไม่หมด) และไม่ใช้ dilemma zone
-  เพราะคนที่ให้ทางไม่ได้ "เร่งฝ่า" เหมือนคนเจอไฟเหลืองของตัวเอง
-- **หยุดทุกคัน 100%** ตามที่ Kimmy ยืนยัน (ไม่มีการสุ่มแทรกเหมือนกลไกไหล่ทาง)
-- ⚠️ `Ax` ยังคง `isSignalized = false` เพราะ**ไม่มีเฟสของตัวเอง ไม่กินเวลาเขียวของใคร**
-  และไม่เข้าไปอยู่ใน conflict matrix — เป็นแค่การให้ทาง ไม่ใช่การมีสัญญาณไฟ
+### Consequences
 
-### ⭐ ผลที่ตามมา: เกิด trade-off ใหม่ที่ต้องเขียนในรายงาน
+- `ROI_Ax` is back to the normal 3 m width at z=6.5 (no need for 8 m covering the shoulder), and a new test enforces that the outer lane ROI must **not** cover the inner lane at z=3.0, so A vehicles are not counted into it
+- Ax is once again blocked by A2 100% of the time by pure car-following physics, which matches the assumption behind the 18%
 
-Itim เสนอให้**ย้ายไฟเขียว 8 วิจาก A ไป Bx** เพื่อแก้ Bx ที่ v/c 1.21-1.39 (คิวล้นใน 7-11 นาที)
-แต่ตอนนี้ **Bx เขียวนานขึ้น = Ax โดนบล็อกนานขึ้น** โดยตรง
+### New tests to stop this recurring
 
-ด้วย cycle 107s: Bx เขียว 21s → Ax โดนหยุด ~22% ของเวลา / ถ้าเพิ่มเป็น 29s → ~27%
-บวกกับที่ Ax โดน A2 บล็อกอยู่แล้วในเฟสอื่น
+- **the eastbound approach must count exactly 2 rows** - reopening the offset by accident turns the test red immediately
+- **`chance > 0` with `offset = 0` is forbidden** - that pair is exactly the round 6 "cars drive through each other" bug, now locked out
+- **if passing is ever re-enabled**, the old rules (offset > lookAheadAngle, no overlap, stays on the carriageway) are checked automatically; while it is off they are skipped with a visible SKIP saying why
 
-**นี่คือ trade-off จริงที่โปรเจกต์ต้องวิเคราะห์** — แก้ Bx แล้ว Ax แย่ลง ไม่ใช่ "ย้ายเขียวแล้วดีขึ้นทุกฝ่าย"
-และเป็นโจทย์ที่ adaptive controller ควรหาจุดสมดุลได้ดีกว่า fixed (ถ้ามันทำได้ = พิสูจน์คุณค่าได้ชัดมาก)
+**Test results:** all 6 suites pass. GeometryTest confirms `2 rows (z = 3, 6.5)`.
 
-### การบล็อกกลายเป็นสองทาง
+### The scene must be rebuilt
 
-เดิม: A2 จอดรอไฟแดง → บล็อก Ax (ทางเดียว)
-ตอนนี้: **Ax จอดรอตอน Bx เขียว → คิว Ax ค้างในเลนนอก → บล็อก A2 กลับด้วย**
-ทำให้เลนนอกมีโอกาสตันจากทั้งสองฝั่ง ตรงกับที่สังเกตหน้างานมากขึ้น
-
-### เทสที่เพิ่ม
-
-- `Test5.cs` เพิ่ม 12 ข้อ: ROI ร่วมรับเลนถูกตัว/ไม่รับเลนที่ไม่ควรรับ, นับรวมได้ 9 คันแต่แยกราย movement
-  ได้ (Ax=7, A2=2), และตาราง mapping ไฟกลับด้านครบทุกสถานะ (Bx เขียว/เหลือง/แดง + เลนปกติต้องไม่โดนกระทบ)
-- `Test6.cs` เพิ่ม 3 ข้อ: เส้นหยุด Ax ไม่เลยจุดหักเลี้ยว, อยู่ก่อน/เสมอกับเส้นหยุด A2, ห่างกันไม่เกินความยาวรถ
-- `ABACSceneBuilder.ValidateScene()` + `IntersectionConfig.ValidateConfiguration()` อัปเดตให้รองรับ
-  เลนให้ทางและ ROI ร่วม พร้อม**เพิ่มการตรวจใหม่**: เตือนถ้าเลนไหนถูกนับโดย ROI มากกว่า 1 ตัว
-  (= เวลารอจะถูกบันทึกซ้ำ) และเตือนถ้าเลนชี้ไป ROI ที่ไม่ได้นับเลนตัวเอง (= demand เป็น 0 ตลอด)
-
-**ผลทดสอบ:** ทั้ง 6 ชุดผ่านหมด
-
-### 🛑 ต้องกด Build Scene ใหม่อีกครั้ง
-
-รอบนี้ builder จะ **ลบ** `ROI_A2` กับ `StopLine_A2_Visual` ออก และ **สร้าง** `StopLine_Ax` ขึ้นมาใหม่
-พร้อมผูก `Spawner_Ax` เข้ากับ `Light_Bx` แบบกลับด้าน — ทำในโค้ดอย่างเดียวไม่พอ
-
-กด `ABAC ▸ Build 4-Phase Scene` → `ABAC ▸ Validate Scene` (ต้องขึ้นบรรทัด
-"เลน Ax = เลนให้ทาง → หยุดเมื่อไฟ 'Bx' ไม่แดง") → Ctrl+S
-
-จากนั้นรัน **T6** เป็นตัวเทียบที่ตรงประเด็นที่สุด: มีแต่รถ Ax กับ CA ไม่มีรถ Bx สักคัน
-Fixed จะให้ไฟเขียว Bx ทุกรอบอยู่ดี = Ax โดนหยุดฟรี ๆ / Adaptive ไม่ควรให้เขียว = Ax แทบไม่ต้องรอ
+Run `ABAC > Build 4-Phase Scene`, then `ABAC > Validate Scene`, then Ctrl+S, and confirm the eastbound
+approach has exactly two rows of vehicles.
 
 ---
 
-## รอบที่ 6 (25 ส.ค.) — แก้บั๊กพฤติกรรมรถจากการดูซีนจริง
+## Round 7 (25 Aug) - acting on Kimmy's field observations: a shared ROI, and Ax yielding to Bx
 
-Kimmy ส่งภาพหน้าจอซีนที่กำลังรัน พร้อมอาการ 2 อย่าง: **"Ax จอดไกล"** และ **"มีรถซ้อนกัน"**
-ไล่โค้ดแล้วเจอสาเหตุจริงทั้งคู่ (คนละสาเหตุกัน) แก้แล้วทั้งหมด
+Kimmy reported two things from the site that the model did not have. Both change the results.
 
-### บั๊กที่ 1 — "Ax จอดไกล" : car-following มองไกลไม่จำกัด ทั้งที่ตัวเองกำลังจะเลี้ยวออก
+### 1. A2 and Ax must use the same ROI
 
-`CarAgent.GetCarAhead()` มองหารถคันหน้า**ตามแนวเส้นตรงหน้ารถแบบไม่จำกัดระยะ** (มีแต่ตัวกรองระยะด้านข้าง 1.5 ม.)
-แต่เลน Ax เป็นเลนเลี้ยว — มันหักซ้ายออกไปตั้งแต่ x=-11 ไม่ได้วิ่งตรงต่อ
+**Why:** they are **one physical lane**. A real camera cannot tell which vehicle will go straight and which
+will turn into the campus. Having two overlapping ROIs fed the controller information a real detector could
+never have (and in round 6 I had even given the two ROIs different widths, 8 m and 3 m).
 
-ผลคือ Ax ที่วิ่งอยู่ z=6.5 มุ่ง +X มีแนวเส้นตรงพุ่งทะลุสี่แยกไปเจอรถ **CA ที่ merge เข้าเลน z=6.5 เดียวกัน
-ฝั่งตะวันออก** (จุด merge x≈10.8 วิ่งยาวไปถึง x=90) ห่างออกไป 40-90 เมตร ทั้งที่ไม่มีทางไปเจอกันเลย
-รถ CA พวกนั้นเพิ่งออกโค้งจึงวิ่งช้า (~6.7 m/s) รถ Ax เลยเบรกตามแล้วไปจอดค้างไกลจากสี่แยก
+**The fix:**
 
-**แก้:** เพิ่ม `CarAgent.LookAheadLimit()` จำกัดระยะมอง 2 ชั้น
+- `ROIZone` gains `alsoCountLanes`, so one ROI can cover several movements (`ROI_Ax` covers both `Ax` and `A2`)
+- `ROI_A2` is deleted from the scene (leaving it would count and log everything twice); the builder does this automatically
+- `GetVehicleCount()` returns the total in the outer lane = **what a real detector sees**, so the adaptive controller sees the A phase's demand including Ax vehicles that do not need a green at all. **That is the correct behaviour** of a real detection system and is worth writing up in the report as shared-lane detection ambiguity
+- **Wait statistics still separate by movement**, because `LogVehicle` now uses `car.assignedLane` rather than `roi.laneName`. Without that change the Ax and A2 waits would mix beyond separating - and the Ax wait is the headline measure of the whole project
+- added `GetVehicleCount(lane)` for inspection and debugging by movement (a real detector cannot do this)
 
-1. เพดานปกติ `lookAheadDistance = 50 ม.` (เทสยืนยันว่ามากกว่าระยะเบรกของคนขับที่เบรกช้าสุด — Cautious 32.2 ม. — อยู่ 1.55 เท่า)
-2. ถ้าเลย waypoint ปัจจุบันไปแล้วเส้นทาง**หักเลี้ยว** ให้มองได้แค่ถึง waypoint นั้น
+### 2. Ax cannot turn into the campus while Bx is green
 
-คิวที่บล็อกจริงอยู่ "ก่อน" จุดหักเสมอ (ท้ายรถ A2 ที่จอด x=-14.5 < จุดหักของ Ax x=-11) กลไก shared-lane blocking
-จึงยังทำงานครบเหมือนเดิม — มีเทสยืนยันข้อนี้โดยเฉพาะ
+**Why:** Bx also turns right into the campus, sweeping across the entrance, so Ax has to yield. The old
+model had Ax 100% free, never stopping for a signal.
 
-### บั๊กที่ 2 — "รถซ้อนกัน" : มี 2 สาเหตุ
+**The fix - a new "yield lane" concept:**
 
-**2.1 กลไกแซงไหล่ทาง (ที่เพิ่มไปรอบที่ 4) ทำให้รถวิ่งทะลุกันจริง ๆ**
+- `CarAgent.lightIsInverted` / `CarSpawner.lightIsInverted` read the *other* stream's signal inverted (their green or yellow means we stop; their red means we may go). `Spawner_Ax` is tied to `Light_Bx` this way
+- a real stop line for Ax: **`StopLine_Ax` at x=-11.0**, exactly the point where the turn begins (replacing the decorative `StopLine_A2_Visual`, which the builder deletes). This position keeps **the queue inside the outer lane** as Kimmy confirmed, rather than obstructing the middle of the junction
+- a Bx yellow still means Ax cannot go (Bx traffic has not cleared the entrance), and no dilemma zone applies, because a driver giving way does not accelerate to beat the light the way one facing their own amber does
+- **every vehicle stops, 100%**, as Kimmy confirmed (no random filtering as in the shoulder mechanism)
+- `Ax` still has `isSignalized = false`, because it **has no phase of its own and consumes nobody's green time**, and it stays out of the conflict matrix. It merely yields; it is not signalised
 
-ของเดิมทำโดย "ถ้าคันนี้สุ่มได้ว่าแซงได้ ก็ไม่นับรถคนละเลนเป็นตัวบล็อก"
-(`if (canBypass && other.assignedLane != assignedLane) continue;`)
-แต่ตัวรถ**ยังอยู่บนเส้นกึ่งกลางเลนเดิม** จึงขับทะลุผ่านรถที่จอดอยู่ตรง ๆ = เห็นเป็นรถซ้อนทับกัน
-(รอบที่ 4 ระบุไว้แล้วว่ากลไกนี้ test harness นอก Unity ตรวจไม่ได้ ต้องดูด้วยตา — ตอนนี้ดูแล้วเจอจริง)
+### A new trade-off that has to go in the report
 
-**แก้:** เปลี่ยนจาก "กฎยกเว้นการชน" เป็น **"เยื้องออกไหล่ทางจริง ๆ"**
+Itim proposed **moving 8 s of green from A to Bx** to fix Bx at v/c 1.21-1.39 (the queue overflows in 7-11
+minutes). But now **a longer Bx green directly means Ax is blocked longer**.
 
-- เพิ่ม `bypassLateralOffset` — รถ Ax ที่สุ่มได้ว่าแซง (65%) จะ spawn และวิ่งอยู่ที่ **z=8.8 (เยื้อง 2.3 ม.)**
-  ตลอดช่วงที่แซงคิว แล้วค่อย merge กลับเข้าเลนตอนเริ่มหักเลี้ยว
-- **ลบ** เงื่อนไข `other.assignedLane != assignedLane` ออกจาก `GetCarAhead()` ทั้งหมด — ตอนนี้ใช้ฟิสิกส์เดียวกัน
-  ทุกคันไม่มีข้อยกเว้น รถที่แซงไม่เห็นคิวเพราะ**ห่างกันจริง 2.3 ม. > 1.5 ม.** ไม่ใช่เพราะกฎพิเศษ
-- ผลพลอยได้: ตอนนี้ **เห็นด้วยตาได้ว่ากลไกแซงทำงานจริงไหม** (รถวิ่งบนไหล่ทาง) แทนที่จะเป็นกฎที่มองไม่เห็น
+On a 107 s cycle: Bx green of 21 s stops Ax about 22% of the time; raising it to 29 s makes that about 27% -
+on top of the blocking Ax already suffers from A2 in other phases.
 
-**2.2 ปล่อยรถทับคันที่จอดอยู่ตรงจุด spawn**
+**This is a genuine trade-off the project has to analyse** - fixing Bx makes Ax worse; it is not "move the
+green and everyone wins". It is exactly the sort of balance an adaptive controller should find better than a
+fixed one, and if it does, that demonstrates its value clearly.
 
-`CarSpawner.SpawnCar()` เดิม Instantiate ทันทีโดย**ไม่เช็คว่าจุดนั้นว่างไหม** ซ้ำร้ายจุด spawn ของ A2 ตั้งห่างจาก
-Ax แค่ **5 ม.** ทั้งที่รถยาว 4 ม. — แทบไม่มีที่ว่าง พอ Poisson ปล่อยสองเลนใกล้กันก็ทับกันทันที
-(และเมื่อคิวยาวถอยมาถึงจุด spawn ก็ทับซ้ำอีก)
+### Blocking now works both ways
 
-**แก้:**
+Before: A2 waits at the red and blocks Ax, one direction only.
+Now: **Ax waits while Bx is green, its queue stands in the outer lane, and it blocks A2 in return.**
+The outer lane can jam from both ends, which matches the site observations better.
 
-- เพิ่ม `CarAgent.IsSpaceOccupied()` + `spawnClearRadius = 6 ม.` เช็คก่อนปล่อยทุกคัน
-- รถที่ปล่อยไม่ได้ **ไม่ทิ้ง** แต่พักไว้ในคิว `pending` แล้วปล่อยทีหลังเมื่อว่าง (⚠️ ถ้าทิ้ง = ลด demand เงียบ ๆ
-  ตอนที่รถติดที่สุดพอดี ผลจะออกมาดูดีเกินจริง) มีตัวนับ `delayedArrivals` ให้ตรวจสอบ
-- **สำคัญต่อ paired t-test:** ย้ายการสุ่มค่า bypass ไปไว้ตอน "รถมาถึง" ไม่ใช่ตอน "ปล่อยจริง" ลำดับการสุ่มจึง
-  ไม่ขึ้นกับสภาพจราจร — Fixed กับ Adaptive ยังเจอชุดรถเดียวกันเป๊ะแม้รถติดไม่เท่ากัน
-- ขยับจุด spawn ของ A2 จาก 5 ม. เป็น **20 ม.** (5 ช่วงรถ)
+### Tests added
 
-### ที่ต้องแก้ตามมา
+- `Test5.cs` gains 12 checks: the shared ROI accepts the right lanes and rejects the wrong ones, counts 9 vehicles in total while still separating by movement (Ax=7, A2=2), and the inverted signal mapping is complete (Bx green / yellow / red, plus an ordinary lane being unaffected)
+- `Test6.cs` gains 3 checks: the Ax stop line is not past the turn point, is at or before the A2 stop line, and the two are no more than a car length apart
+- `ABACSceneBuilder.ValidateScene()` and `IntersectionConfig.ValidateConfiguration()` updated for yield lanes and shared ROIs, with **new checks**: a warning if a lane is counted by more than one ROI (its wait would be logged twice), and if a lane points at an ROI that does not count it (demand would always read 0)
 
-**ROI_Ax ต้องกว้างขึ้น** จาก 3 ม. เป็น **8 ม.** (จัดกลางที่ z=7.65) ไม่งั้นรถ 65% ที่แซงไหล่ทางจะหลุดออกนอก ROI
-แล้ว**ไม่ถูกนับเวลารอ** — เลน Ax คือตัวชี้วัดหลักของงานทั้งหมด ถ้าพลาดข้อนี้ผลเพี้ยนทั้งงาน
+**Test results:** all 6 suites pass.
 
-### เทสใหม่ + ข้อค้นพบเรื่อง test harness
+### The scene must be rebuilt again
 
-- เพิ่ม **`Test6.cs` (GeometryTest)** — ตรวจความสอดคล้องระหว่างพารามิเตอร์พฤติกรรมรถกับพิกัดจริงในซีน
-  (เป็นเลขคณิตล้วน จึงรันนอก Unity ได้) 15 ข้อ เช่น ระยะเยื้องไหล่ทาง > lookAheadAngle, รถที่แซงไม่หลุดขอบถนน,
-  ROI ครอบไหล่ทาง, เพดานระยะมอง > ระยะเบรกของทุก driver profile, จุด spawn ไม่ทับกัน
-  → **เทสนี้จับบั๊กได้ทันที 1 ตัว**: ตอนแรกตั้งเยื้อง 2.4 ม. ทำให้ขอบรถเลยขอบถนนไป 2 ซม. จึงลดเป็น 2.3 ม.
-- ⚠️ **เจอว่าการ "คอมไพล์ Editor ผ่าน" ที่รายงานไว้ทุกรอบก่อนหน้าเป็นผลลวง** — `ABACSceneBuilder.cs` ครอบด้วย
-  `#if UNITY_EDITOR` ทั้งไฟล์ แต่คำสั่ง mcs ไม่เคยใส่ `-define:UNITY_EDITOR` ไฟล์เลยถูกตัดทิ้งทั้งไฟล์แล้ว
-  "คอมไพล์ผ่าน" โดยไม่ได้ตรวจอะไรเลย → เพิ่ม `run_tests.sh` ที่ใส่ define ถูกต้องและรันครบทุกชุดในคำสั่งเดียว
-  (ตรวจย้อนแล้ว: โค้ด Editor ของเดิมคอมไพล์ผ่านจริง ไม่ได้มีบั๊กค้าง แค่ไม่เคยถูกตรวจ)
+This round the builder **deletes** `ROI_A2` and `StopLine_A2_Visual` and **creates** `StopLine_Ax`, wiring
+`Spawner_Ax` to `Light_Bx` inverted. Code changes alone are not enough.
 
-**ผลทดสอบ:** ทั้ง 6 ชุดผ่านหมด (ConflictTest / FixedCycleTest / BatchMathTest / EtaTest / SharedLaneTest / GeometryTest)
+Run `ABAC > Build 4-Phase Scene`, then `ABAC > Validate Scene` (which must print "lane Ax yields - it stops
+whenever signal 'Bx' is not red"), then Ctrl+S.
 
-### 🛑 ต้องทำในเครื่องก่อนรันต่อ
-
-**กด `ABAC ▸ Build 4-Phase Scene` ใหม่อีกครั้ง แล้ว Ctrl+S** — รอบนี้จำเป็นจริง ๆ เพราะค่าที่เปลี่ยนอยู่ใน scene
-ไม่ใช่แค่ในโค้ด: ตำแหน่ง/ขนาดของ `ROI_Ax`, จุด spawn ของ `A2`, และ `bypassLateralOffset` ของ `Spawner_Ax`
-
-จากนั้นรัน **T13** ดูด้วยตาว่า (1) รถ Ax บางคันวิ่งบนไหล่ทางแซงคิวจริง (2) ไม่มีรถซ้อนทับกันอีก
-(3) รถ Ax ที่ไม่ได้แซงจอดต่อท้ายคิวใกล้ ๆ ไม่ใช่ไปจอดไกลจากแยก
-
-### จุดที่ยังควรปรับปรุง (เจอจากการไล่โค้ดรอบนี้ แต่ยังไม่แก้ — ต้องตัดสินใจก่อน)
-
-**CA merge เข้าเลน A2 โดยไม่มีทั้งไฟและกลไกให้ทาง** — เส้นทางของ CA จบที่ (x=90, z=6.5) ซึ่งเป็น**เลนเดียวกับที่
-A2 วิ่งตรงผ่าน** จุด merge อยู่ที่ x≈10.8 ตอนนั้น A2 ได้ไฟเขียวและวิ่งผ่านด้วยความเร็ว ~15 m/s ส่วน CA เป็นเลนฟรี
-ไม่ต้องรอไฟและ**ไม่มี logic ให้ทางรถทางเอก** ตอนนี้อาศัยแค่ car-following ที่ตรวจเจอกันเมื่อเข้ามาใกล้ในระยะข้าง
-1.5 ม. เท่านั้น = เบรกกันช้าเกินไป มีโอกาสเฉียด/ซ้อนกันตรงจุด merge ฝั่งตะวันออกของแยก
-
-ของจริงรถที่ออกจากมหาลัยต้องให้ทางรถบนถนนใหญ่ ถ้าจะทำให้ตรงต้องเพิ่ม **gap-acceptance** (CA รอจนมีช่องว่างพอ
-ค่อยออก) ซึ่งเป็นการเพิ่มพฤติกรรมใหม่ที่**กระทบตัวเลขผลลัพธ์ของ CA และ A2** จึงยังไม่ทำ รอตัดสินใจก่อน
+Then run **T6** as the sharpest comparison available: only Ax and CA vehicles, with no Bx traffic at all.
+Fixed still gives Bx a green every cycle, so Ax is stopped for nothing; Adaptive should not, so Ax barely
+waits.
 
 ---
 
-## 0'''. รอบที่ 5 (24 ส.ค.) — อัปเดตตาม reply_to_badin_4.md
+## Round 6 (25 Aug) - vehicle behaviour bugs found by watching the real scene
 
-Itim เอาจังหวะไฟที่ Kimmy จับเวลาเองไปเทียบกับวิดีโอ วิเคราะห์ซ้ำ + ส่ง arrival rate ชุดเต็ม (8 คลิป) + แก้ข้อมูลผิดจากรอบก่อน:
+Kimmy sent screenshots of the running scene with two symptoms: **"Ax stops far short"** and **"cars
+overlap"**. Tracing the code found a real and separate cause for each. Both are fixed.
 
-1. **✅ แก้ timing `FixedController.cs` เป็นค่าวัดจริงที่ยืนยันแล้ว** — P1(A+A2+B)=40s / P2(B+Bx)=21s / P3(CB)=31s,
-   intergreen 15s, รวม **107s/รอบ** (จากเดิม 115s ที่เป็นค่าประมาณ) ยืนยันด้วยเลขปิด: แดงของ CB ที่คำนวณจากตารางนี้
-   (107-31-3=73s) ตรงกับที่ Itim วัดจากวิดีโอจริง 73.5s คลาดแค่ 0.5s — **เชื่อถือได้สูงกว่ารอบก่อนมาก**
-2. **✅ ยืนยันไฟเป็น fixed-time จริง ไม่ใช่ actuated** — Itim วัดแดงของ C ได้ 73.5s เท่ากันเป๊ะ 2 รอบติดกันจากวิดีโอ
-   ถ้าเป็น actuated ค่านี้ต้องแปรตามรถ ไม่เท่ากัน — validate ว่า FixedController ที่โมเดลไว้ใช้ได้ถูกประเภทจริง
-3. **🆕 พบประเด็นใหญ่: ไฟทำงานจริงแค่ 05:00-09:00 และ 15:00-18:00 (29% ของวัน)** นอกนั้นกระพริบเหลืองทั้งหมด
-   ยืนยันจากวิดีโอทุก session ที่ถ่ายมา 4/4 คลิป **กระทบ T10 MiddayNormal โดยตรง** เพราะคลิปที่ใช้วัด arrival rate
-   (11:37-12:00) อยู่ในช่วงกระพริบเหลืองพอดี — การเทียบ Fixed vs Adaptive ของ T10 เลยกลายเป็นการเทียบเชิงสมมติ
-   ("ถ้าแยกนี้ใช้ fixed-time ตอนเที่ยงด้วย") ไม่ใช่สภาพจริงที่เกิดขึ้น
-   **✅ ตัดสินใจแล้ว (24 ส.ค., Kimmy เลือก):** เก็บ T10 ไว้เป็น Fixed vs Adaptive ตามเดิม แต่ต้องระบุ caveat นี้
-   ให้ชัดในบทวิเคราะห์ของรายงาน (ว่าเป็นการเทียบเชิงสมมติสำหรับช่วงเที่ยง ไม่ใช่สภาพที่เกิดขึ้นจริงตอนนั้น) —
-   ไม่ต้องเพิ่มโหมด "no control" หรือตัด T10 ออก คอมเมนต์ caveat ใน `TestCaseLibrary.cs`/`ScenarioManager.cs`
-   ที่เขียนไว้แล้วตรงกับแนวทางนี้พอดี ไม่ต้องแก้โค้ดเพิ่ม
-4. **✅ แก้ข้อมูลผิดจากรอบก่อน** — เลน C ปิดขาออกแค่ **08:30-09:00 (~15-30 นาที)** ไม่ใช่ทั้งเช้า (แต่ตรงกับช่วง
-   peak จริงพอดี เลยยัง valid สำหรับ MorningPeak) และซอยป้ากุ๊กเปิด **15:30-17:00** ไม่ใช่ 16:00 (ยังไม่ได้ wire
-   เข้า scenario ไหน — นอกขอบเขตตอนนี้)
-5. **✅ peak จริงคือ 08:15-09:00 จบทันที** (ไม่ใช่ 07:00-08:30 ตามที่เดาไว้แต่แรก) รถลดลง 49-62% ภายในไม่กี่นาที
-   หลัง 09:00 — เป็น peak จากเวลาเข้าเรียน ไม่ใช่ commute ปกติ
-6. **✅ arrival rate ครบ 8 คลิป, detector validate 98.3%** ใช้ค่า car+heavy ×0.92 (เสถียร ผันผวนแค่ 12%) —
-   อัปเดต `TestCaseLibrary.cs` (T8/T10) และ `ScenarioManager.cs` (MorningPeak/MiddayNormal) เป็นค่าล่าสุดแล้ว:
-   MorningPeak A=19.7/Ax=5.6/B=8.7/Bx=9.6, MiddayNormal A=30.3/Ax=8.5/B=15.9/Bx=17.6 (CB/CA ยังรอข้อมูลวันจันทร์)
-7. **📌 ข้อเสนอ "ย้ายเขียว 8s จาก A ไป Bx" (v/c Bx จาก 1.21-1.39 ลงมา 0.90-0.99)** — จงใจ**ไม่**เอามาแก้ preset
-   ของ Fixed controller เพราะ Fixed ต้องคงปัญหาจริงของระบบเดิมไว้ให้ Adaptive เทียบ ถ้าแก้ preset ให้ฉลาดขึ้นเอง
-   จะเสียจุดประสงค์การทดลอง — เก็บไว้เป็นประเด็นอภิปรายในรายงาน/เป้าหมายที่ adaptive ควรหาเจอเอง (คอมเมนต์ไว้ใน
-   `FixedController.LoadABACPreset()` แล้ว)
-8. **ทดสอบแล้ว:** compile ผ่านทั้ง Scripts + Editor, รัน regression ทั้ง 5 ชุดผ่านหมด (`Test.cs`/`Test2.cs`/
-   `Test3.cs`/`Test4.cs`/`Test5.cs`) — `GetCycleLength()` คำนวณได้ 107s ตรงเป๊ะตามที่ตั้งไว้
+### Bug 1 - "Ax stops far short": car-following looked infinitely far ahead, even while about to turn off
 
-**ยังค้างอยู่เหมือนเดิม:** ยังไม่ได้กด `ABAC ▸ Build 4-Phase Scene` ซ้ำในเครื่องหลังแก้ค่าตัวเลขรอบนี้ (ไม่กระทบ
-scene objects แค่ตัวเลข timing/arrival rate ในสคริปต์ ไม่ต้องสร้าง object ใหม่ แต่ยังต้องเปิด Unity แล้วเช็ค
-inspector ของ `FixedController`/`ScenarioManager` ว่าอ่านค่าใหม่จากโค้ดถูกต้อง หรือกด context menu โหลด preset ซ้ำ)
-รอ Itim: CB/CA arrival rate ตอนเปิด (วันจันทร์), guard-wave stats (ข้อ 6), saturation headway (ข้อ 7), ระยะทางที่เหลือ (ข้อ 8)
+`CarAgent.GetCarAhead()` looked for the car ahead **along an unbounded straight line**, with only a 1.5 m
+lateral filter. But Ax is a turning lane: it veers left from x=-11 and does not continue straight.
 
----
+So an Ax vehicle at z=6.5 heading +X had a sight line straight across the junction to a **CA vehicle merging
+into the same z=6.5 lane on the east side** (merge point about x=10.8, continuing to x=90), 40-90 m away,
+which it could never actually meet. Those CA vehicles had just come out of the curve and were slow (about
+6.7 m/s), so the Ax vehicle braked for them and came to rest far short of the junction.
 
-## 0''. อัปเดต 24 ส.ค. — เช็กตัวเลขไฟที่ Kimmy จับเวลาเองหน้างาน
+**Fix:** added `CarAgent.LookAheadLimit()`, capping the view two ways:
 
-Kimmy ส่งตัวเลขที่จับเวลาไฟจริงมาเอง (จอนับถอยหลังมีให้ดูแค่เลน C เลนเดียว) ขอสรุปผลตรวจให้:
+1. a normal ceiling of `lookAheadDistance = 50 m` (tests confirm this is 1.55 times the braking distance of the slowest-braking profile, Cautious at 32.2 m)
+2. if the path **turns** past the current waypoint, the view stops at that waypoint
 
-**เช็กในตัวเองก่อน (ใช้จอนับของ C เป็นนาฬิกาอ้างอิง เพราะแม่นสุด):**
-- ระหว่าง 2 สแนปช็อตที่ให้มา C แดงนับถอยหลังจาก 75s → 25s (ผ่านไป 50s) ตรงกับที่ A เขียวครบ 50s แล้วเพิ่งแดงพอดี — ส่วนนี้สอดคล้องกันดี
-- แต่ B ขัดกันเอง: ตอน C เหลือแดงอีก 25s Kimmy นับว่า B ยังเหลือเขียวอีก 45s → ถ้าจริง B กับ C (=CB) จะเขียวทับกันราว 20s ซึ่งขัดกับ conflict matrix ที่มี (B×CB) อยู่แล้ว **สรุป: ตัวเลข B ผิดเกือบแน่ (นับด้วยมือ ไม่มีจอ) ไม่ใช่ไฟจริงทับกัน**
-- Ax/Cx (=CA) ขึ้น "no light" ทุกสแนปช็อต ตรงกับสมมติฐานโมเดลว่าเป็นเลนฟรีไม่มีไฟของตัวเอง — เป็นการยืนยันย้อนกลับที่ดี ไม่ใช่บั๊ก
-- Bx เขียวพร้อม B ช่วงท้าย (ตอน A แดงแล้ว) ตรงกับโครงสร้างเฟส P1→P2 ที่โค้ดมีอยู่แล้ว (B ต่อเนื่อง, Bx เข้าร่วมทีหลัง) — ยืนยันโครงสร้างเฟสถูกทาง
+A genuinely blocking queue is always *before* the turn point (the rear of a stopped A2 vehicle at x=-14.5 is
+before Ax's turn at x=-11), so shared-lane blocking still works exactly as before - there is a test
+specifically for this.
 
-**เทียบกับโค้ดปัจจุบัน (`FixedController.cs`: 36/24/40 + intergreen 15 = 115s, อิงจาก Itim เขียว 40s/แดง 70s เดิม):**
-- เหลืองของ C: Kimmy นับ 3s ตรงกับโค้ดเป๊ะ → วิธีนับน่าเชื่อถือ
-- เขียวของ C: Kimmy 31s vs Itim เดิม 40s ต่างกัน ~22% ⚠️
-- รอบรวมของ C: Kimmy 109s vs โค้ด 115s
-- A เขียว: Kimmy ~50s vs โค้ด ~36-39s
-- B เขียว: Kimmy ~90-95s vs โค้ด 65s (ต่างมากสุด แต่ก็เป็นตัวที่มั่นใจน้อยสุดเพราะไม่มีจอนับ)
-- Bx เขียว: Kimmy ~20s vs โค้ด 24s (ใกล้เคียง)
+### Bug 2 - "cars overlap": two causes
 
-**การตัดสินใจ:** ยังไม่แก้ `FixedController.cs` — สองแหล่งข้อมูล (Itim จากคลิปโดรน vs Kimmy จับเวลาสด) ให้ค่า C เขียวไม่ตรงกัน
-ต้องมีข้อมูลที่สามมาช่วยตัดสิน ส่งคำถามเพิ่มไปที่ `Questions_for_Itim.md` หัวข้อ 3.1 แล้ว (ขอให้ Itim เช็กว่าคลิปที่วัดมาเป็น
-ช่วงเวลาเดียวกันไหม + ลองนับ C เทียบกับจอนับถอยหลังโดยตรงอีกที + ตอบเฟส A/B/Bx เต็ม ๆ ตามข้อ 3 เดิม)
+**2.1 The shoulder-passing mechanism added in round 4 really did make cars drive through each other.**
 
----
+It worked by "if this vehicle is drawn to pass, do not treat vehicles from other lanes as blockers"
+(`if (canBypass && other.assignedLane != assignedLane) continue;`). But the vehicle **stayed on the lane
+centreline**, so it drove straight through the stopped ones - visibly overlapping. (Round 4 already noted
+that this mechanism could not be checked by the out-of-Unity harness and had to be watched by eye. Watching
+it showed exactly this.)
 
-## 0'. รอบที่ 4 (23 ส.ค. ต่อเนื่อง) — อัปเดตตาม reply_to_badin_3.md
+**Fix:** replace "an exception to collision" with **a genuine offset onto the shoulder**.
 
-Itim ส่งข้อมูลกลับมาตอบ `Questions_for_Itim.md` บางส่วน (ข้อ 1, 2, 5) พร้อมข้อเสนอเรื่องเลนฉุกเฉิน — ใส่เข้าโมเดลแล้ว:
+- added `bypassLateralOffset`: an Ax vehicle drawn to pass (65%) spawns and drives at **z=8.8, offset by 2.3 m**, for as long as it is passing the queue, then merges back as it begins to turn
+- **removed** the `other.assignedLane != assignedLane` condition from `GetCarAhead()` entirely. One set of physics with no exceptions: a passing vehicle does not see the queue because it is **genuinely 2.3 m away, more than 1.5 m**, not because of a special rule
+- a side benefit: **you can now see with your own eyes whether passing works** (vehicles on the shoulder) rather than it being an invisible rule
 
-1. **สัดส่วน A/A2 เปลี่ยนจาก 50/50 เป็น 18/82** — Itim back-calculate จากอัตราการบล็อกที่สังเกตจริง (40-60% ของเวลา)
-   ได้ว่าเลนนอก (A2) มีรถตรงจริงแค่ ~18% ของรวม (sensitivity 13-23%) ไม่ใช่ครึ่งหนึ่ง ค่าคงที่ `A2_SHARE = 0.18f`
-   ใน `TestCaseLibrary.cs` และ `a2Share` field ใน `ScenarioManager.cs` — จุดเดียว เปลี่ยนง่ายถ้าได้ตัวเลขนับจริง
-2. **CB/CA เช้า = ปิดจริง (ยืนยันจาก รปภ.)** ไม่ใช่แค่ค่าน้อย — เพิ่มค่าคงที่ `CLOSED = 999999f` (mean interval ใหญ่
-   มากจนแทบไม่มีรถเกิดตลอด run 30 นาที) แทนที่ `VERY_LOW` เดิมใน MorningPeak
-3. **เพิ่มกลไก "เลนฉุกเฉิน/ไหล่ทาง"** — ตาม feedback ของ Itim ว่า car-following ล้วน ๆ จะ overstate การบล็อก
-   (ของจริงมีรถขยับขวา/มอไซค์แทรก/รปภ.โบก ทำให้บล็อกไม่ 100%) เพิ่ม `canBypassCrossLaneBlocker` ใน `CarAgent.cs`
-   — รถ Ax แต่ละคันสุ่มตอน spawn (จาก RNG ของ spawner เอง เพื่อรักษา reproducibility) มีโอกาส 65% (ค่ากลางของ
-   60-70% ที่เสนอมา) ที่จะไม่นับรถ A2 เป็นตัวบล็อก แต่ยังชะลอตามรถ Ax คันอื่นในคิวเดียวกันปกติ ตั้งค่าใน
-   `ABACSceneBuilder.cs` (`spAx.laneBypassChance = 0.65f`)
-4. **PCU/vehicle-mix ต่อเลน** (ข้อ 5 ของ Itim) — มีข้อมูลครบสำหรับ A/Ax/B/Bx แล้ว แต่**ยังไม่ได้ wire เข้า Unity**
-   เพราะ sim ไม่ได้ distinguish ประเภทรถทางกายภาพ (ทุกคันเป็น `CarAgent` เดียวกันหมด) มีประโยชน์สำหรับคำนวณ capacity
-   แบบถ่วงน้ำหนักในรายงาน/`analyze_results.py` เท่านั้นตอนนี้ — ถ้าอยากให้ physical behavior ต่างกันตามประเภทรถ
-   เป็นฟีเจอร์ใหม่ที่ต้องคุยขอบเขตก่อน
-5. **ยืนยัน detector accuracy 98.3%** เทียบ ground truth (ทั้งที่ mAP แค่ 76% — คนละ metric กัน) เป็นข่าวดี
-   แปลว่าข้อมูลรอบต่อไปจากคลิปที่เหลือจะ noise น้อยลง โดยเฉพาะเลน A ที่เคย ±28% (nนับได้แค่ 31-48 คัน)
+**2.2 Vehicles were released on top of ones already stopped at the spawn point.**
 
-**ทดสอบแล้ว:** compile ผ่านทั้งหมด, รัน regression 5 ชุดผ่านทุกข้อ (`Test.cs` ปรับ invariant จาก "A==A2" เป็น
-"A2/A ratio = 4.556" ตามสัดส่วนใหม่ + เพิ่มเช็ค T8 CB/CA ปิดจริง)
+`CarSpawner.SpawnCar()` instantiated immediately **without checking whether the space was free**, and A2's
+spawn point was only **5 m** from Ax's while the cars are 4 m long - almost no room. Poisson releasing on two
+nearby lanes overlapped them at once (and again whenever a queue backed up to the spawn point).
 
-**ข้อจำกัดที่ต้องบอกตรง ๆ:** กลไกเลนฉุกเฉิน (bypass) เป็นการเปลี่ยนพฤติกรรม car-following/geometry ซึ่ง test harness
-แบบ compile-check นอก Unity (mcs stub) ตรวจไม่ได้เพราะไม่มี physics จริง (`Vector3.Dot`/`Cross` เป็น stub คืนค่า 0
-เสมอ) ต้องเปิด Unity จริงแล้วดูด้วยตาตอนรัน T13 ว่า Ax คันที่สุ่มได้ 65% แซงผ่านจริงไหม
+**Fix:**
 
-**ยังค้างอยู่เหมือนเดิม:** ต้องกด `ABAC ▸ Build 4-Phase Scene` ในเครื่อง (ยังไม่ได้ทำ), รอ Itim ส่ง arrival rate
-CB/CA ตอนเปิด + phase timing เฟส A/B/Bx + ระยะทาง (ข้อ 3, 2 ที่เหลือ, 8) ก่อนรัน batch 270 runs จริง
+- added `CarAgent.IsSpaceOccupied()` with `spawnClearRadius = 6 m`, checked before every release
+- a vehicle that cannot be released is **not discarded** but held in a `pending` queue and released later. (Discarding would silently cut demand exactly when traffic is heaviest, making results look better than they are.) A `delayedArrivals` counter allows this to be checked
+- **important for the paired t-test:** the bypass draw moved to the moment of "arrival" rather than "release", so the draw order does not depend on traffic conditions and Fixed and Adaptive still see exactly the same vehicles even when congestion differs
+- A2's spawn point moved from 5 m to **20 m** (five car slots)
+
+### A consequence
+
+**`ROI_Ax` had to widen** from 3 m to **8 m** (centred at z=7.65), or the 65% of vehicles passing on the
+shoulder fall outside the ROI and **their wait is never counted**. Lane Ax is the headline measure of the
+whole project; missing this would distort everything.
+
+### New tests, and a discovery about the harness
+
+- added **`Test6.cs` (GeometryTest)**, checking consistency between vehicle behaviour parameters and the real scene coordinates (pure arithmetic, so it runs outside Unity). 15 checks, including offset > lookAheadAngle, a passing vehicle staying on the carriageway, the ROI covering the shoulder, the look-ahead ceiling exceeding every profile's braking distance, and spawn points not overlapping.
+  **This test immediately caught a bug:** the offset was first set to 2.4 m, putting the car's edge 2 cm past the carriageway, so it was reduced to 2.3 m.
+- **The "Editor compiles" claim in every previous round was a false pass.** `ABACSceneBuilder.cs` is wrapped entirely in `#if UNITY_EDITOR`, but the mcs command never passed `-define:UNITY_EDITOR`, so the whole file was cut away and "it compiles" checked nothing. Added `run_tests.sh`, which sets the define correctly and runs every suite in one command. (Checked retrospectively: the Editor code did compile; it had simply never been checked.)
+
+**Test results:** all 6 suites pass (ConflictTest / FixedCycleTest / BatchMathTest / EtaTest / SharedLaneTest / GeometryTest).
+
+### To do on the machine before continuing
+
+**Run `ABAC > Build 4-Phase Scene` again and press Ctrl+S.** It is genuinely required this time, because the
+changed values live in the scene rather than the code: the position and size of `ROI_Ax`, A2's spawn point,
+and `bypassLateralOffset` on `Spawner_Ax`.
+
+Then run **T13** and check by eye that (1) some Ax vehicles really do pass the queue on the shoulder,
+(2) no cars overlap any more, and (3) Ax vehicles that do not pass queue up close behind, rather than
+stopping far from the junction.
+
+### Still to improve (found while tracing, not yet fixed - needs a decision)
+
+**CA merges into lane A2 with neither a signal nor any yielding behaviour.** CA's path ends at (x=90,
+z=6.5), **the same lane A2 runs straight through**, with the merge at about x=10.8. At that moment A2 has
+green and is travelling at about 15 m/s, while CA is a free lane with no signal to wait for and **no
+give-way logic**. All that stops them is car-following, which only notices at 1.5 m lateral separation - too
+late to brake, so near misses and overlaps are possible at the merge on the east side of the junction.
+
+In reality traffic leaving the campus must give way to the main road. Modelling that needs
+**gap acceptance** (CA waits for a large enough gap before pulling out), which is new behaviour that
+**changes the CA and A2 results**, so it is not done yet, pending a decision.
 
 ---
 
-## 0. สรุปสิ่งที่เพิ่งทำในรอบนี้ (23 ส.ค., รอบที่ 3)
+## Round 5 (24 Aug) - updated to reply_to_badin_4.md
 
-คำขอ: "ทำให้ sim เป็นเวอชั่นล่าสุด แล้วเชคทุกอย่างอีกรอบไม่มีจุดไหนผิด"
+Itim compared Kimmy's own field timing against the video, re-analysed it, sent a full set of arrival rates
+(8 clips), and corrected mistakes from the previous round:
 
-1. **เพิ่มเลน A2 (shared lane) — จุดสำคัญที่สุด** — จำลองการที่รถตรงบางส่วนใช้เลนนอกร่วมกับ Ax (เลี้ยวเข้ามอ)
-   A2 ใช้ `TrafficLight` component **ตัวเดียวกันกับ A เป๊ะ ๆ** (ไม่ใช่แค่ตั้งค่าให้เท่ากัน) จึงหยุดรอไฟแดงพร้อมกับ A เสมอ
-   และเพราะ `CarAgent.GetCarAhead()` กรองรถคันหน้าด้วย**ระยะห่างทางกายภาพ** ไม่ใช่ชื่อเลน รถ Ax ที่ตามหลัง A2 มาในเลน
-   เดียวกันจึงติดขังไปด้วยโดยอัตโนมัติ ไม่ต้องเขียน logic บล็อกเพิ่มเลย — นี่คือกลไกที่ทำให้โมเดล**จำลองปัญหาจริงของ ABAC ได้
-   เป็นครั้งแรก** (ก่อนหน้านี้ Ax วิ่งฉลุยตลอดในโมเดล ซึ่งไม่ตรงกับที่สังเกตจากคลิปโดรน)
-2. **แก้ Fixed timing ตามค่าที่ Itim วัดจริง** — CB เขียว 30→40s, cycle รวม 120→115s (P1/P2 ที่เหลือสเกลตามสัดส่วนเดิม
-   เพราะยังไม่มีข้อมูลวัดแยกเฟส — ดูหมายเหตุใน `FixedController.LoadABACPreset()`)
-3. **ใส่ arrival rate จริงแทนค่าเดา** สำหรับ MorningPeak และ MiddayNormal (A/Ax/B/Bx) — CB/CA ยังเป็นค่าเดา
-   รอ Itim ตอบ `Questions_for_Itim.md`
-4. **`AdaptiveController` แก้บั๊กเชิงโครงสร้าง** — เพิ่ม `AddPhysicallyLinkedSignals()` การันตีว่าเลนที่ใช้ไฟดวงเดียวกัน
-   (A/A2) จะถูกจัดกลุ่มเขียวพร้อมกันเสมอ แม้ตอนเลือก leader demand ของอีกเลนจะเป็น 0 ก็ตาม (ถ้าไม่มีจุดนี้ gap-out/
-   anti-starvation จะมองไม่เห็น demand ของอีกเลน ทั้งที่ไฟจริงเขียวให้อยู่แล้ว)
-5. **เพิ่ม test case T13** — สาธิตกลไก blocking โดยตรง (เทียบกับ T6 ที่ไม่มี A2 เป็น baseline)
-6. **เขียน automated test ใหม่ 1 ชุด (`Test5.cs` / `SharedLaneTest`)** ยืนยันด้วย reflection ว่า A/A2 อ้างถึง
-   TrafficLight instance เดียวกันจริง และ `BuildCompatibleGroup()` จัดกลุ่มถูกต้องทุกกรณี (leader=A, leader=A2,
-   มี/ไม่มี demand, เลนที่ conflict ไม่มีวันเข้ากลุ่ม)
-7. **รัน regression test ทั้ง 5 ชุดผ่านหมด** (`Test.cs` ConflictTest, `Test2.cs` FixedCycleTest, `Test3.cs`
-   BatchMathTest, `Test4.cs` EtaTest, `Test5.cs` SharedLaneTest) — compile ผ่านทั้ง Scripts + Editor ด้วย mcs stub
+1. **Fixed timing in `FixedController.cs` updated to confirmed measurements** - P1(A+A2+B)=40s / P2(B+Bx)=21s / P3(CB)=31s, intergreen 15s, **107 s per cycle** (previously an estimated 115 s). Confirmed by a closing figure: the CB red computed from this table (107-31-3=73s) matches the 73.5 s Itim measured on video, 0.5 s apart - much more reliable than the previous round.
+2. **Confirmed the signal really is fixed-time, not actuated** - Itim measured C's red at 73.5 s, identical across two consecutive cycles on video. An actuated signal would vary with traffic. This validates that modelling it with FixedController is the right type.
+3. **A significant new finding: the signal only operates 05:00-09:00 and 15:00-18:00, 29% of the day.** The rest of the time it flashes amber, confirmed in all 4 clips. **This directly affects T10 MiddayNormal**, because the clip used to measure its arrival rates (11:37-12:00) falls in the flashing period, so the Fixed vs Adaptive comparison for T10 becomes hypothetical ("if this junction ran fixed-time at midday too") rather than a real situation.
+   **Decided 24 Aug (Kimmy's choice):** keep T10 as Fixed vs Adaptive, but state the caveat clearly in the report's analysis - that it is a hypothetical comparison for midday, not what actually happens. No "no control" mode and no dropping T10. The caveat comments already in `TestCaseLibrary.cs` and `ScenarioManager.cs` match this, so no code change is needed.
+4. **Corrected mistakes from the previous round** - the lane C exit closes only **08:30-09:00, about 15-30 minutes**, not all morning (though that coincides with the real peak, so it is still valid for MorningPeak), and Soi Pa Kook opens **15:30-17:00**, not 16:00 (not yet wired into any scenario - out of scope for now).
+5. **The real peak is 08:15-09:00 and ends abruptly** (not 07:00-08:30 as first assumed), with traffic falling 49-62% within minutes of 09:00 - a class-start peak, not an ordinary commute.
+6. **Arrival rates from all 8 clips, detector validated at 98.3%**, using car+heavy x0.92 (stable, varying only 12%). `TestCaseLibrary.cs` (T8/T10) and `ScenarioManager.cs` (MorningPeak/MiddayNormal) updated: MorningPeak A=19.7/Ax=5.6/B=8.7/Bx=9.6, MiddayNormal A=30.3/Ax=8.5/B=15.9/Bx=17.6 (CB/CA still awaiting Monday's data).
+7. **The proposal to move 8 s of green from A to Bx** (taking Bx's v/c from 1.21-1.39 down to 0.90-0.99) is deliberately **not** applied to the Fixed preset, because Fixed has to preserve the real system's problem for Adaptive to be compared against. Making the preset smarter would defeat the experiment. It is kept as a discussion point for the report and a target for Adaptive to find on its own (noted in `FixedController.LoadABACPreset()`).
+8. **Tested:** Scripts and Editor both compile, and all 5 regression suites pass (`Test.cs` / `Test2.cs` / `Test3.cs` / `Test4.cs` / `Test5.cs`). `GetCycleLength()` computes exactly 107 s as configured.
 
-### ยังไม่ได้ทำ / บล็อกอยู่
-
-- 🛑 **ยังไม่ได้กด `ABAC ▸ Build 4-Phase Scene` ในเครื่อง** — โค้ดสร้าง `Spawner_A2` / `ROI_A2` /
-  `StopLine_A2_Visual` ให้อัตโนมัติ (idempotent, กดซ้ำได้) แต่ต้องเปิด Unity แล้วกดเมนูเองก่อนถึงจะมี object จริงในซีน
-- 🛑 **อย่าเพิ่งรัน batch 270 runs** — CB/CA arrival rate และสัดส่วนรถตรงเข้าเลนใน/เลนนอก (A vs A2) ยังเป็นค่าเดา 50/50
-  รอ Itim ตอบ `Questions_for_Itim.md` ก่อน (ส่งให้แล้ว 23 ส.ค.)
-- ยังไม่ได้ modelling โหมด "ไฟกระพริบเหลือง" ที่ Itim สังเกตช่วงนอกพีค — ถ้ายืนยันว่าจริง การเทียบ Fixed vs Adaptive
-  ตอนกลางวันจะไม่ตรงสภาพจริง (ต้องเทียบ "adaptive vs ไม่มีการควบคุม" แทน) — เป็นเรื่องใหญ่ที่ต้องตัดสินใจก่อนรันจริง
+**Still outstanding, as before:** `ABAC > Build 4-Phase Scene` has not been re-run on the machine since this
+round's numeric changes. (No scene objects are affected - only timing and arrival rate values in the
+scripts - but Unity still has to be opened to check that `FixedController` and `ScenarioManager` read the new
+values, or to reload the presets from the context menu.) Waiting on Itim for: CB/CA arrival rates while open
+(Monday), guard-wave statistics (item 6), saturation headway (item 7) and the remaining distances (item 8).
 
 ---
 
-## 1. ภาพรวมโปรเจค
+## Update 24 Aug - checking the signal timing Kimmy measured on site
 
-ระบบจำลอง (digital twin) ของทางแยกรูปตัว T หน้าทางเข้า ABAC วิทยาเขตสุวรรณภูมิ บนถนนบางนา-ตราด (สป.5003) เพื่อเปรียบเทียบประสิทธิภาพระหว่าง:
+Kimmy sent figures from timing the real signal (only lane C has a countdown display). Here is the check:
 
-- **Fixed-cycle controller** — ไฟจราจรแบบวนตายตัว **115s/cycle** (baseline, ปรับจาก DOH 120s ตามค่าจริงที่วัดได้)
-- **Adaptive controller** — FCFS + สูตร HCM-based clearance time + concurrent phase ปรับเวลาไฟเขียวตามดีมานด์จริง
+**Internal consistency first, using C's display as the reference clock, since it is the most accurate:**
+- between the two snapshots given, C's red counted down from 75 s to 25 s (50 s elapsed), matching A having just completed 50 s of green and turned red. That part is consistent.
+- but B contradicts itself: with 25 s of C's red left, Kimmy counted B as having 45 s of green remaining, which would mean B and C (=CB) overlap green by about 20 s, contradicting the (B x CB) conflict pair. **Conclusion: the B figure is almost certainly miscounted by hand without a display, rather than the real signal overlapping.**
+- Ax and Cx (=CA) show "no light" in every snapshot, matching the model's assumption that they are free lanes with no signal of their own - a good reverse confirmation, not a bug.
+- Bx goes green alongside B towards the end (once A is red), matching the P1 to P2 phase structure already in the code (B continues, Bx joins later) - confirming the phase structure is right.
 
-เป้าหมาย: รัน **135 scenarios × 2 controllers = 270 runs** เก็บข้อมูล waiting time แล้วเปรียบเทียบด้วย paired t-test
+**Against the current code** (`FixedController.cs`: 36/24/40 plus 15 s intergreen = 115 s, based on Itim's earlier 40 s green / 70 s red):
+- C's yellow: Kimmy counted 3 s, exactly matching the code, so the counting method is trustworthy
+- C's green: Kimmy 31 s against Itim's earlier 40 s, about 22% apart
+- C's cycle: Kimmy 109 s against the code's 115 s
+- A green: Kimmy about 50 s against the code's 36-39 s
+- B green: Kimmy about 90-95 s against the code's 65 s (the largest difference, but also the least confident, with no display)
+- Bx green: Kimmy about 20 s against the code's 24 s (close)
 
-**สมมติฐานหลักที่กำลังทดสอบ (ใหม่ในรอบนี้):** Adaptive อาจทำให้ `Ax` แย่ลงกว่า Fixed เพราะ Ax เป็นเลนไม่มีไฟ
-(controller ไม่เห็น demand ของมันโดยตรง) ถ้า Adaptive จัดเขียวให้ A ตาม demand ของ A เองที่มักต่ำกว่า Ax มาก
-A2 ก็จะได้เขียวน้อยตามไปด้วย (ใช้ไฟเดียวกัน) → แดงยาว → คิวเลนแชร์สะสม → Ax โดนบล็อกหนักกว่า Fixed ที่ให้เขียว
-คงที่ไม่ว่า demand จะเป็นเท่าไหร่ นี่คือ finding ที่มีค่าไม่ว่าผลจะออกมาแบบไหน
+**Decision:** do not change `FixedController.cs` yet. Two sources (Itim from the drone clip, Kimmy timing
+live) disagree on C's green, and a third data point is needed. The question has been added to
+`Questions_for_Itim.md` section 3.1, asking Itim to check whether the clips cover the same period, to count C
+against the countdown display directly once more, and to answer the full A/B/Bx phases from the original item 3.
 
 ---
 
-## 2. สถาปัตยกรรมระบบ (หลัง refactor)
+## Round 4 (23 Aug, continued) - updated to reply_to_badin_3.md
 
-### 2.1 ผังแยกเต็มระบบ — 7 เลน, ไฟ 4 ดวง (5 signal index — A ใช้ร่วมกับ A2), 3 เฟส
+Itim answered part of `Questions_for_Itim.md` (items 1, 2 and 5) and proposed the emergency lane. All of it
+is now in the model:
 
-⚠️ ทางเข้า ABAC อยู่ทาง **เหนือ (+Z)** ยืนยันจากพิกัดจริงใน `SampleScene.unity`
+1. **The A/A2 split changes from 50/50 to 18/82.** Itim back-calculated from the observed blocking rate (40-60% of the time) that the outer lane (A2) really carries only about 18% of through traffic, with a 13-23% sensitivity range - not half. It lives in the constant `A2_SHARE = 0.18f` in `TestCaseLibrary.cs` and the `a2Share` field in `ScenarioManager.cs`: one place, easy to change once directly counted.
+2. **CB/CA in the morning are genuinely closed (confirmed by the security staff)**, not merely quiet. Added the constant `CLOSED = 999999f` (a mean interval so large that essentially nothing arrives in a 30-minute run), replacing `VERY_LOW` in MorningPeak.
+3. **Added the emergency/shoulder lane mechanism**, following Itim's feedback that pure car-following overstates the blocking (in reality vehicles edge right, motorcycles filter and the security staff wave people through, so it is never 100%). `canBypassCrossLaneBlocker` in `CarAgent.cs`: each Ax vehicle draws at spawn, from the spawner's own RNG to preserve reproducibility, with a 65% chance (the midpoint of the 60-70% proposed) of ignoring A2 as a blocker while still following the other Ax vehicles in its own queue. Configured in `ABACSceneBuilder.cs` (`spAx.laneBypassChance = 0.65f`).
+4. **PCU and vehicle mix per lane** (Itim's item 5) - the data is complete for A/Ax/B/Bx, but **not wired into Unity**, because the sim does not distinguish vehicle types physically (every vehicle is the same `CarAgent`). For now it is only useful for weighted capacity calculations in the report and in `analyze_results.py`. Making physical behaviour differ by vehicle type is a new feature whose scope needs discussing first.
+5. **Detector accuracy confirmed at 98.3%** against ground truth (despite an mAP of only 76% - a different metric). Good news: it means the next round of data from the remaining clips will be less noisy, especially lane A, which was +/-28% on only 31-48 vehicles.
 
-| เลน | การเคลื่อนที่ | มีไฟ? | ตัดกระแสใคร |
+**Tested:** everything compiles and all 5 regression suites pass (`Test.cs` had its invariant changed from
+"A==A2" to "A2/A ratio = 4.556" for the new split, plus a check that T8's CB/CA really are closed).
+
+**A limitation, stated plainly:** the bypass mechanism changes car-following and geometry, which the
+out-of-Unity compile-check harness cannot test, because it has no real physics (`Vector3.Dot` and `Cross` are
+stubs returning 0). Unity has to be opened and T13 watched by eye to see whether the 65% of Ax vehicles
+really do pass.
+
+**Still outstanding, as before:** `ABAC > Build 4-Phase Scene` has not been run on the machine, and we are
+waiting on Itim for CB/CA arrival rates while open, phase timing for A/B/Bx and distances (items 3, the rest
+of 2, and 8) before running the real 270-run batch.
+
+---
+
+## Round 3 (23 Aug) - what was done
+
+The request: "bring the sim up to date, then check everything again for anything wrong".
+
+1. **Added lane A2, the shared lane - the most important change.** It models the fact that some through traffic uses the outer lane together with Ax (turning into the campus). A2 uses **exactly the same `TrafficLight` component as A** (not merely the same settings), so it always stops at the red with A. And because `CarAgent.GetCarAhead()` filters by **physical distance** rather than lane name, an Ax vehicle following an A2 vehicle in the same lane is trapped automatically, with no extra blocking logic. This is what lets the model **reproduce ABAC's real problem for the first time** - previously Ax flowed freely in the model, which did not match the drone footage.
+2. **Corrected the Fixed timing to Itim's measurements** - CB green 30 -> 40 s, cycle 120 -> 115 s (P1 and P2 scaled by their existing ratio, since there is no per-phase measurement yet - see the note in `FixedController.LoadABACPreset()`).
+3. **Real arrival rates instead of guesses** for MorningPeak and MiddayNormal (A/Ax/B/Bx). CB/CA remain guesses pending Itim's answer to `Questions_for_Itim.md`.
+4. **Fixed a structural bug in `AdaptiveController`** - added `AddPhysicallyLinkedSignals()`, guaranteeing that lanes sharing one lamp (A and A2) are always grouped green together, even when the other lane's demand is 0 at the moment the leader is chosen. Without it, gap-out and anti-starvation cannot see the other lane's demand even though the real signal is already green for it.
+5. **Added test case T13**, which demonstrates the blocking mechanism directly (against T6, which has no A2, as the baseline).
+6. **Wrote a new automated suite (`Test5.cs` / `SharedLaneTest`)** confirming by reflection that A and A2 really reference the same TrafficLight instance, and that `BuildCompatibleGroup()` groups correctly in every case (leader=A, leader=A2, with and without demand, and conflicting lanes never joining).
+7. **All 5 regression suites pass** (`Test.cs` ConflictTest, `Test2.cs` FixedCycleTest, `Test3.cs` BatchMathTest, `Test4.cs` EtaTest, `Test5.cs` SharedLaneTest), with Scripts and Editor both compiling under the mcs stub.
+
+### Not done / blocked
+
+- **`ABAC > Build 4-Phase Scene` has not been run on the machine.** The code creates `Spawner_A2`, `ROI_A2` and `StopLine_A2_Visual` automatically (idempotent, safe to repeat), but Unity has to be opened and the menu item pressed before the objects exist in the scene.
+- **Do not start the 270-run batch yet.** The CB/CA arrival rates and the inner/outer split of through traffic (A vs A2) are still guesses at 50/50, pending Itim's answer to `Questions_for_Itim.md` (sent 23 Aug).
+- The flashing-amber mode Itim observed outside the peaks is not modelled. If confirmed, the midday Fixed vs Adaptive comparison will not match reality (it would have to be "adaptive vs no control"). That is a significant decision to take before the real run.
+
+---
+
+## 1. Project overview
+
+A digital twin of the T-junction at the ABAC Suvarnabhumi campus entrance on Bangna-Trad Road (Sor Por 5003),
+built to compare:
+
+- **Fixed-cycle controller** - a rigid **115 s cycle** (the baseline, adjusted from the DOH 120 s to the measured value)
+- **Adaptive controller** - FCFS plus an HCM-based clearance time formula plus concurrent phases, adjusting green time to real demand
+
+The goal: run **135 scenarios x 2 controllers = 270 runs**, collect waiting times, and compare with a paired
+t-test.
+
+**The main hypothesis being tested (new this round):** Adaptive may make `Ax` worse than Fixed, because Ax is
+unsignalised and the controller cannot see its demand directly. If Adaptive allocates A's green from A's own
+demand, which is usually far lower than Ax's, then A2 gets less green too (same lamp), the red is longer, the
+shared-lane queue builds, and Ax is blocked harder than under Fixed, which gives a constant green regardless
+of demand. That is a valuable finding either way it turns out.
+
+---
+
+## 2. System architecture (after the refactor)
+
+### 2.1 The full junction - 7 lanes, 4 signals (5 signal indices, since A shares with A2), 3 phases
+
+The ABAC entrance is to the **north (+Z)**, confirmed from the real coordinates in `SampleScene.unity`.
+
+| Lane | Movement | Signal? | Crosses |
 |---|---|---|---|
-| **A** | มุ่งตะวันออก (+X) วิ่งตรง — เลนใน | ✅ | — |
-| **A2** ⭐ใหม่ | มุ่งตะวันออก (+X) วิ่งตรง — เลนนอก (แชร์กับ Ax) ใช้ไฟดวงเดียวกับ A | ✅ (ใช้ไฟร่วมกับ A) | เหมือน A ทุกอย่าง |
-| **Ax** | แยกจาก A เลี้ยวซ้ายเข้า ABAC — วิ่งเลนเดียวกับ A2 | ❌ ฟรี | ไม่ตัดใคร แต่โดน A2 บล็อกได้เวลา A2 จอดรอไฟแดง |
-| **B** | มุ่งตะวันตก (−X) วิ่งตรง — อยู่ครึ่งใต้ | ✅ | — |
-| **Bx** | แยกจาก B เลี้ยวขวาเข้า ABAC | ✅ | ตัด A, A2 |
-| **CB** | ออกจาก ABAC เลี้ยวขวา ไป merge เลน B | ✅ | ตัด A, A2, B |
-| **CA** | ออกจาก ABAC เลี้ยวซ้าย ไป merge เลน A/A2 | ❌ ฟรี | ไม่ต้องข้ามใคร |
+| **A** | eastbound (+X), straight - inner lane | yes | - |
+| **A2** (new) | eastbound (+X), straight - outer lane, shared with Ax, on A's signal | yes (shares A's) | the same as A |
+| **Ax** | splits from A, turns left into ABAC - same lane as A2 | no, free | nothing, but is blocked by A2 waiting at the red |
+| **B** | westbound (-X), straight - southern half | yes | - |
+| **Bx** | splits from B, turns right into ABAC | yes | A, A2 |
+| **CB** | leaves ABAC turning right to merge into B | yes | A, A2, B |
+| **CA** | leaves ABAC turning left to merge into A/A2 | no, free | nothing |
 
-**Conflict matrix (ห้ามเขียวพร้อมกัน):** A×Bx, A×CB, A2×Bx, A2×CB, B×CB, Bx×CB
-**เขียวพร้อมกันได้เสมอ:** A+A2 (ไฟดวงเดียวกัน โดยไม่มี ConflictPair ระหว่างกัน), A+B (กระแสตรงสวนทาง), B+Bx (ขาเดียวกัน)
+**Conflict matrix (never green together):** A x Bx, A x CB, A2 x Bx, A2 x CB, B x CB, Bx x CB
+**Always allowed together:** A+A2 (one lamp, with no ConflictPair between them), A+B (opposing through movements), B+Bx (same approach)
 
-> **ประเด็นสำหรับ defence:** A2 ไม่ใช่ "เลนที่ 7 แยกอิสระ" — มันคือกลไกจำลอง **shared-lane blocking** ซึ่งเป็นปัญหา
-> คอขวดจริงที่สังเกตได้จากคลิปโดรน (ไม่ใช่ปัญหา capacity — v/c ของเลนแชร์แค่ 0.30-0.56 เท่านั้น แต่รถ A ไม่กี่คันที่
-> จอดรอไฟไปขวางรถ Ax หลายร้อยคันที่ไม่ต้องรอไฟเลย) รายละเอียดการคำนวณอยู่ใน `Reply_to_Itim_2.md`
+> **A point for the defence:** A2 is not "a seventh independent lane". It is the mechanism that models
+> **shared-lane blocking**, the real bottleneck observed in the drone footage. It is not a capacity problem -
+> the shared lane's v/c is only 0.30-0.56 - but a handful of A vehicles waiting at a red obstruct hundreds of
+> Ax vehicles that never need to wait. The calculation is in `Reply_to_Itim_2.md`.
 
-### 2.2 Fixed phase plan (115s/cycle — ปรับจาก DOH 120s ตามค่า CB ที่วัดจริง)
+### 2.2 The Fixed phase plan (115 s cycle, adjusted from DOH's 120 s by the measured CB value)
 
-| เฟส | เลนที่เขียว | Green | หมายเหตุ |
+| Phase | green lanes | green | note |
 |---|---|---|---|
-| P1 MainThrough | A + A2 + B | 36s | A2 เขียว/แดงพร้อม A เสมอ (ไฟเดียวกัน) |
-| P2 EastRightTurn | B + Bx | 24s | B เขียวต่อเนื่องไม่ขึ้นเหลือง |
-| P3 ABACExit | CB | 40s | ⭐ ค่าวัดจริงจาก Itim (เขียว 40s / แดง 70s) |
+| P1 MainThrough | A + A2 + B | 36 s | A2 is always green and red with A (one lamp) |
+| P2 EastRightTurn | B + Bx | 24 s | B continues green without going yellow |
+| P3 ABACExit | CB | 40 s | measured by Itim (green 40 s / red 70 s) |
 
-Yellow 3s + All-Red 2s × 3 = 15s → **รวม 36+24+40+15 = 115s พอดี**
+Yellow 3 s + all-red 2 s, three times = 15 s, giving exactly **36+24+40+15 = 115 s**.
 
-⚠️ **P1/P2 (36s/24s) เป็นค่าประมาณ** — สเกลจากสัดส่วนเดิม 45:30 ให้พอดีกับเวลาที่เหลือหลังหัก CB(40s)+intergreen(15s)
-ยังไม่มีข้อมูลวัดจริงแยกเฟส A/B/Bx รอ Itim ตอบ `Questions_for_Itim.md` ข้อ 3 แล้วต้องแก้ตัวเลขนี้อีกครั้ง
+**P1 and P2 (36 s / 24 s) are estimates**, scaled from the original 45:30 ratio to fit the time left after
+CB (40 s) and intergreen (15 s). There is no per-phase measurement for A/B/Bx yet; these numbers must be
+revised once Itim answers item 3 of `Questions_for_Itim.md`.
 
-Timeline จริงที่ verify แล้ว (จาก `Test2.cs`):
+The verified timeline (from `Test2.cs`):
 ```
 t=  0s +36s   A=G A2=G B=G Bx=R CB=R
-t= 36s + 3s   A=Y A2=Y B=G Bx=R CB=R    ← A/A2 ขึ้นเหลืองพร้อมกัน B ยังเขียวต่อ
+t= 36s + 3s   A=Y A2=Y B=G Bx=R CB=R    <- A and A2 go yellow together while B stays green
 t= 39s + 2s   A=R A2=R B=G Bx=R CB=R
-t= 41s +24s   A=R A2=R B=G Bx=G CB=R    ← Bx เข้าร่วมหลัง all-red
+t= 41s +24s   A=R A2=R B=G Bx=G CB=R    <- Bx joins after the all-red
 t= 65s + 3s   A=R A2=R B=Y Bx=Y CB=R
 t= 68s + 2s   A=R A2=R B=R Bx=R CB=R
 t= 70s +40s   A=R A2=R B=R Bx=R CB=G
 t=110s + 3s   A=R A2=R B=R Bx=R CB=Y
 t=113s + 2s   A=R A2=R B=R Bx=R CB=R
-t=115s        (วนกลับ P1)
+t=115s        (back to P1)
 ```
 
 ---
 
-## 3. สิ่งที่ทำเสร็จแล้ว
+## 3. What is finished
 
 ### 3.1 Scripts
 
-| ไฟล์ | หน้าที่ | สถานะ |
+| File | Purpose | Status |
 |---|---|---|
-| `IntersectionConfig.cs` | ศูนย์กลางข้อมูลแยก: 7 เลน + conflict matrix + validation — ⭐ เพิ่ม A2 รอบนี้ | ✅ |
-| `CarAgent.cs` | พฤติกรรมรถ: 3 driver profile, เบรกฟิสิกส์จริง, car-following (กรองด้วยระยะห่างทางกายภาพ ไม่ใช่ชื่อเลน — จุดนี้ทำให้ A2/Ax บล็อกกันเองได้ฟรี), waypoint steering | ✅ |
-| `TrafficLight.cs` | เก็บ state ไฟ, แจ้งรถที่ลงทะเบียนทันที, auto-cleanup | ✅ (ไม่ได้แก้รอบนี้) |
-| `FixedController.cs` | phase list หลายเลน/เฟส — ⭐ P1 เพิ่ม A2, cycle 120→115s รอบนี้ | ✅ |
-| `AdaptiveController.cs` | FCFS + concurrent phase + HCM formula — ⭐ เพิ่ม `AddPhysicallyLinkedSignals()` รอบนี้ | ✅ |
-| `CarSpawner.cs` | Poisson process, RNG แยกต่อเลน | ✅ (ไม่ได้แก้รอบนี้) |
-| `ROIZone.cs` | ตรวจจับรถด้วย lane-identity filter, จับเวลา FCFS | ✅ (ไม่ได้แก้รอบนี้) |
-| `DataLogger.cs` | เก็บ waiting time รายคัน + starvation events, export CSV | ✅ (ไม่ได้แก้รอบนี้) |
-| `ScenarioManager.cs` | batch runner N เลน generic — ⭐ ใส่ค่าจริง MorningPeak/MiddayNormal + A2 รอบนี้ | ✅ |
-| `TestCaseLibrary.cs` | 13 test case สำเร็จรูป — ⭐ เพิ่ม T13, ใส่ค่าจริง T8/T10 รอบนี้ | ✅ |
-| `SimulationControlPanel.cs` | UI ควบคุม: play/pause/stop, สลับ Fixed/Adaptive, เลือก test case, ตารางเลนสด (scroll ได้), เทียบ clearance time | ✅ (ไม่ได้แก้รอบนี้ — ใช้ `config.lanes` แบบ generic จึงรองรับ A2 อัตโนมัติ) |
-| `BatchRunPanel.cs` | UI batch ฝั่งขวา: progress bar, ETA, ตารางเทียบ Fixed vs Adaptive ต่อ scenario, สรุปผลตอนจบ | ✅ (ไม่ได้แก้รอบนี้ — generic เหมือนกัน) |
-| `Assets/Editor/ABACSceneBuilder.cs` | เมนู `ABAC ▸ Build 4-Phase Scene` / `Validate Scene` — ⭐ เพิ่มการสร้าง `Spawner_A2`/`ROI_A2`/`StopLine_A2_Visual` รอบนี้ | ✅ |
-| `Analysis/analyze_results.py` | paired t-test + Wilcoxon + Cohen's d + 95% CI + Shapiro-Wilk, กราฟ 5 รูป | ✅ (ไม่ได้แก้รอบนี้) |
+| `IntersectionConfig.cs` | central junction data: 7 lanes, conflict matrix, validation - A2 added this round | done |
+| `CarAgent.cs` | vehicle behaviour: 3 driver profiles, real braking physics, car-following (filtered by physical distance rather than lane name, which is what lets A2 and Ax block each other for free), waypoint steering | done |
+| `TrafficLight.cs` | holds the signal state, notifies registered vehicles immediately, auto-cleanup | done (unchanged this round) |
+| `FixedController.cs` | multi-lane phase list - A2 added to P1, cycle 120 -> 115 s this round | done |
+| `AdaptiveController.cs` | FCFS, concurrent phases, the HCM formula - `AddPhysicallyLinkedSignals()` added this round | done |
+| `CarSpawner.cs` | Poisson process, per-lane RNG | done (unchanged this round) |
+| `ROIZone.cs` | vehicle detection with a lane-identity filter, FCFS timing | done (unchanged this round) |
+| `DataLogger.cs` | per-vehicle waiting times and starvation events, CSV export | done (unchanged this round) |
+| `ScenarioManager.cs` | generic N-lane batch runner - real MorningPeak/MiddayNormal values and A2 added this round | done |
+| `TestCaseLibrary.cs` | 13 ready-made test cases - T13 added and T8/T10 given real values this round | done |
+| `SimulationControlPanel.cs` | control UI: play/pause/stop, Fixed/Adaptive switching, test case selection, a live scrollable lane table, clearance-time comparison | done (unchanged this round - it uses `config.lanes` generically, so A2 works automatically) |
+| `BatchRunPanel.cs` | right-hand batch UI: progress bar, ETA, Fixed vs Adaptive table per scenario, summary on completion | done (unchanged this round - equally generic) |
+| `Assets/Editor/ABACSceneBuilder.cs` | the `ABAC > Build 4-Phase Scene` / `Validate Scene` menu - now also creates `Spawner_A2` / `ROI_A2` / `StopLine_A2_Visual` | done |
+| `Analysis/analyze_results.py` | paired t-test, Wilcoxon, Cohen's d, 95% CI, Shapiro-Wilk, 5 charts | done (unchanged this round) |
 
-### 3.2 การ implement shared lane (A2) — รายละเอียดทางเทคนิค
+### 3.2 How the shared lane (A2) is implemented
 
-**ปัญหาที่ต้องแก้:** ก่อนหน้านี้ Ax (เลี้ยวเข้ามอ) มีเลนอิสระของตัวเอง วิ่งฉลุยตลอด ไม่ตรงกับคลิปโดรนที่เห็นรถ Ax
-ติดขังหลังคิวรถตรงที่จอดรอไฟแดงในเลนแชร์เดียวกัน
+**The problem:** Ax (turning into the campus) previously had its own lane and flowed freely, contradicting
+the drone footage, which shows Ax vehicles trapped behind through traffic waiting at the red in the same
+shared lane.
 
-**วิธีแก้ (ไม่ต้องเขียน logic บล็อกใหม่เลย — ใช้ของเดิมที่มีอยู่):**
+**The solution, requiring no new blocking logic at all:**
 
-1. เพิ่ม `ApproachLane` ใหม่ชื่อ `A2` — `isSignalized = true`, `trafficLight` ชี้ไปที่ **TrafficLight component
-   เดียวกับ A** (ตั้งค่าใน `ABACSceneBuilder.Wire(cfg, "A2", lightA, roiA2, spA2)`) จึงเขียว/แดงพร้อม A โดยอัตโนมัติ
-   ไม่ต้องมี logic ซิงค์เพิ่ม
-2. `Spawner_A2` วางที่พิกัดเดียวกับ `Spawner_Ax` (offset ถอยหลัง 5m กันสอง spawner ปล่อยรถทับกันตอน t=0)
-   ไม่มี waypoints (วิ่งตรงเหมือน A ไม่เลี้ยว), `stopLineTarget` ใช้ transform เดียวกับ `StopLine_A`
-   (ใช้ได้เพราะรถวิ่งขนานแกน X ล้วน ๆ ระยะเบรกคำนวณจากผลต่างพิกัด X อย่างเดียว ค่า Z ของ stopLineTarget ไม่มีผล)
-3. `CarAgent.GetCarAhead()` กรองรถคันหน้าด้วย **ระยะห่างด้านข้าง (lateral distance)** ไม่ใช่ชื่อเลน — พอ A2 กับ Ax
-   อยู่พิกัด z เดียวกัน ระบบ car-following ที่มีอยู่แล้วจะทำให้ Ax ติดหลัง A2 ที่จอดรอไฟแดงเองโดยอัตโนมัติ
-4. `AdaptiveController.AddPhysicallyLinkedSignals()` (ใหม่) — หลังสร้างกลุ่มเขียวพร้อมกันจาก demand แล้ว
-   เติมเลนที่ใช้ `TrafficLight` component เดียวกับสมาชิกกลุ่มเข้าไปด้วยเสมอ ไม่ว่าตอนนั้นจะมี demand หรือไม่
-   (ป้องกัน gap-out/anti-starvation มองไม่เห็น demand ของ A2 ทั้งที่ไฟจริงเขียวให้อยู่แล้ว)
+1. A new `ApproachLane` called `A2`, with `isSignalized = true` and `trafficLight` pointing at **the same TrafficLight component as A** (set in `ABACSceneBuilder.Wire(cfg, "A2", lightA, roiA2, spA2)`), so it turns green and red with A automatically with no synchronisation logic.
+2. `Spawner_A2` sits at the same coordinates as `Spawner_Ax`, offset 5 m back so the two spawners do not overlap at t=0. It has no waypoints (it runs straight like A) and uses the same `stopLineTarget` transform as `StopLine_A` (valid because the cars run parallel to X, so braking distance depends only on the X difference and the stop line's Z does not matter).
+3. `CarAgent.GetCarAhead()` filters by **lateral distance** rather than lane name, so with A2 and Ax at the same z, the existing car-following traps Ax behind an A2 vehicle waiting at the red, automatically.
+4. `AdaptiveController.AddPhysicallyLinkedSignals()` (new) - after building the concurrent group from demand, always add any lane sharing a `TrafficLight` component with a group member, whether or not it has demand. This stops gap-out and anti-starvation missing A2's demand while the real signal is already green for it.
 
-**สมมติฐานที่ยังไม่ยืนยัน:** สัดส่วนรถตรงที่เข้าเลนใน (A) vs เลนนอก (A2) ใช้ 50/50 ไปก่อน (`Poisson()` helper ใน
-`TestCaseLibrary.cs` และ `MakeScenario()` ใน `ScenarioManager.cs` หาร mean interval คูณ 2 ให้ทั้งคู่เท่ากันเสมอ
-เพื่อรักษาปริมาณรถตรงรวมให้เท่าเดิม) — ถามไปแล้วใน `Questions_for_Itim.md` ข้อ 1
+**An unconfirmed assumption:** the inner (A) vs outer (A2) split of through traffic is 50/50 for now (the
+`Poisson()` helper in `TestCaseLibrary.cs` and `MakeScenario()` in `ScenarioManager.cs` double the mean
+interval for both, keeping the total through volume the same). Asked as item 1 of `Questions_for_Itim.md`.
 
-### 3.3 บั๊กที่แก้ในรอบนี้ (23 ส.ค.)
+### 3.3 Bugs fixed this round (23 Aug)
 
-- **`ABACSceneBuilder.ValidateScene()` false-positive** — เช็ค `turning = laneName != "A" && laneName != "B"` จะเตือน
-  ผิดว่า A2 "เป็นเลนเลี้ยวแต่ไม่มี waypoint" ทั้งที่ A2 วิ่งตรงตั้งใจ แก้เป็นยกเว้น "A2" ด้วย
-- **AdaptiveController อาจตัดไฟ A2 สั้นเกินไป** — ถ้า A2 ถูกเลือกเป็น leader ตอน A มี demand=0 กลุ่มจะมีแค่ {A2}
-  ไม่รวม A ทำให้ gap-out/anti-starvation มองไม่เห็นรถ A ที่มาใหม่ระหว่างเฟส (ทั้งที่ไฟเขียวให้อยู่แล้วเพราะใช้ TrafficLight
-  ร่วมกัน) แก้ด้วย `AddPhysicallyLinkedSignals()` — เป็น edge case ที่พบตอนออกแบบ ไม่ใช่ตอน production แต่ป้องกันไว้ก่อน
-- **T2 "ทุกเลนเท่ากัน" ไม่ครบเลนแล้ว** — เดิมมี 6 เลน ตอนนี้ระบบมี 7 เลน ต้องเพิ่ม A2 เข้าไปด้วยไม่งั้น test case
-  ไม่ได้ทดสอบ fairness ครบทุกเลนจริง
+- **A false positive in `ABACSceneBuilder.ValidateScene()`** - the check `turning = laneName != "A" && laneName != "B"` wrongly warned that A2 "is a turning lane with no waypoints", when A2 deliberately runs straight. Fixed by also excluding "A2".
+- **AdaptiveController could cut A2's green short** - if A2 became the leader while A's demand was 0, the group would be just {A2}, excluding A, so gap-out and anti-starvation could not see A vehicles arriving mid-phase even though the signal was already green for them (shared lamp). Fixed with `AddPhysicallyLinkedSignals()`. An edge case found in design, not in production, but guarded against.
+- **T2, "all lanes equal", was no longer complete** - it had 6 lanes while the system now has 7, so A2 had to be added or the case would not test fairness across every lane.
 
-### 3.4 บั๊กที่แก้ไปแล้วรอบก่อน (ยังคงอยู่ ดูรายละเอียดใน git log)
+### 3.4 Bugs fixed in earlier rounds (still fixed; see git log for detail)
 
-- Infinite recursion ใน `IntersectionConfig.Build()`, Adaptive busy-loop, `summary_all_runs.csv` สคีมาปนกัน,
-  "ไฟเขียวแล้วรถไม่ไป" (two-pass reset), double SpawnLoop, turn arc กว้างเกิน, ROI BoxCollider ซ้อนกัน 2 ตัว
-  — รายละเอียดเต็มอยู่ใน git commit history และ session ก่อนหน้า
+- infinite recursion in `IntersectionConfig.Build()`, the Adaptive busy loop, mixed schemas in `summary_all_runs.csv`, "the light is green but cars do not move" (the two-pass reset), a double SpawnLoop, a too-wide turn arc, two stacked ROI BoxColliders. Full detail is in the git commit history and earlier sessions.
 
-### 3.5 การตรวจสอบที่ทำแล้ว (รอบนี้)
+### 3.5 Verification done this round
 
-- ✅ Compile ผ่านทั้ง Scripts (12 ไฟล์) + Editor (1 ไฟล์) ด้วย mcs + UnityEngine/UnityEditor stub
-- ✅ `Test.cs` (ConflictTest) — 7 เลน, 5 signal index, conflict matrix ของ A2 mirror A ถูกต้อง, A×A2 compatible,
-  greedy group ของ leader=A ได้ {A, A2, B}, ทุก Poisson test case มี A interval == A2 interval เป๊ะ (invariant การแบ่ง 50/50)
-- ✅ `Test2.cs` (FixedCycleTest) — รัน `RunCycle()` จริง 2 รอบเต็ม cycle = 115s พอดี, เห็น A+A2 เขียวพร้อมกันจริง,
-  ไม่มีเลน conflict ครองแยกพร้อมกันแม้แต่ครั้งเดียว
-- ✅ `Test3.cs` (BatchMathTest) — ไม่กระทบจากการเปลี่ยนแปลงรอบนี้ ยัง PASS ทั้งหมด
-- ✅ `Test4.cs` (EtaTest) — ไม่กระทบจากการเปลี่ยนแปลงรอบนี้ ยัง PASS ทั้งหมด
-- ✅ `Test5.cs` (SharedLaneTest) ⭐ **ใหม่** — สร้างด้วย reflection: ยืนยันว่า A2.trafficLight เป็น instance เดียวกับ
-  A.trafficLight เป๊ะ ๆ, `BuildCompatibleGroup()` จริงให้ผลถูกทุกกรณี (leader=A ดึง A2 มาด้วยแม้ demand=0, สลับ leader=A2
-  ก็ดึง A มาด้วยเหมือนกัน symmetric, B เข้าร่วมได้เมื่อมี demand, Bx/CB ไม่เข้ากลุ่มแม้ demand สูงมาก)
+- Scripts (12 files) and Editor (1 file) both compile under mcs with the UnityEngine/UnityEditor stubs
+- `Test.cs` (ConflictTest) - 7 lanes, 5 signal indices, A2's conflict matrix correctly mirrors A's, A x A2 compatible, a greedy group from leader=A gives {A, A2, B}, and every Poisson case has A's interval exactly equal to A2's (the invariant of the 50/50 split)
+- `Test2.cs` (FixedCycleTest) - runs the real `RunCycle()` for two full cycles at exactly 115 s, sees A and A2 green together, and never once has conflicting lanes holding the junction together
+- `Test3.cs` (BatchMathTest) - unaffected by this round's changes, still passing
+- `Test4.cs` (EtaTest) - unaffected by this round's changes, still passing
+- `Test5.cs` (SharedLaneTest), **new** - built with reflection: confirms A2.trafficLight is the same instance as A.trafficLight, and that the real `BuildCompatibleGroup()` is correct in every case (leader=A pulls A2 in even at demand 0, leader=A2 symmetrically pulls A in, B joins when it has demand, and Bx/CB never join however high their demand)
 
 ---
 
-## 4. สิ่งที่ยังไม่ได้ทำ / ค้างอยู่
+## 4. Outstanding work
 
-### 4.1 ตั้ง Scene ใน Unity ใหม่อีกครั้ง — Priority สูงสุด 🔥
-กด **`ABAC ▸ Build 4-Phase Scene`** อีกครั้ง (idempotent — ของเดิมไม่หาย แค่เพิ่ม `Spawner_A2` / `ROI_A2` /
-`StopLine_A2_Visual` เข้ามา) แล้วกด **`ABAC ▸ Validate Scene`** ตรวจซ้ำ จากนั้นลองรัน T1-T7 และ T13 ใหม่
-(T13 คือตัวที่สาธิต shared-lane blocking ให้เห็นชัดที่สุด)
+### 4.1 Rebuild the scene in Unity - highest priority
+Run **`ABAC > Build 4-Phase Scene`** again (idempotent - nothing is lost, it simply adds `Spawner_A2` /
+`ROI_A2` / `StopLine_A2_Visual`), then **`ABAC > Validate Scene`**, then re-run T1-T7 and T13. T13 is the
+clearest demonstration of shared-lane blocking.
 
-### 4.2 รอคำตอบจาก Itim — บล็อกการรัน batch จริง
-ส่ง `Questions_for_Itim.md` แล้ว (23 ส.ค.) แบ่งเป็น P0 (ต้องมี), P1, P2 — สรุปสั้น:
-- P0-1: สัดส่วนรถตรงเข้าเลนใน (A) vs เลนนอก (A2) — ตอนนี้ใช้ 50/50 ไปก่อน
-- P0-2: arrival rate ของ CB และ CA — ตอนนี้ยังเป็นค่าเดา
-- P1-3: เวลาไฟของเฟส A/B/Bx (มี CB=40s แล้ว แต่เฟสอื่นยังไม่มี)
-- P1-4: ยืนยันเรื่องไฟกระพริบเหลืองนอกพีค
+### 4.2 Waiting on Itim - blocks the real batch
+`Questions_for_Itim.md` was sent on 23 Aug, split into P0 (required), P1 and P2. In brief:
+- P0-1: the inner (A) vs outer (A2) split of through traffic - currently 50/50
+- P0-2: arrival rates for CB and CA - currently guesses
+- P1-3: signal timing for phases A/B/Bx (CB=40 s is known; the others are not)
+- P1-4: confirmation of the flashing amber outside the peaks
 
-### 4.3 Validate timeScale ก่อนรันจริง (ยังไม่ได้ทำ — ค้างจากรอบก่อน)
-รัน scenario เดียวกัน seed เดียวกัน ที่ 1x / 10x / 20x แล้วเทียบ `AvgWaitTime` ถ้าต่างเกิน ~5% แปลว่าเร็วเกินไป
+### 4.3 Validate timeScale before the real run (still outstanding from the previous round)
+Run the same scenario on the same seed at 1x / 10x / 20x and compare `AvgWaitTime`. More than about 5% apart
+means it is too fast.
 
-### 4.4 รันจริง 270 runs — 🛑 ห้ามรันจนกว่าจะได้ข้อ 4.2
+### 4.4 The real 270-run batch - do not start until 4.2 is resolved
 - `repetitionsPerScenario = 27`, `runDuration = 1800`, `warmupDuration = 120`
-- เวลาจำลองรวม ≈ 144 ชม.จำลอง / ที่ 10x ≈ 14.4 ชม.
-- ลบ `summary_all_runs.csv` เก่าก่อน (เป็นแบบ append) + commit git ก่อนรัน
+- total simulated time about 144 hours, so about 14.4 hours at 10x
+- delete the old `summary_all_runs.csv` first (it is appended to) and commit to git before running
 
-### 4.5 วิเคราะห์ผลข้อมูล
-- Paired t-test เปรียบเทียบ Fixed vs Adaptive (waiting time, starvation events)
-- ⭐ **โฟกัสหลัก: waiting time ของ Ax** — ต้องเทียบว่า Adaptive ทำให้ดีขึ้นหรือแย่ลงกว่า Fixed (สมมติฐานหลักของรอบนี้)
-- แยกวิเคราะห์รายเลนจาก `detailed_*.csv`
+### 4.5 Analysis
+- a paired t-test comparing Fixed and Adaptive (waiting time, starvation events)
+- **the main focus is Ax's waiting time** - whether Adaptive makes it better or worse than Fixed (this round's main hypothesis)
+- per-lane analysis from `detailed_*.csv`
 
-### 4.6 การตัดสินใจที่ต้องทำก่อนรันจริง
-- ถ้า Itim ยืนยันไฟกระพริบเหลืองนอกพีคจริง ต้องตัดสินใจว่าจะ (ก) ไม่ modeling โหมดนี้ แล้วระบุเป็น limitation หรือ
-  (ข) เพิ่มโหมด "no control" ให้ FixedController จำลองไฟกระพริบ — งานเพิ่ม ต้องคุยกับทีมก่อน
+### 4.6 Decisions needed before the real run
+- if Itim confirms the flashing amber outside the peaks, decide whether to (a) not model it and state it as a limitation, or (b) add a "no control" mode to FixedController to simulate the flashing. The latter is extra work and needs a team discussion.
 
-### 4.7 อื่น ๆ ที่ค้างจาก proposal เดิม
-- YOLOv8 track (การตรวจจับรถจริงจากกล้อง) — Itim กำลังทำอยู่ (ดู `counts_A_morning.jsonl` ที่ส่งมา)
-- ยืนยัน ABAC filming permission
+### 4.7 Other items outstanding from the original proposal
+- YOLOv8 tracking (real vehicle detection from camera footage) - Itim is working on it (see the `counts_A_morning.jsonl` he sent)
+- confirming ABAC filming permission
 
 ---
 
 ## 5. Timeline
 
-- **Senior Project Exhibition:** 25 กันยายน 2026 (เหลือ ~4.5 สัปดาห์)
-- **Final Defence:** 14-16 ตุลาคม 2026
+- **Senior Project Exhibition:** 25 September 2026 (about 4.5 weeks away)
+- **Final defence:** 14-16 October 2026
 
 ---
 
-## 6. ข้อมูลอ้างอิงทางเทคนิค
+## 6. Technical references
 
-- **HCM (Highway Capacity Manual):** สูตร `G = startupLostTime + D × saturationHeadway`, หลักการ concurrent non-conflicting movement
-- **DOH Thailand (2019):** ค่า default 120s/cycle — ตอนนี้แทนที่ด้วยค่าจริงที่วัดจากคลิปโดรน (115s) แล้วบางส่วน
-- **Poisson process** สำหรับ vehicle arrival simulation, thinning 50/50 สำหรับแบ่ง A/A2
-- **Field measurement (Itim):** YOLOv8 vehicle counting จากคลิปโดรน — ดู `Reply_to_Itim_2.md`, `Questions_for_Itim.md`
-
----
-
-## 7. ไฟล์คู่มือที่เกี่ยวข้อง
-
-- `SceneSetup_4Phase_Guide.md` — คู่มือตั้ง scene step-by-step + checklist + troubleshooting
-- `Git_Guide.md` — คู่มือ push/pull git
-- `Reply_to_Itim.md`, `Reply_to_Itim_2.md` — คำตอบคำถามของ Itim เรื่อง arrival rate และ shared lane
-- `Questions_for_Itim.md` — คำถามที่ยังรอ Itim ตอบ (P0/P1/P2)
+- **HCM (Highway Capacity Manual):** the formula `G = startupLostTime + D x saturationHeadway`, and the principle of concurrent non-conflicting movements
+- **DOH Thailand (2019):** the 120 s/cycle default, now partly replaced by the measured value from the drone footage (115 s)
+- **Poisson process** for vehicle arrivals, thinned 50/50 to split A and A2
+- **Field measurement (Itim):** YOLOv8 vehicle counting from drone footage - see `Reply_to_Itim_2.md` and `Questions_for_Itim.md`
 
 ---
 
-*อัปเดตจากเซสชันพัฒนา 23 สิงหาคม 2026*
+## 7. Related guides
+
+- `SceneSetup_4Phase_Guide.md` - step-by-step scene setup, checklist and troubleshooting
+- `Git_Guide.md` - pushing and pulling with git
+- `Reply_to_Itim.md`, `Reply_to_Itim_2.md` - answers to Itim's questions on arrival rates and the shared lane
+- `Questions_for_Itim.md` - questions still awaiting Itim's answers (P0/P1/P2)
+
+---
+
+*Updated from the development session of 23 August 2026*

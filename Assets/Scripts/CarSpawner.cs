@@ -8,90 +8,90 @@ public class CarSpawner : MonoBehaviour
     [Header("Prefab & Spawn Point")]
     public GameObject carPrefab;
     public Transform spawnPoint;
-    public Transform stopLineTarget;   // stop line ของเลนนี้ (เว้นว่างได้ถ้าเป็นเลนไหลอิสระ Ax/CA)
-    public TrafficLight assignedLight; // ไฟที่ควบคุมเลนนี้ (เว้นว่างได้ถ้าเป็นเลนไหลอิสระ)
-    [Tooltip("true = เลน 'ให้ทาง' — assignedLight เป็นไฟของอีกกระแส อ่านแบบกลับด้าน (เขา 'ไม่แดง' = เราหยุด)\n" +
-             "ใช้กับ Ax ที่เลี้ยวเข้ามอไม่ได้ตอน Bx เขียว ดูรายละเอียดที่ CarAgent.lightIsInverted")]
+    public Transform stopLineTarget;   // stop line for this lane (may be empty for free-flow lanes Ax/CA)
+    public TrafficLight assignedLight; // signal controlling this lane (may be empty for free-flow lanes)
+    [Tooltip("true = a yielding lane. assignedLight belongs to the *other* stream and is read inverted:\n" +
+             "if they are not red, we stop. Used by Ax, which cannot turn in while Bx is green. See CarAgent.lightIsInverted")]
     public bool lightIsInverted = false;
 
-    [Header("Rotation (ให้รถหันหน้าถูกทิศ)")]
-    public float spawnRotationY = 0f;  // ตั้งตามทิศทางแต่ละเลน
+    [Header("Rotation (so cars face the right way)")]
+    public float spawnRotationY = 0f;  // set per lane direction
 
-    [Header("Turning Path (เว้นว่าง = วิ่งตรง)")]
-    [Tooltip("ลาก Empty GameObject ที่วางไว้ตามแนวเลี้ยว เรียงตามลำดับที่รถต้องวิ่งผ่าน")]
+    [Header("Turning Path (empty = drive straight)")]
+    [Tooltip("Empty GameObjects placed along the turn, in the order the car should pass them")]
     public Transform[] pathWaypoints;
-    [Tooltip("อัตราการหมุนพวงมาลัย องศา/วินาที")]
+    [Tooltip("Steering rate in degrees per second")]
     public float steerRate = 55f;
-    [Tooltip("รัศมีวงเลี้ยวเป้าหมาย (เมตร) — ใช้จำกัดความเร็วตอนเลี้ยว ยิ่งเล็กยิ่งเลี้ยวแคบแต่ต้องช้าลง")]
+    [Tooltip("Target turning radius in metres - caps speed in the turn; smaller means tighter but slower")]
     public float turnRadius = 7f;
-    [Tooltip("อนุญาตให้เปลี่ยนเลน/เลี้ยวก่อนถึงเส้นหยุด (ใช้กับ A2 ที่ต้อง merge เข้าเลนแชร์) — ดู CarAgent.steerBeforeStopLine")]
+    [Tooltip("Allow lane changes and turns before the stop line (used by A2 merging into the shared lane) - see CarAgent.steerBeforeStopLine")]
     public bool steerBeforeStopLine = false;
-    [Tooltip("ระยะที่เริ่มเปลี่ยนเลน (เมตร) 0 = เปลี่ยนตั้งแต่ spawn — ดู CarAgent.steerStartDistance")]
+    [Tooltip("Distance at which the lane change starts, in metres. 0 = from spawn - see CarAgent.steerStartDistance")]
     public float steerStartDistance = 0f;
 
     [Header("Appearance")]
-    [Tooltip("วัสดุของรถเลนนี้ — ใช้แยกสีตามกลุ่มเลนใหญ่ A / B / C (เว้นว่าง = ใช้สีเดิมของ prefab)")]
+    [Tooltip("Material for this lane's cars - distinguishes lane groups A / B / C (empty = keep the prefab colour)")]
     public Material carMaterial;
 
     [Header("Lane Identity")]
-    public string laneName = "A";   // ต้องตรงกับ ROIZone.laneName และ IntersectionConfig (A/Ax/B/Bx/CB/CA)
+    public string laneName = "A";   // must match ROIZone.laneName and IntersectionConfig (A/Ax/B/Bx/CB/CA)
 
     [Header("Arrival Mode")]
-    [Tooltip("Poisson = สุ่มตามอัตรา / Scripted = ปล่อยตามตารางที่กำหนด (ผลเหมือนกันเป๊ะทุกครั้ง)")]
+    [Tooltip("Poisson = random at a given rate / Scripted = follow a fixed schedule (identical every run)")]
     public ArrivalMode arrivalMode = ArrivalMode.Poisson;
 
-    [Header("Arrival Rate (ใช้เมื่อ mode = Poisson)")]
-    public float meanArrivalInterval = 4f;  // วินาทีเฉลี่ยระหว่างรถแต่ละคัน
+    [Header("Arrival Rate (used when mode = Poisson)")]
+    public float meanArrivalInterval = 4f;  // mean seconds between cars
 
-    [Header("Schedule (ใช้เมื่อ mode = Scripted)")]
-    [Tooltip("ปล่อยรถกี่คัน ตอนไหน — ตั้งจาก Control Panel หรือใส่เองก็ได้")]
+    [Header("Schedule (used when mode = Scripted)")]
+    [Tooltip("How many cars and when - set from the Control Panel, or filled in by hand")]
     public List<ScheduledBurst> schedule = new List<ScheduledBurst>();
 
     [Header("Driver Profile Distribution (%)")]
     [Range(0, 100)] public float aggressivePercent = 25f;
     [Range(0, 100)] public float normalPercent = 60f;
-    // cautious = 100 - aggressive - normal (คำนวณอัตโนมัติ)
+    // cautious = 100 - aggressive - normal (computed automatically)
 
-    [Header("Shared Lane Bypass (ตั้งค่าเฉพาะเลนที่แชร์ทางกายภาพกับเลนอื่น เช่น Ax)")]
-    [Tooltip("โอกาสที่รถคันนี้จะ 'แซง' รถอีกเลนที่จอดขวางผ่านไหล่ทาง/เลนฉุกเฉินได้ (0 = ไม่มีทางแซง บล็อก 100% เหมือนเดิม)\n" +
-             "⚠️ ปัจจุบัน 'ปิดอยู่' (ตั้งเป็น 0 ใน ABACSceneBuilder) ด้วย 2 เหตุผล:\n" +
-             "1) ขาเข้าฝั่งตะวันออกมี 2 แถวเท่านั้น (A เลนใน / Ax+A2 เลนนอก) ไม่มีไหล่ทางให้แซงเป็นแถวที่ 3\n" +
-             "2) ค่า A2_SHARE = 18% ที่ใช้อยู่ Itim back-calculate มาจากอัตราบล็อกจริง 40-60% โดยใช้โมเดล " +
-             "car-following ล้วน ๆ อยู่แล้ว ถ้าใส่การแซงทับเข้าไปอีกจะเป็นการหักผลเดียวกันสองรอบ\n\n" +
-             "ถ้าจะเปิดกลับมาใช้ **ต้องตั้ง bypassLateralOffset ให้มากกว่า CarAgent.lookAheadAngle เสมอ** " +
-             "ไม่งั้นรถจะวิ่งทะลุผ่านกัน (Test6 บังคับกฎข้อนี้ไว้แล้ว) — สุ่มครั้งเดียวต่อคันตอน spawn ไม่ใช่ทุกเฟรม")]
+    [Header("Shared Lane Bypass (only for lanes physically sharing space with another, e.g. Ax)")]
+    [Tooltip("Chance this car can pass a blocking car from the other lane using the shoulder (0 = never, blocked 100% as before).\n" +
+             "Currently disabled (set to 0 in ABACSceneBuilder) for two reasons:\n" +
+             "1) the eastbound approach has only two rows (A inner / Ax+A2 outer) and no shoulder for a third\n" +
+             "2) the A2_SHARE value of 18% was back-calculated by Itim from a real 40-60% blocking rate using " +
+             "a pure car-following model, so adding passing on top would discount the same effect twice.\n\n" +
+             "If it is ever re-enabled, bypassLateralOffset must always exceed CarAgent.lookAheadAngle, " +
+             "or cars drive through each other (Test6 enforces this). Drawn once per car at spawn, not per frame.")]
     [Range(0f, 1f)] public float laneBypassChance = 0f;
 
-    [Tooltip("ระยะเยื้องออกไหล่ทาง (world space) ของรถที่สุ่มได้ว่าจะแซงคิว — ส่งต่อให้ CarAgent\n" +
-             "ต้องมากกว่า lookAheadAngle ของ CarAgent (1.5 ม.) พอสมควร ไม่งั้นรถจะยังมองเห็นคิวแล้วเบรกตาม " +
-             "แต่ก็ต้องไม่กว้างจนหลุดขอบถนน (ถนนกว้าง 18 ม. ขอบเหนืออยู่ที่ z=9.88 เลน Ax อยู่ z=6.5)")]
+    [Tooltip("Lateral offset onto the shoulder (world space) for a car drawn to pass the queue - passed to CarAgent.\n" +
+             "Must be comfortably larger than CarAgent.lookAheadAngle (1.5 m), or the car still sees the queue and brakes, " +
+             "but not so wide it leaves the carriageway (road is 18 m, the north edge is z=9.88, lane Ax is z=6.5)")]
     public Vector3 bypassLateralOffset = Vector3.zero;
 
-    [Header("Spawn Safety (กันปล่อยรถทับคันที่จอดอยู่)")]
-    [Tooltip("ถ้ามีรถคันไหนอยู่ในรัศมีนี้รอบจุด spawn จะยังไม่ปล่อยรถคันใหม่ แต่พักไว้ในคิวก่อน\n" +
-             "ควร >= ความยาวรถ (4 ม.) + ระยะเผื่อ — เกิดจริงเมื่อคิวยาวถอยมาถึงจุด spawn " +
-             "หรือเมื่อสอง spawner ใช้เลนกายภาพเดียวกัน (A2 กับ Ax อยู่เลน z=6.5 เหมือนกัน)")]
+    [Header("Spawn Safety (avoids dropping a car on top of a stopped one)")]
+    [Tooltip("If any car is within this radius of the spawn point, the new car waits in a queue instead.\n" +
+             "Should be >= car length (4 m) plus margin. Happens when a queue backs up to the spawn point, " +
+             "or when two spawners share a physical lane (A2 and Ax are both at z=6.5).")]
     public float spawnClearRadius = 6f;
 
-    [Tooltip("ลองปล่อยรถที่ค้างคิวอยู่ทุกกี่วินาที")]
+    [Tooltip("How often to retry releasing cars held in the queue, in seconds")]
     public float pendingRetryInterval = 0.25f;
 
     [Header("Cleanup")]
-    public float despawnDistance = 80f; // ระยะจาก spawn point ที่จะลบรถทิ้ง
-    // ===== เพิ่มสำหรับ Batch Run =====
+    public float despawnDistance = 80f; // distance from the spawn point at which a car is removed
+    // ===== Added for Batch Run =====
     private List<GameObject> spawnedCars = new List<GameObject>();
-    // ===== นับจำนวนรถที่ spawn ทั้งหมด (ไม่ reset เองอัตโนมัติ) =====
+    // ===== Total cars spawned (never reset automatically) =====
     public int totalSpawned = 0;
 
-    // ===== RNG ประจำเลน =====
-    // ใช้ System.Random แยกต่อ spawner แทน UnityEngine.Random ที่เป็น global
-    // เพราะถ้าใช้ global ลำดับการสุ่มจะสลับกันไปมาระหว่าง 6 spawner ตามจังหวะเฟรม
-    // ทำให้ Fixed กับ Adaptive เจอ "ชุดรถ" ไม่เหมือนกันเป๊ะ → paired t-test อ่อนลง
+    // ===== Per-lane RNG =====
+    // A separate System.Random per spawner rather than the global UnityEngine.Random, because the
+    // global one interleaves draws between the six spawners according to frame timing, so Fixed and
+    // Adaptive would not see exactly the same set of vehicles and the paired t-test would weaken.
     private System.Random rng = new System.Random(12345);
 
-    // ===== คิวรถที่มาถึงแล้วแต่จุด spawn ยังไม่ว่าง =====
-    // ⚠️ ห้าม "ทิ้ง" รถที่ปล่อยไม่ได้ เพราะจะกลายเป็นการลด demand ลงเงียบ ๆ ตอนที่รถติดที่สุดพอดี
-    //    (ยิ่งติด ยิ่งทิ้งเยอะ = ผลออกมาดูดีเกินจริง) จึงพักไว้ในคิวแล้วปล่อยทีหลังแทน
+    // ===== Cars that have arrived but cannot be placed because the spawn point is occupied =====
+    // Never discard a car that cannot be released: that silently cuts demand exactly when traffic is
+    //    heaviest (the worse the jam, the more are dropped, making results look better than they are).
     private struct PendingArrival
     {
         public CarAgent.DriverType driver;
@@ -99,9 +99,9 @@ public class CarSpawner : MonoBehaviour
     }
     private Queue<PendingArrival> pending = new Queue<PendingArrival>();
 
-    /// <summary>จำนวนรถที่มาถึงแล้วแต่ยังลงถนนไม่ได้ (จุด spawn ไม่ว่าง)</summary>
+    /// <summary>Cars that have arrived but cannot be placed yet (spawn point occupied)</summary>
     public int PendingSpawnCount => pending.Count;
-    /// <summary>นับจำนวนครั้งที่รถมาถึงแล้วต้องรอคิว — ถ้าค่านี้สูงแปลว่า spawn point อยู่ใกล้แยกเกินไป</summary>
+    /// <summary>How many arrivals had to wait - a high value means the spawn point is too close to the junction</summary>
     public int delayedArrivals = 0;
 
     public void SetSeed(int seed)
@@ -119,18 +119,18 @@ public class CarSpawner : MonoBehaviour
         meanArrivalInterval = meanInterval;
     }
 
-    /// <summary>สลับไปโหมดสุ่ม Poisson</summary>
+    /// <summary>Switch to random Poisson arrivals</summary>
     public void UsePoisson(float meanInterval)
     {
-        standingQueue = 0;   // โหมด Poisson ไม่มีคิวตั้งต้น
+        standingQueue = 0;   // Poisson mode has no initial queue
         arrivalMode = ArrivalMode.Poisson;
         meanArrivalInterval = meanInterval;
     }
 
-    /// <summary>สลับไปโหมดปล่อยตามตาราง (deterministic)</summary>
+    /// <summary>Switch to the scheduled (deterministic) mode</summary>
     /// <summary>
-    /// รถที่ต้อง "วางไว้ให้จอดรออยู่แล้ว" ตอนเริ่มรัน — ตั้งจาก TestCase ผ่าน ApplyTestCase
-    /// ถูกวางใน RestartSpawning() ก่อนตารางจะเริ่มทำงาน
+    /// Cars to be placed already standing at the start of the run - set from a TestCase via ApplyTestCase.
+    /// Placed in RestartSpawning() before the schedule begins.
     /// </summary>
     private int standingQueue = 0;
     public void SetStandingQueue(int n) { standingQueue = Mathf.Max(0, n); }
@@ -142,7 +142,7 @@ public class CarSpawner : MonoBehaviour
         schedule.Sort((a, b) => a.atTime.CompareTo(b.atTime));
     }
 
-    /// <summary>จำนวนรถทั้งหมดในตาราง (โหมด Scripted)</summary>
+    /// <summary>Total cars in the schedule (Scripted mode)</summary>
     public int ScheduledCarCount
     {
         get
@@ -153,20 +153,20 @@ public class CarSpawner : MonoBehaviour
         }
     }
 
-    // ลำดับ Start() ระหว่าง MonoBehaviour ไม่การันตี ถ้า Control Panel เรียก RestartSpawning()
-    // ก่อนที่ CarSpawner.Start() จะทำงาน จะได้ SpawnLoop ซ้อนกัน 2 ตัว = รถออกมาเป็นสองเท่า
+    // Start() ordering between MonoBehaviours is not guaranteed. If the Control Panel calls
+    // RestartSpawning() before CarSpawner.Start() runs, two SpawnLoops stack up and twice as many cars appear.
     private bool spawnStarted = false;
 
-    /// <summary>ล้างรถเก่าแล้วเริ่ม spawn loop ใหม่ตั้งแต่ต้น</summary>
+    /// <summary>Clears old cars and restarts the spawn loop from the beginning</summary>
     public void RestartSpawning()
     {
         spawnStarted = true;
-        StopAllCoroutines();   // หยุดทั้ง SpawnLoop และ DespawnWhenFar ที่ค้างอยู่
+        StopAllCoroutines();   // stops both SpawnLoop and any pending DespawnWhenFar
         ClearAllCars();
 
-        // ต้องวางคิวเริ่มต้นก่อน StartCoroutine เสมอ — SpawnLoop รัน body ทันทีจนถึง yield แรก
-        // ถ้าตารางมี burst ที่ atTime = 0 มันจะปล่อยรถทันทีตรงนั้น แล้วรถคันนั้นจะไปอยู่หน้าคิว
-        // ที่เรากำลังจะวาง ซึ่งกลับลำดับกับความจริง
+        // The initial queue must always be placed before StartCoroutine: SpawnLoop runs its body
+        // immediately up to the first yield, so a burst at atTime = 0 releases a car right there,
+        // and that car would end up in front of the queue we are about to place, reversing the order.
         if (standingQueue > 0) PlaceStandingQueue(standingQueue);
 
         StartCoroutine(SpawnLoop());
@@ -189,13 +189,13 @@ public class CarSpawner : MonoBehaviour
     }
     void Start()
     {
-        if (spawnStarted) return;   // Control Panel เริ่มให้แล้ว ไม่ต้องเริ่มซ้ำ
+        if (spawnStarted) return;   // the Control Panel already started it; do not start twice
         spawnStarted = true;
         StartCoroutine(SpawnLoop());
         StartCoroutine(PendingReleaseLoop());
     }
 
-    /// <summary>คอยปล่อยรถที่ค้างคิวอยู่ทันทีที่จุด spawn ว่าง</summary>
+    /// <summary>Releases queued cars as soon as the spawn point frees up</summary>
     IEnumerator PendingReleaseLoop()
     {
         while (true)
@@ -213,7 +213,7 @@ public class CarSpawner : MonoBehaviour
             yield return StartCoroutine(PoissonSpawnLoop());
     }
 
-    // ===== ปล่อยตามตารางที่กำหนด — ผลเหมือนกันเป๊ะทุกครั้ง =====
+    // ===== Scheduled release - identical every run =====
     IEnumerator ScriptedSpawnLoop()
     {
         float elapsed = 0f;
@@ -223,7 +223,7 @@ public class CarSpawner : MonoBehaviour
             ScheduledBurst burst = schedule[i];
             if (burst == null || burst.carCount <= 0) continue;
 
-            // รอจนถึงเวลาเริ่ม burst นี้
+            // wait until this burst is due
             if (burst.atTime > elapsed)
             {
                 float wait = burst.atTime - elapsed;
@@ -242,15 +242,15 @@ public class CarSpawner : MonoBehaviour
                 }
             }
         }
-        // ปล่อยครบตามตารางแล้ว หยุดนิ่ง ๆ ไม่ปล่อยเพิ่ม
+        // schedule exhausted; stay idle and release nothing further
     }
 
     IEnumerator PoissonSpawnLoop()
     {
         while (true)
         {
-            // สุ่มเวลาห่างของรถแต่ละคัน แบบ exponential distribution
-            // (จำลอง Poisson process ที่ใช้กันทั่วไปในงานจราจร)
+            // Draw the gap between cars from an exponential distribution
+            // (the usual Poisson process used in traffic work)
             float u = (float)rng.NextDouble();
             float waitTime = -Mathf.Log(1f - Mathf.Clamp(u, 0f, 0.999999f)) * meanArrivalInterval;
             yield return new WaitForSeconds(waitTime);
@@ -260,11 +260,11 @@ public class CarSpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// "รถมาถึง" 1 คัน — สุ่มค่าที่ต้องใช้ให้ครบก่อนเสมอ แล้วค่อยดูว่าลงถนนได้เลยไหม
+    /// One vehicle arrives. Always draw every random value first, then decide whether it can be placed.
     ///
-    /// ⚠️ ลำดับการสุ่มต้องไม่ขึ้นกับสภาพจราจรเด็ดขาด ไม่งั้น Fixed กับ Adaptive จะเจอ "ชุดรถ" คนละชุด
-    ///    ทันทีที่รถติดไม่เท่ากัน → paired t-test ใช้ไม่ได้ จึงสุ่ม bypass ตรงนี้ (ตอนมาถึง)
-    ///    ไม่ใช่ตอนปล่อยจริง
+    /// The order of draws must not depend on traffic conditions, or Fixed and Adaptive see different
+    ///    vehicle sets as soon as congestion differs, and the paired t-test becomes invalid. That is why
+    ///    the bypass draw happens here, on arrival, rather than at the moment of release.
     /// </summary>
     void SpawnCar(CarAgent.DriverType driver)
     {
@@ -273,42 +273,42 @@ public class CarSpawner : MonoBehaviour
         pending.Enqueue(new PendingArrival { driver = driver, bypass = bypass });
         int before = pending.Count;
         TryReleasePending();
-        if (pending.Count >= before) delayedArrivals++;   // ปล่อยไม่ออก ต้องรอคิว
+        if (pending.Count >= before) delayedArrivals++;   // could not be released; had to queue
     }
 
-    /// <summary>จุดปล่อยรถจริง — คันที่แซงไหล่ทางจะเยื้องออกไปตั้งแต่ต้น</summary>
+    /// <summary>The actual release point - a car drawn to use the shoulder is offset from the start</summary>
     Vector3 SpawnPositionFor(bool bypass)
     {
         return bypass ? spawnPoint.position + bypassLateralOffset : spawnPoint.position;
     }
 
-    /// <summary>ปล่อยรถที่ค้างคิวออกให้มากที่สุดเท่าที่จุด spawn ว่าง (เรียงตามลำดับที่มาถึง)</summary>
+    /// <summary>Releases as many queued cars as the spawn point allows, in arrival order</summary>
     void TryReleasePending()
     {
         while (pending.Count > 0)
         {
             PendingArrival next = pending.Peek();
             Vector3 pos = SpawnPositionFor(next.bypass);
-            if (CarAgent.IsSpaceOccupied(pos, spawnClearRadius)) return;   // ยังไม่ว่าง รอรอบหน้า
+            if (CarAgent.IsSpaceOccupied(pos, spawnClearRadius)) return;   // still blocked, try next time
             pending.Dequeue();
             PlaceCar(next.driver, next.bypass, pos);
         }
     }
 
     /// <summary>
-    /// วางรถ count คันให้จอดเรียงจ่อเส้นหยุด เหมือนเพิ่งติดไฟแดงมาสักพักแล้ว
+    /// Places count cars standing nose-to-tail at the stop line, as if the red had been on for a while.
     ///
-    /// ระยะห่างใช้ carLength + minGap ซึ่งเป็นระยะที่ car-following จะนิ่งอยู่พอดี
-    /// ถ้าวางชิดกว่านั้นรถจะถอยหนีกันตอนเฟรมแรก ถ้าห่างกว่านั้นมันจะขยับเข้ามาชิด
+    /// Spacing uses carLength + minGap, the distance at which car-following settles. Any closer and the
+    /// cars back away from each other on the first frame; any further and they creep forward.
     ///
-    /// เลนไหลอิสระ (Ax / CA) ไม่มี stopLineTarget — วางจากจุดเกิดแทนแล้วปล่อยให้มันขับเอง
-    /// ซึ่งไม่เป๊ะ แต่เลนพวกนั้นไม่มีไฟให้รออยู่แล้ว คิวจึงไม่ใช่สิ่งที่เคสต้องการความแม่น
+    /// Free-flow lanes (Ax / CA) have no stopLineTarget, so they are placed at the spawn point and drive in.
+    /// That is less exact, but those lanes have no signal to wait at, so the queue is not what the case needs.
     /// </summary>
     public int PlaceStandingQueue(int count)
     {
         if (count <= 0 || carPrefab == null || spawnPoint == null) return 0;
 
-        // ทิศที่รถคันนี้หันหน้าไป — หมุนรอบแกน Y อย่างเดียว ตามที่ PlaceCar ใช้ตอน Instantiate
+        // Direction this car faces - rotation about Y only, matching what PlaceCar uses at Instantiate
         float yaw = spawnRotationY * Mathf.Deg2Rad;
         Vector3 fwd = new Vector3(Mathf.Sin(yaw), 0f, Mathf.Cos(yaw));
 
@@ -317,21 +317,21 @@ public class CarSpawner : MonoBehaviour
         float gap = proto != null ? proto.minGap    : 2f;
         float pitch = len + gap;
 
-        // คันหน้าสุด: หน้ารถหยุดก่อนเส้น REST_FRONT_MARGIN เมตร -> ศูนย์กลางถอยมาอีกครึ่งคัน
-        // ห้ามวางให้หน้ารถแตะเส้นพอดี เพราะคนขับแบบ Cautious มี stopOvershoot = -1 ม.
-        // signedDistToStopPoint จะได้ -1 ตั้งแต่เฟรมแรก ต่ำกว่าเกณฑ์ -0.3 => hasCleared = true
-        // แล้วรถจะออกตัวฝ่าไฟแดงทันที (ดู CarAgent.REST_FRONT_MARGIN)
+        // Head of queue: the nose stops REST_FRONT_MARGIN metres before the line, so the centre sits
+        // half a car further back. The nose must not touch the line exactly, because a Cautious driver
+        // has stopOvershoot = -1 m, which would make signedDistToStopPoint -1 on the first frame,
+        // below the -0.3 threshold, setting hasCleared = true and driving straight through the red.
         Vector3 head = stopLineTarget != null
                      ? stopLineTarget.position - fwd * (len * 0.5f + CarAgent.REST_FRONT_MARGIN)
                      : spawnPoint.position;
 
         if (stopLineTarget == null)
-            Debug.LogWarning($"[CarSpawner:{laneName}] ไม่มี stopLineTarget — วางคิวเริ่มต้นจากจุดเกิดแทน");
+            Debug.LogWarning($"[CarSpawner:{laneName}] no stopLineTarget - placing the initial queue at the spawn point instead");
 
         for (int i = 0; i < count; i++)
         {
             Vector3 pos = head - fwd * (i * pitch);
-            pos.y = spawnPoint.position.y;      // ยึดระดับถนน ไม่เอา y ของ transform เส้นหยุด
+            pos.y = spawnPoint.position.y;      // keep road level; ignore the stop line transform's y
             PlaceCar(RandomDriverType(), false, pos, atRest: true);
         }
         return count;
@@ -344,7 +344,7 @@ public class CarSpawner : MonoBehaviour
         totalSpawned++;
         CarAgent agent = newCar.GetComponent<CarAgent>();
 
-        // ต้องตั้งก่อน CarAgent.Start() ซึ่ง Unity เรียกท้ายเฟรมนี้ ไม่ใช่ตอน Instantiate
+        // Must be set before CarAgent.Start(), which Unity calls at the end of this frame, not at Instantiate
         agent.startAtRest = atRest;
         agent.driverType = driver;
         agent.stopLineTarget = stopLineTarget;
@@ -369,13 +369,13 @@ public class CarSpawner : MonoBehaviour
         StartCoroutine(DespawnWhenFar(newCar, agent));
     }
 
-    // ใช้ sharedMaterial ที่สร้างไว้ล่วงหน้า 3 ตัว ไม่ใช่ .material
-    // เพราะ .material จะโคลน material ใหม่ต่อรถ 1 คัน รันยาว ๆ แล้วหน่วง
+    // Uses three pre-built sharedMaterials rather than .material, because .material clones a new
+    // material per car and a long run then stutters.
     //
-    // ⚠️ ของเดิมทาสีทับ "ทุก Renderer ในรถ" ซึ่งใช้ได้ตอนรถเป็นกล่องชิ้นเดียว
-    //    แต่พอเปลี่ยนเป็นโมเดลจริงที่มีล้อ/กระจก/ไฟหน้า/ไฟท้ายแยกชิ้น จะกลายเป็นทาสีเลนทั้งคัน
-    //    ตอนนี้ทาเฉพาะช่องวัสดุของตัวถัง (CarAgent.bodyRenderer / bodyMaterialIndex)
-    //    ซึ่ง ABAC ▸ Rebuild Car Prefab หาให้อัตโนมัติจากชิ้นที่มีพื้นผิวมากที่สุด
+    // The old version painted every Renderer in the car, which worked when a car was one box,
+    //    but with a real model whose wheels, glass and lights are separate parts it painted the lot.
+    //    It now paints only the body material slot (CarAgent.bodyRenderer / bodyMaterialIndex),
+    //    which ABAC > Rebuild Car Prefab finds automatically as the part with the largest surface.
     void ApplyCarMaterial(GameObject car, CarAgent agent)
     {
         if (carMaterial == null || car == null) return;
@@ -383,7 +383,7 @@ public class CarSpawner : MonoBehaviour
         Renderer target = agent != null ? agent.bodyRenderer : null;
         if (target == null)
         {
-            // fallback: prefab เก่าที่เป็นกล่องชิ้นเดียว ยังทาทั้งคันได้เหมือนเดิม
+            // fallback: the old single-box prefab, which can still be painted whole
             Renderer r = car.GetComponent<Renderer>();
             if (r != null) r.sharedMaterial = carMaterial;
             return;
@@ -394,10 +394,10 @@ public class CarSpawner : MonoBehaviour
         if (slot < 0 || slot >= mats.Length) slot = 0;
         if (mats.Length == 0) return;
         mats[slot] = carMaterial;
-        target.sharedMaterials = mats;   // ต้อง assign array กลับ ไม่งั้นไม่มีผล
+        target.sharedMaterials = mats;   // the array has to be assigned back, or nothing changes
     }
 
-    /// <summary>จำนวนรถของเลนนี้ที่ยังวิ่งอยู่บนถนน</summary>
+    /// <summary>Cars from this lane still on the road</summary>
     public int ActiveCarCount
     {
         get
@@ -412,7 +412,7 @@ public class CarSpawner : MonoBehaviour
         }
     }
 
-    /// <summary>โหมด Scripted: ปล่อยรถครบตามตารางแล้วหรือยัง (โหมด Poisson จะไม่มีวันจบ)</summary>
+    /// <summary>Scripted mode: has the whole schedule been released? (Poisson mode never finishes)</summary>
     public bool AllScheduledSpawned
     {
         get
@@ -435,7 +435,7 @@ public class CarSpawner : MonoBehaviour
         while (car != null)
         {
             float dist = Vector3.Distance(spawnPoint.position, car.transform.position);
-            // เลนเลี้ยวอาจวนกลับมาใกล้ spawn point ได้ จึงเช็ค "วิ่งจบเส้นทาง" ควบคู่กับระยะทาง
+            // A turning lane can loop back near the spawn point, so check "finished its path" as well as distance
             bool finishedPath = agent != null && agent.reachedEndOfPath;
 
             if (dist >= despawnDistance || finishedPath)
@@ -445,7 +445,7 @@ public class CarSpawner : MonoBehaviour
                 Destroy(car);
                 yield break;
             }
-            yield return new WaitForSeconds(0.5f); // เช็คทุกครึ่งวิ ไม่ต้องเช็คทุกเฟรม (ประหยัด performance)
+            yield return new WaitForSeconds(0.5f); // twice a second is enough; no need to check every frame
         }
     }
 

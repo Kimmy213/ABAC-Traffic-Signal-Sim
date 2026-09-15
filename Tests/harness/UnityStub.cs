@@ -1,4 +1,4 @@
-// Minimal UnityEngine stub — ใช้เฉพาะ syntax/type check ด้วย mcs เท่านั้น ไม่ใช่ของจริง
+// Minimal UnityEngine stub - only for syntax and type checking with mcs. Not the real thing.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -14,10 +14,11 @@ namespace UnityEngine
         public static Vector3 zero => new Vector3(0, 0, 0);
         public static Vector3 one => new Vector3(1, 1, 1);
         public static Vector3 right => new Vector3(1, 0, 0);
-        // ⭐ 15 ก.ย. 2026 — ของเดิมทุก operator คืน a และ Dot คืน 0 ซึ่งแปลว่า "ไม่มีเลขคณิตเวกเตอร์เลย"
-        //    เทสจึงแตะพฤติกรรมรถ (car-following / ระยะถึงเส้นหยุด) ไม่ได้สักตัว ทั้งที่บั๊กสองตัวล่าสุด
-        //    (รถไถลข้ามเส้นตอนวางคิว และคิวออกตัวพร้อมกันทั้งแถว) อยู่ในโค้ดส่วนนั้นพอดี
-        //    ตอนนี้เป็นเลขคณิตจริง HeadwayTest จึงรันคิวจำลองด้วย CarAgent ตัวจริงได้
+        // 15 Sep 2026: every operator used to return a and Dot returned 0, which meant there was
+        //    no vector arithmetic at all. No test could touch vehicle behaviour (car-following,
+        //    distance to the stop line) even though both recent bugs - cars skidding across the
+        //    line when a queue is placed, and the whole queue launching at once - lived there.
+        //    It is real arithmetic now, so HeadwayTest can run a queue through the real CarAgent.
         public float magnitude => (float)Math.Sqrt(x * x + y * y + z * z);
         public Vector3 normalized
         {
@@ -94,8 +95,8 @@ namespace UnityEngine
         public static int Max(int a, int b) => a > b ? a : b;
         public static int Min(int a, int b) => a < b ? a : b;
         public static float Clamp(float v, float a, float b) => v < a ? a : (v > b ? b : v);
-        // เดิมคืน a เฉย ๆ = รถเร่งความเร็วไม่ขึ้นเลย คู่กับ Sqrt ที่คืน 0 ทำให้ car-following
-        // ทั้งก้อนเป็นศูนย์ เทสจึงไม่มีทางจับบั๊กการออกตัวของคิวได้
+        // Used to return a unchanged, so cars never accelerated. Together with Sqrt returning 0
+        // that zeroed the whole car-following term, and no test could catch a queue-launch bug.
         public static float MoveTowards(float a, float b, float c)
         {
             if (System.Math.Abs(b - a) <= c) return b;
@@ -181,8 +182,9 @@ namespace UnityEngine
         public void SetParent(Transform p) { }
         public void SetParent(Transform p, bool worldPositionStays) { }
         public Vector3 TransformPoint(Vector3 v) => v;
-        // สตับนี้รองรับเฉพาะการเคลื่อนที่ไปตามหัวรถตัวเอง ซึ่งเป็นทั้งหมดที่ CarAgent.MoveForward ทำ
-        // (transform.Translate(Vector3.forward * v) ใน Unity = position += rotation * (0,0,v))
+        // This stub only models motion along the object's own heading, which is all
+        // CarAgent.MoveForward does: transform.Translate(Vector3.forward * v) in Unity
+        // is position += rotation * (0,0,v).
         public void Translate(Vector3 v) { position += forward * v.z; }
     }
 
@@ -198,7 +200,7 @@ namespace UnityEngine
     {
         public bool enabled;
         public GameObject gameObject;
-        // stub: เก็บ enumerator ไว้ให้ test ไล่ step เองได้
+        // stub: keeps the enumerator so a test can step it manually
         public IEnumerator captured;
         public Coroutine StartCoroutine(IEnumerator r) { captured = r; return null; }
         public void StopAllCoroutines() { captured = null; }

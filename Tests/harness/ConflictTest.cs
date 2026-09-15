@@ -33,11 +33,11 @@ public class ConflictTest
         Check(C("A2", "Bx"), "A2 x Bx conflict (mirrors A)");
         Check(C("A2", "CB"), "A2 x CB conflict (mirrors A)");
         Check(C("B", "CB"), "B x CB conflict");
-        Check(C("Bx", "CB"), "Bx x CB conflict  <-- ตาม scope");
-        Check(!C("A", "B"), "A + B compatible (กระแสตรงสวนทาง)");
-        Check(!C("A", "A2"), "A + A2 compatible (ไฟดวงเดียวกัน ต้องเขียวพร้อมกันได้เสมอ)");
+        Check(C("Bx", "CB"), "Bx x CB conflict  <-- per the scope");
+        Check(!C("A", "B"), "A + B compatible (opposing through movements)");
+        Check(!C("A", "A2"), "A + A2 compatible (same lamp, so they must always be able to run together)");
         Check(!C("A2", "B"), "A2 + B compatible");
-        Check(!C("B", "Bx"), "B + Bx compatible (ขาเดียวกัน)");
+        Check(!C("B", "Bx"), "B + Bx compatible (same approach)");
         Check(!C("A", "A"), "self is never a conflict");
 
         Console.WriteLine("\n--- symmetry ---");
@@ -61,92 +61,92 @@ public class ConflictTest
             for (int i = 0; i < kv.Value.Length; i++)
                 for (int j = i + 1; j < kv.Value.Length; j++)
                     if (C(kv.Value[i], kv.Value[j])) safe = false;
-            Check(safe, $"{kv.Key} = {{{string.Join(",", kv.Value)}}} ไม่มี conflict ภายในเฟส");
+            Check(safe, $"{kv.Key} = {{{string.Join(",", kv.Value)}}} has no conflict within the phase");
         }
 
-        // ทุกเลนที่มีไฟต้องได้เขียวอย่างน้อย 1 เฟส ไม่งั้นจะ starve ถาวร
+        // Every signalised lane must get green in at least one phase, or it starves permanently
         var covered = new HashSet<string>();
         foreach (var kv in plans) foreach (var l in kv.Value) covered.Add(l);
-        foreach (var n in names) Check(covered.Contains(n), $"เลน {n} ได้ไฟเขียวใน fixed plan");
+        foreach (var n in names) Check(covered.Contains(n), $"lane {n} gets a green in the fixed plan");
 
-        Console.WriteLine("\n--- greedy group building (จำลอง logic ของ AdaptiveController) ---");
-        // leader = CB -> ห้ามมีใครเข้าร่วมเลย
-        Check(GroupOf(cfg, "CB", names).Count == 1, "leader=CB -> กลุ่มมีแค่ CB ตัวเดียว");
-        // leader = A -> เข้าร่วมได้ทั้ง A2 (ไฟเดียวกัน) และ B (สวนทาง)
+        Console.WriteLine("\n--- greedy group building (mirrors AdaptiveController logic) ---");
+        // leader = CB -> nobody may join
+        Check(GroupOf(cfg, "CB", names).Count == 1, "leader=CB -> the group is CB alone");
+        // leader = A -> both A2 (same lamp) and B (opposing) may join
         var gA = GroupOf(cfg, "A", names);
         Check(gA.Count == 3 && gA.Contains("A") && gA.Contains("A2") && gA.Contains("B"),
               $"leader=A -> {{{string.Join(",", gA)}}}");
-        // leader = Bx -> เข้าร่วมได้เฉพาะ B (A conflict, CB conflict)
+        // leader = Bx -> only B may join (A conflicts, CB conflicts)
         var gBx = GroupOf(cfg, "Bx", names);
         Check(gBx.Count == 2 && gBx.Contains("Bx") && gBx.Contains("B"), $"leader=Bx -> {{{string.Join(",", gBx)}}}");
-        // leader = B -> ตัวแรกที่เจอชนะ, แต่ผลลัพธ์ต้องไม่มี conflict เสมอ
+        // leader = B -> first match wins, but the result must never contain a conflict
         var gB = GroupOf(cfg, "B", names);
         Console.WriteLine($"         leader=B -> {{{string.Join(",", gB)}}}");
         bool gBsafe = true;
         for (int i = 0; i < gB.Count; i++)
             for (int j = i + 1; j < gB.Count; j++)
                 if (C(gB[i], gB[j])) gBsafe = false;
-        Check(gBsafe, "กลุ่มที่ได้จาก leader=B ไม่มี conflict");
+        Check(gBsafe, "the group from leader=B contains no conflict");
 
         Console.WriteLine("\n--- stable hash reproducibility ---");
         Check(IntersectionConfig.StableHash("MorningPeak") == IntersectionConfig.StableHash("MorningPeak"),
-              "StableHash คงที่");
+              "StableHash is stable");
         Check(IntersectionConfig.StableHash("MorningPeak") != IntersectionConfig.StableHash("EveningPeak"),
-              "scenario ต่างกัน seed ต่างกัน");
+              "different scenarios give different seeds");
         Check(IntersectionConfig.StableHash("A") != IntersectionConfig.StableHash("Ax"),
-              "เลนต่างกัน seed ต่างกัน");
-        Check(IntersectionConfig.StableHash("MorningPeak") >= 0, "seed ไม่ติดลบ");
+              "different lanes give different seeds");
+        Check(IntersectionConfig.StableHash("MorningPeak") >= 0, "seeds are never negative");
 
         // ---------- test case presets ----------
         Console.WriteLine("\n--- test case presets ---");
         var cases = TestCasePresets.BuildDefault();
-        Check(cases.Count >= 13, $"มี test case {cases.Count} ชุด");
+        Check(cases.Count >= 13, $"{cases.Count} test cases present");
 
         int scripted = 0, poisson = 0;
         foreach (var tc in cases)
         {
             if (tc.mode == ArrivalMode.Scripted) scripted++; else poisson++;
-            Check(!string.IsNullOrEmpty(tc.name), $"'{tc.name}' มีชื่อ");
-            Check(!string.IsNullOrEmpty(tc.description), $"'{tc.name}' มีคำอธิบาย");
-            Check(tc.suggestedDuration > 0, $"'{tc.name}' มีความยาว run");
+            Check(!string.IsNullOrEmpty(tc.name), $"'{tc.name}' has a name");
+            Check(!string.IsNullOrEmpty(tc.description), $"'{tc.name}' has a description");
+            Check(tc.suggestedDuration > 0, $"'{tc.name}' has a run length");
 
             if (tc.mode == ArrivalMode.Scripted)
             {
-                Check(tc.TotalScriptedCars > 0, $"'{tc.name}' ปล่อยรถ {tc.TotalScriptedCars} คัน");
-                // ทุกเลนที่อ้างถึงต้องมีอยู่จริงใน config
+                Check(tc.TotalScriptedCars > 0, $"'{tc.name}' releases {tc.TotalScriptedCars} cars");
+                // Every lane referenced must exist in the config
                 foreach (var sch in tc.schedules)
-                    Check(cfg.FindLane(sch.laneName) != null, $"'{tc.name}' อ้างเลน {sch.laneName} ที่มีจริง");
+                    Check(cfg.FindLane(sch.laneName) != null, $"'{tc.name}' refers to the existing lane {sch.laneName}");
             }
             else
             {
                 foreach (var r in tc.rates)
                 {
-                    Check(cfg.FindLane(r.laneName) != null, $"'{tc.name}' อ้างเลน {r.laneName} ที่มีจริง");
-                    Check(r.meanInterval > 0, $"'{tc.name}' เลน {r.laneName} interval > 0");
+                    Check(cfg.FindLane(r.laneName) != null, $"'{tc.name}' refers to the existing lane {r.laneName}");
+                    Check(r.meanInterval > 0, $"'{tc.name}' lane {r.laneName} interval > 0");
                 }
             }
         }
-        Check(scripted >= 8, $"มี scripted {scripted} ชุด (deterministic, รวม T13 shared-lane demo)");
-        Check(poisson >= 5, $"มี Poisson {poisson} ชุด");
+        Check(scripted >= 8, $"{scripted} scripted cases (deterministic, T13 shared-lane demo included)");
+        Check(poisson >= 5, $"{poisson} Poisson cases");
 
-        // T13: shared lane blocking demo ต้องมีทั้ง A2 (จอดรอไฟ) และ Ax (โดนบล็อก) ปนกัน
+        // T13: the shared-lane blocking demo needs both A2 (waiting at the red) and Ax (getting blocked)
         var t13 = cases.Find(c => c.name.StartsWith("T13"));
-        Check(t13 != null, "มี T13 shared-lane blocking demo");
+        Check(t13 != null, "T13 shared-lane blocking demo present");
         if (t13 != null)
         {
             var a2 = t13.GetSchedule("A2");
             int a2Cars = 0; foreach (var b in a2) a2Cars += b.carCount;
-            Check(a2Cars > 0, $"T13: A2 มีรถ {a2Cars} คัน (ต้องจอดรอไฟแดงเป็นระยะ ๆ)");
+            Check(a2Cars > 0, $"T13: A2 has {a2Cars} cars (they must wait at the red periodically)");
             var ax = t13.GetSchedule("Ax");
             int axCars = 0; foreach (var b in ax) axCars += b.carCount;
-            Check(axCars > 0, $"T13: Ax มีรถ {axCars} คัน (ตัวที่ควรโดนบล็อก)");
+            Check(axCars > 0, $"T13: Ax has {axCars} cars (the ones that should get blocked)");
         }
 
-        // Poisson: A กับ A2 ต้อง interval เท่ากันเป๊ะทุกชุด (invariant ของการแบ่ง 50/50)
-        // A2_SHARE = 5.4% (นับตรงจาก A_morning: รถตรง 56 คัน เข้าเลนแชร์แค่ 3)
-        // -> A2/A ratio ควรเป็น (1-0.054)/0.054 = 17.52 (A2 interval ยาวกว่า A มาก = รถน้อยกว่ามาก)
+        // Poisson: A and A2 intervals must follow the split exactly in every case
+        // A2_SHARE = 5.4% (direct count from A_morning: 56 through vehicles, only 3 in the shared lane)
+        // -> the A2/A ratio should be (1-0.054)/0.054 = 17.52 (a much longer A2 interval = far fewer cars)
         const float expectedRatio = (1f - 0.054f) / 0.054f;
-        Console.WriteLine($"\n--- A/A2 18/82 split invariant (ทุก Poisson test case, คาด ratio={expectedRatio:F3}) ---");
+        Console.WriteLine($"\n--- A/A2 split invariant (every Poisson case, expected ratio={expectedRatio:F3}) ---");
         foreach (var tc in cases)
         {
             if (tc.mode != ArrivalMode.Poisson) continue;
@@ -154,24 +154,24 @@ public class ConflictTest
             float a2Rate = tc.GetInterval("A2", -1f);
             float ratio = aRate > 0 ? a2Rate / aRate : -1f;
             Check(aRate > 0 && a2Rate > 0 && Math.Abs(ratio - expectedRatio) < 0.01f,
-                  $"'{tc.name}': A={aRate:F1}s, A2={a2Rate:F1}s, ratio={ratio:F3} (คาด {expectedRatio:F3})");
-            Check(a2Rate > aRate, $"'{tc.name}': A2 interval ยาวกว่า A (เลนนอกรถน้อยกว่าเลนใน ตามที่วัดจริง)");
+                  $"'{tc.name}': A={aRate:F1}s, A2={a2Rate:F1}s, ratio={ratio:F3} (expected {expectedRatio:F3})");
+            Check(a2Rate > aRate, $"'{tc.name}': the A2 interval is longer than A (fewer cars in the outer lane, as measured)");
         }
 
-        // เทสเจาะจง: T4 ต้องมี CB คันเดียวจริง ๆ
+        // Specific checks: T4 must really have exactly one CB vehicle
         var t4 = cases.Find(c => c.name.StartsWith("T4"));
-        Check(t4 != null, "มี T4 starvation test");
+        Check(t4 != null, "T4 starvation test present");
         if (t4 != null)
         {
             var cb = t4.GetSchedule("CB");
             int cbCars = 0; foreach (var b in cb) cbCars += b.carCount;
-            Check(cbCars == 1, $"T4: CB มีรถ 1 คัน (ได้ {cbCars})");
+            Check(cbCars == 1, $"T4: CB has 1 car (got {cbCars})");
             var a = t4.GetSchedule("A");
             int aCars = 0; foreach (var b in a) aCars += b.carCount;
-            Check(aCars >= 30, $"T4: A อัดหนัก {aCars} คัน");
+            Check(aCars >= 30, $"T4: A is loaded with {aCars} cars");
         }
 
-        // T6 ต้องมีแต่เลนฟรี
+        // T6 must contain only free lanes
         var t6 = cases.Find(c => c.name.StartsWith("T6"));
         if (t6 != null)
         {
@@ -181,30 +181,30 @@ public class ConflictTest
                 var lane = cfg.FindLane(sch.laneName);
                 if (lane != null && lane.isSignalized && sch.TotalCars > 0) onlyFree = false;
             }
-            Check(onlyFree, "T6: มีแต่เลนฟรี (Ax, CA) ไม่มีเลนที่มีไฟ");
+            Check(onlyFree, "T6: free lanes only (Ax, CA), no signalised lane");
         }
 
-        // T8 MorningPeak: CB/CA ต้อง "ปิด" จริง (ยืนยันจาก รปภ.) ไม่ใช่แค่ค่าน้อย
+        // T8 MorningPeak: CB/CA must be genuinely closed (confirmed by security), not merely quiet
         var t8 = cases.Find(c => c.name.StartsWith("T8"));
         if (t8 != null)
         {
             float cbInt = t8.GetInterval("CB", -1f);
             float caInt = t8.GetInterval("CA", -1f);
-            Check(cbInt > 100000f, $"T8: CB ปิด (interval={cbInt:F0}s ใหญ่มากจนแทบไม่มีรถ)");
-            Check(caInt > 100000f, $"T8: CA ปิด (interval={caInt:F0}s ใหญ่มากจนแทบไม่มีรถ)");
+            Check(cbInt > 100000f, $"T8: CB closed (interval={cbInt:F0}s, so large that almost nothing arrives)");
+            Check(caInt > 100000f, $"T8: CA closed (interval={caInt:F0}s, so large that almost nothing arrives)");
         }
 
-        // burst end time คำนวณถูก
+        // Burst end time is computed correctly
         var burst = new ScheduledBurst(10f, 5, 2f);
-        Check(Math.Abs(burst.EndTime - 18f) < 0.001f, $"burst 5 คัน spacing 2 เริ่ม t=10 จบ t={burst.EndTime} (ควรเป็น 18)");
+        Check(Math.Abs(burst.EndTime - 18f) < 0.001f, $"a burst of 5 with spacing 2 starting at t=10 ends at t={burst.EndTime} (expected 18)");
         var single = new ScheduledBurst(10f, 1, 2f);
-        Check(Math.Abs(single.EndTime - 10f) < 0.001f, "burst คันเดียวจบทันที ไม่บวก spacing เกิน");
+        Check(Math.Abs(single.EndTime - 10f) < 0.001f, "a single-car burst ends immediately, with no spacing added");
 
         Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
         return failures;
     }
 
-    // จำลอง BuildCompatibleGroup: leader ก่อน แล้วไล่เพิ่มตัวที่เข้ากันได้
+    // Mirrors BuildCompatibleGroup: the leader first, then add whatever is compatible
     static List<string> GroupOf(IntersectionConfig cfg, string leader, string[] all)
     {
         var group = new List<int> { cfg.SignalIndexOf(leader) };

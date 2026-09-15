@@ -1,75 +1,87 @@
-# รายงานบั๊ก C1 — Unity ไม่ได้ทำตามสเปคเรื่องรีเซ็ต `queueStart` ตอนจบเฟส
+# Bug report C1 - Unity did not follow the specification for resetting `queueStart` at the end of a phase
 
 | | |
 |---|---|
-| **เลขที่** | C1 (พร้อม C2, C3 ที่เป็น measurement-only) |
-| **วันที่** | 11 กันยายน 2026 |
-| **ผู้รายงาน** | Kimmy (Badin) |
-| **ประเภท** | **implementation bug ฝั่ง Unity** — โค้ด C# ไม่ตรงกับสเปคที่ freeze ไว้ ไม่ใช่การเปลี่ยนอัลกอริทึม |
-| **สเปคต้องแก้ไหม** | **ไม่ต้อง** `SODA_BASELINE.md` §4 เขียนถูกอยู่แล้ว |
-| **`soda.py` ต้องแก้ไหม** | **ไม่ต้อง** `end_phase()` ของอิทิ่มทำถูกอยู่แล้ว |
-| **ต้องโหวตตาม §9.1 ไหม** | **ไม่ต้อง** เพราะไม่มีการเปลี่ยนกฎ มีแต่ทำให้โค้ดตรงกับกฎเดิม |
-| **ต้องรัน batch ใหม่ไหม** | **ต้อง** ตาม §9.3 เพราะพฤติกรรมที่จำลองออกมาเปลี่ยน ผล batch v1 จึงใช้อ้างอิงไม่ได้ |
-| **สถานะโค้ด** | **merge แล้ว 11 ก.ย. 2026** เทสผ่านครบ 9 ชุด |
-| **อิทิ่มทานแล้ว** | ✅ ไม่ติดอะไร และ reproduce สาเหตุเองด้วย `test_queueclock.py` ฝั่ง `soda.py` |
+| **Number** | C1 (with C2 and C3, which are measurement-only) |
+| **Date** | 11 September 2026 |
+| **Reported by** | Kimmy (Badin) |
+| **Type** | **an implementation bug on the Unity side** - the C# does not match the frozen specification. Not an algorithm change. |
+| **Does the specification change?** | **No.** `SODA_BASELINE.md` section 4 is already correct. |
+| **Does `soda.py` change?** | **No.** Itim's `end_phase()` is already correct. |
+| **Does section 9.1 require a vote?** | **No**, because no rule changes; the code is merely brought into line with the existing rule. |
+| **Does the batch need re-running?** | **Yes**, per section 9.3, because the simulated behaviour changes. Batch v1 can no longer be cited. |
+| **Code status** | **Merged 11 Sep 2026.** All 9 test suites pass. |
+| **Reviewed by Itim** | Yes, with no objections, and he reproduced the cause himself with `test_queueclock.py` against `soda.py`. |
 
 ---
 
-## 0. สรุปให้สั้นที่สุด
+## 0. The shortest possible summary
 
-สเปคข้อ §4 ของ `SODA_BASELINE.md` เขียนไว้ว่า
+Section 4 of `SODA_BASELINE.md` says:
 
 ```
-phase end   for each served head: lastCount>0 → queueStart = now, else ∞
+phase end   for each served head: lastCount>0 -> queueStart = now, else infinity
 ```
 
-**"for each served head"** คือทุกหัวที่เพิ่งได้ไฟเขียวไป แต่โค้ด Unity ทำแค่กับหัวที่ **หลุดออกจากกลุ่มไปเป็นสีแดง** เท่านั้น หัวที่อยู่ในกลุ่มต่อเนื่องข้ามเฟสจึงถือ `queueStart` เก่าค้างไม่จำกัดเวลา ระบบเลยคิดว่าหัวที่กำลังได้ไฟเขียวอยู่ตลอดคือหัวที่ "รอนานที่สุด" แล้วมันชนะทั้ง Q1 และ Q2 ซ้ำไปเรื่อย ๆ หัวที่อดจริงไม่มีวันได้คิว
+**"for each served head"** means every head that has just had green. The Unity code applied it only to
+heads **dropping out of the group and turning red**. A head that continued across phases therefore held
+a stale `queueStart` indefinitely, so the system believed the head that was permanently green had waited
+longest, and it won both Q1 and Q2 over and over. The genuinely starved head never got a turn.
 
-ที่น่าสนใจคือ **baseline ทำนายอาการนี้ไว้แล้วเป๊ะ ๆ** ใน §4 บรรทัดถัดมา
+What is striking is that **the baseline predicted this exactly**, on the next line of section 4:
 
-> **The reset at phase end is load-bearing.** Without it, a head that never empties keeps its original `queueStart` forever and wins Q2 every time — every other head is locked out.
+> **The reset at phase end is load-bearing.** Without it, a head that never empties keeps its original `queueStart` forever and wins Q2 every time - every other head is locked out.
 
-เราเขียนกฎถูก อธิบายเหตุผลถูก เทสก็มี แต่โค้ดทำไม่ครบ แล้วเทสที่มีอยู่ (`SodaTest` §1) ดันทดสอบเฉพาะเคสหัวที่หลุดไปเป็นแดง ซึ่งเป็นเคสที่โค้ดทำถูกอยู่แล้ว จึงผ่านมาตลอด
+We wrote the rule correctly, explained it correctly and even had a test - but the code was incomplete, and
+the existing test (`SodaTest` section 1) only exercised the case where the head drops to red, which the
+code already handled. So it passed throughout.
 
 ---
 
-## 1. ผล batch v1 ที่รันเสร็จแล้ว (บริบท)
+## 1. Batch v1 results (context)
 
-216 รอบ (4 scenario × 27 rep × 2 controller) จบเมื่อ 11 ก.ย. 14:23 น. ใช้เวลา 11 ชม. 31 นาที ที่ `simulationSpeed = 10`
+216 runs (4 scenarios x 27 reps x 2 controllers), finished 11 Sep at 14:23, taking 11 h 31 min at
+`simulationSpeed = 10`.
 
-เวลารอเฉลี่ยต่อคัน หน่วยวินาที จับคู่ด้วย seed เดียวกัน n = 27 ต่อ scenario
+Mean wait per vehicle in seconds, paired on the same seed, n = 27 per scenario.
 
-| Scenario | Fixed | Adaptive | ผลต่าง | t | Adaptive ชนะ |
+| Scenario | Fixed | Adaptive | difference | t | Adaptive wins |
 |---|---|---|---|---|---|
-| MorningPeak | 22.77 ± 0.97 | 14.11 ± 0.61 | +8.66 (38.0 %) | +38.2 | 27/27 |
-| MiddayNormal | 22.66 ± 0.89 | 14.78 ± 0.75 | +7.88 (34.8 %) | +41.8 | 27/27 |
-| ABACEvent | 93.35 ± 6.45 | 67.26 ± 14.13 | +26.10 (28.0 %) | +8.3 | 25/27 |
-| EveningPeak | 25.40 ± 0.72 | 25.95 ± 1.57 | −0.55 (−2.2 %) | −1.8 **ไม่มีนัยสำคัญ** | 11/27 |
-| **รวม** | **41.05** | **30.52** | **+25.6 %** | | |
+| MorningPeak | 22.77 +/- 0.97 | 14.11 +/- 0.61 | +8.66 (38.0%) | +38.2 | 27/27 |
+| MiddayNormal | 22.66 +/- 0.89 | 14.78 +/- 0.75 | +7.88 (34.8%) | +41.8 | 27/27 |
+| ABACEvent | 93.35 +/- 6.45 | 67.26 +/- 14.13 | +26.10 (28.0%) | +8.3 | 25/27 |
+| EveningPeak | 25.40 +/- 0.72 | 25.95 +/- 1.57 | -0.55 (-2.2%) | -1.8 **not significant** | 11/27 |
+| **Overall** | **41.05** | **30.52** | **+25.6%** | | |
 
-⚠️ **EveningPeak ห้ามเขียนว่า "แพ้"** t = −1.8 เทียบค่าวิกฤต 2.056 ที่ df = 26 → ไม่ถึงนัยสำคัญ ที่ถูกคือ "ค่าเฉลี่ยไม่ต่างกันอย่างมีนัยสำคัญ" ถ้าเขียนว่าแพ้แล้วกรรมการคำนวณเอง จะโดนจับได้ (อิทิ่มเตือน 11 ก.ย.)
+**Never write that EveningPeak "lost".** t = -1.8 against a critical value of 2.056 at df = 26 does not
+reach significance. The correct wording is "the means do not differ significantly". Write "lost" and an
+examiner who checks the arithmetic will catch it (Itim's warning, 11 Sep).
 
-ตัวเลขค่าเฉลี่ยดูดี แต่ดู **หาง** ของการกระจายแล้วเจอปัญหา ทุกเลน ทุก scenario รวม 27 rep
+The means look good, but the **tail** of the distribution reveals the problem. All lanes, all scenarios,
+27 reps:
 
 | | Fixed p95 / max | Adaptive p95 / max |
 |---|---|---|
-| Midday ทุกเลน | สูงสุด 88.2 / 94.2 | สูงสุด 49.4 / **85.8** ✅ ดีกว่าทุกด้าน |
-| Morning Bx | 89.2 / 100.4 | 58.7 / **131.8** ⚠️ |
-| Evening CB | 78.5 / 84.2 | 148.0 / **344.4** ❌ |
-| Evening Bx | 90.8 / 103.9 | 123.4 / **264.7** ❌ |
-| Evening A | 70.5 / 78.6 | 78.9 / **192.8** ❌ |
+| Midday, all lanes | worst 88.2 / 94.2 | worst 49.4 / **85.8** - better on every measure |
+| Morning Bx | 89.2 / 100.4 | 58.7 / **131.8** - worse |
+| Evening CB | 78.5 / 84.2 | 148.0 / **344.4** - far worse |
+| Evening Bx | 90.8 / 103.9 | 123.4 / **264.7** - far worse |
+| Evening A | 70.5 / 78.6 | 78.9 / **192.8** - far worse |
 
-Fixed มีเพดานหางที่ชัดเจนราว 100 วินาทีทุกเลน เพราะรอบ 106 วินาทีการันตีว่าทุกเลนได้ไฟแน่นอน ส่วน Adaptive หางหลุดไปถึง 344 วินาที ทั้งที่ `maxWaitTime` ตั้งไว้ 45 วินาที กลไก anti-starvation ควรกันไม่ให้เกิดเรื่องแบบนี้
+Fixed has a clear tail ceiling of about 100 seconds on every lane, because a 106 second cycle guarantees
+every lane its green. Adaptive's tail runs out to 344 seconds, with `maxWaitTime` set to 45. The
+anti-starvation mechanism should have prevented exactly this.
 
 ---
 
-## 2. หลักฐานจาก log จริง
+## 2. Evidence from the real log
 
-ไฟล์ `phases_Adaptive_EveningPeak_Rep17_20260911_062549.csv` ช่วง t = 1104.6 ถึง t = 1470.2 คือ **365.5 วินาทีที่ H_CB ไม่ได้ไฟเขียวเลยสักครั้ง** ทั้งที่มีรถรออยู่
+In `phases_Adaptive_EveningPeak_Rep17_20260911_062549.csv`, from t = 1104.6 to t = 1470.2 there are
+**365.5 seconds in which H_CB never once got a green**, with vehicles waiting throughout.
 
 ```
  start   given   used  group           end reason
-1104.6   21.43  20.00  CB              starvation     <- CB ได้ไฟครั้งสุดท้าย
+1104.6   21.43  20.00  CB              starvation     <- CB's last green
 1129.7   37.60  19.98  A+B+A2          starvation
 1149.6    9.88   9.91  A+B+A2          completed
 1159.5   12.19  12.19  A+B+A2          completed
@@ -91,35 +103,43 @@ Fixed มีเพดานหางที่ชัดเจนราว 100 ว
 1424.9   28.36  19.95  B+A+A2          starvation
 1444.9   12.19  12.27  B+A+A2          completed
 1457.1    8.00   7.97  B+A+A2          completed
-1470.2   42.22  20.13  CB              starvation     <- 365.5 วินาทีต่อมา
+1470.2   42.22  20.13  CB              starvation     <- 365.5 seconds later
 ```
 
-สังเกตสามอย่าง
+Three things to notice:
 
-1. **H_B อยู่ในกลุ่มไฟเขียวทุกเฟสติดกัน 24 เฟส ไม่เคยหลุดออกจากกลุ่มเลย** ตลอด 365 วินาทีนี้
-2. มี 7 เฟสที่จบด้วยเหตุผล `starvation` แปลว่ากลไก anti-starvation ทำงาน แต่หัวที่มันเลือกให้ต่อไม่ใช่ CB สักครั้ง
-3. รถ CB ที่ค้างอยู่เคลียร์ออกตอน t ≈ 1473–1483 โดยรอกันคนละ 280 ถึง **344 วินาที**
+1. **H_B is in the green group for 24 consecutive phases and never leaves it** across those 365 seconds.
+2. Seven phases end with reason `starvation`, so the mechanism fired - but not once did it pick CB.
+3. The CB vehicles stuck there clear at about t = 1473-1483, having waited between 280 and **344 seconds**.
 
-ตัวเลขยืนยันจากอีกทาง: Rep17 มี 99 เฟส แต่ log `StarvationEvents` ไป **137 ครั้ง** มากกว่าจำนวนเฟส (ฉบับแรกเขียน 145 ซึ่งผิด — 145 คือ *มัธยฐานของ EveningPeak ทั้ง 27 รอบ* คนละตัวกัน อิทิ่มจับได้ 11 ก.ย.) และตาม L13 ของ baseline ตัวนับนี้นับซ้ำสองครั้งต่อเหตุการณ์ (interrupt + override) ดังนั้น 137 ครั้ง ≈ **68 เหตุการณ์จริงจาก 99 เฟส** ยังสูงมากอยู่ดี เพราะ H_B เข้าเงื่อนไข "กำลังอดอยาก" แทบทุกครั้งที่ตัดสินใจ ทั้งที่มันคือหัวที่ได้ไฟเขียวอยู่ คอลัมน์ `StarvationEvents` ของ batch v1 จึงไม่ได้วัด starvation จริง
+Confirmation from another angle: Rep17 has 99 phases but logged **137** `StarvationEvents`, more than the
+phase count. (The first draft said 145, which was wrong - 145 is the *median across all 27 EveningPeak
+runs*, a different quantity. Itim caught it on 11 Sep.) Per baseline note L13 this counter double-counts
+each event (interrupt plus override), so 137 is about **68 real events in 99 phases**, which is still very
+high, because H_B met the "starving" condition on nearly every decision while being the head that was
+green. The `StarvationEvents` column in batch v1 therefore does not measure real starvation.
 
-### หลักฐานหลัก — ใช้ทั้ง 27 รอบ ไม่ใช่ Rep17 รอบเดียว
+### The main evidence - all 27 runs, not Rep17 alone
 
-Rep17 ที่ 344 วินาทีเป็นเคสเดียว กรรมการค้านได้ว่าเป็น outlier ดูทั้ง scenario แทน (อิทิ่มเสนอ)
+Rep17 at 344 seconds is a single case that an examiner could dismiss as an outlier. Look at the whole
+scenario instead (Itim's suggestion).
 
-| EveningPeak · `MaxWaitTime` ต่อรอบ | ต่ำสุด | มัธยฐาน | สูงสุด |
+| EveningPeak - `MaxWaitTime` per run | min | median | max |
 |---|---:|---:|---:|
 | Adaptive | **126.5** | 188.3 | 344.4 |
 | Fixed | 92.7 | 96.3 | **103.9** |
 
-**รอบที่ดีที่สุดของ Adaptive (126.5 วิ) ยังแย่กว่ารอบที่แย่ที่สุดของ Fixed (103.9 วิ) — เกินเพดานของ Fixed ครบ 27 จาก 27 รอบ** อันนี้เถียงไม่ได้ ไม่ใช่ outlier
+**Adaptive's best run (126.5 s) is worse than Fixed's worst (103.9 s) - it exceeds Fixed's ceiling in all
+27 runs out of 27.** That is not arguable, and not an outlier.
 
-เลน CB รวมทั้ง 27 รอบ: mean 61.7 vs Fixed 37.7 · p95 148.0 vs 78.5 · max 344.4 vs 84.2 — Fixed ชนะขาดที่หาง เพราะรอบ 106 วินาทีการันตี CB เสมอ
+Lane CB across all 27 runs: mean 61.7 against Fixed's 37.7, p95 148.0 against 78.5, max 344.4 against
+84.2. Fixed wins decisively on the tail, because a 106 second cycle always guarantees CB its turn.
 
 ---
 
-## 3. สาเหตุในโค้ด
+## 3. The cause in the code
 
-`Assets/Scripts/AdaptiveController.cs` ใน `ServeOnePhase` ตรงช่วง clearance
+In `Assets/Scripts/AdaptiveController.cs`, inside `ServeOnePhase` at the clearance stage:
 
 ```csharp
 List<int> dropping = Except(activeGroup, nextGroup);
@@ -127,31 +147,33 @@ if (dropping.Count > 0)
 {
     ...
     activeGroup = Except(activeGroup, dropping);
-    ResetQueueStartFor(dropping);        // <-- รีเซ็ตเฉพาะหัวที่กลายเป็นแดง
+    ResetQueueStartFor(dropping);        // <-- only the heads turning red
     ...
 }
 ```
 
-`ResetQueueStartFor` ถูกเรียกด้วย `dropping` เท่านั้น หัวที่อยู่ในทั้ง `activeGroup` และ `nextGroup` คือหัวที่ได้ไฟเขียวต่ออีกเฟส ไม่ได้อยู่ใน `dropping` จึงไม่เคยถูกรีเซ็ต
+`ResetQueueStartFor` is called with `dropping` alone. A head in both `activeGroup` and `nextGroup` - one
+that keeps green for another phase - is not in `dropping` and is therefore never reset.
 
-ผลลัพธ์: ตราบใดที่หัวหนึ่งยังอยู่ในกลุ่มไฟเขียวต่อเนื่อง `queueStart` ของมันจะค้างอยู่ที่ค่าเดิมไปเรื่อย ๆ แล้ว
+The consequence: for as long as a head stays in the green group, its `queueStart` remains frozen, and
 
-- `WaitOf(h) = Time.time − h.queueStart` โตขึ้นเรื่อย ๆ ไม่มีขีดจำกัด
-- `FindStarvingHead` (Q1) เลือกหัวที่ `queueStart` เก่าที่สุด → เลือกหัวนี้ตลอด
-- `ChooseLeaderByQueueStart` (Q2) เลือกหัวที่ `queueStart` เก่าที่สุด → เลือกหัวนี้ตลอด
-- `BuildCompatibleGroup` (Q3) สร้างกลุ่มจาก leader ตัวนี้ → หัวนี้อยู่ในกลุ่มอีกรอบ → วนกลับข้อแรก
+- `WaitOf(h) = Time.time - h.queueStart` grows without limit
+- `FindStarvingHead` (Q1) picks the oldest `queueStart`, so it picks this head every time
+- `ChooseLeaderByQueueStart` (Q2) picks the oldest `queueStart`, so it picks this head every time
+- `BuildCompatibleGroup` (Q3) builds the group around that leader, putting the head in the group again, and back to the first point
 
-เป็นวงจรที่ล็อกตัวเอง หัวที่ครองไฟเขียวได้หนึ่งครั้งในสภาพจราจรอิ่มตัวจะครองต่อไปจนกว่ารถในเลนมันจะหมด
+It is a self-locking loop: a head that wins the green once under saturated traffic keeps it until its own
+lane empties.
 
-### เทียบสามทาง — ใครถูกใครผิด
+### Three-way comparison - who was wrong
 
-| แหล่ง | เขียนว่าอะไร | ถูกไหม |
+| Source | What it says | Correct? |
 |---|---|---|
-| `SODA_BASELINE.md` §4 | `phase end — for each served head: lastCount>0 → queueStart = now, else ∞` | ✅ ถูก |
-| `soda.py` ของอิทิ่ม `end_phase()` | `for h in self.green: self.queue_start[h] = t if self.count[h] > 0 else inf` วนทั้งกลุ่มที่เขียวอยู่ | ✅ ถูก |
-| `AdaptiveController.cs` ของ Unity | `ResetQueueStartFor(dropping)` วนเฉพาะหัวที่กลายเป็นแดง | ❌ **ผิด** |
+| `SODA_BASELINE.md` section 4 | `phase end - for each served head: lastCount>0 -> queueStart = now, else infinity` | Yes |
+| Itim's `soda.py` `end_phase()` | `for h in self.green: self.queue_start[h] = t if self.count[h] > 0 else inf`, iterating the whole green group | Yes |
+| Unity's `AdaptiveController.cs` | `ResetQueueStartFor(dropping)`, iterating only the heads turning red | **No** |
 
-`soda.py` ถึงกับเขียน docstring อธิบายอาการนี้ไว้แล้วด้วย
+`soda.py` even documents the symptom in its docstring:
 
 ```python
 def end_phase(self, t: float) -> None:
@@ -164,31 +186,38 @@ def end_phase(self, t: float) -> None:
         self.queue_start[h] = t if self.count[h] > 0 else float("inf")
 ```
 
-แปลว่าอิทิ่มเข้าใจถูกตั้งแต่แรก และ Python reference ไม่ต้องแก้อะไรเลยสำหรับเรื่องนี้ ผิดอยู่ที่ Unity ฝั่งเดียว
+So Itim understood it correctly from the start, and the Python reference needs no change here. Unity alone
+was wrong.
 
-**ทำไม `verify_traces.py` ถึงไม่จับได้** เพราะ trace S1–S5 ที่เราเขียนไว้ไม่มีเคสที่หัวเดียวกันอยู่ในกลุ่มเขียวติดกันหลายเฟสโดยไม่เคยว่าง ต้องเป็นสภาพอิ่มตัวยาว ๆ แบบ EveningPeak ถึงจะโผล่
+**Why `verify_traces.py` did not catch it:** the S1-S5 traces contain no case where the same head stays in
+the green group across several phases without ever emptying. That needs a long saturated stretch like
+EveningPeak before it shows.
 
-### ทำไม Midday กับ Morning ไม่เป็น
+### Why Midday and Morning were unaffected
 
-`ResetQueueStartFor` ตั้ง `queueStart = Infinity` เมื่อเลนว่าง และ `Snapshot()` ตั้งค่าใหม่เมื่อรถคันแรกมาถึง ในสภาพที่ demand ไม่อิ่มตัว หัวไฟจะว่างเป็นระยะ นาฬิกาจึงถูกล้างโดยอัตโนมัติ อาการนี้โผล่เฉพาะตอนที่หัวไฟ**มีรถค้างตลอดเวลาไม่เคยว่าง** ซึ่งคือสภาพของ H_B ใน EveningPeak พอดี
+`ResetQueueStartFor` sets `queueStart = Infinity` when a lane is empty, and `Snapshot()` sets it again when
+the first vehicle arrives. Under unsaturated demand a head empties periodically and the clock clears
+itself. The symptom appears only when a head **always has vehicles and never empties**, which is exactly
+H_B's state during EveningPeak.
 
-นี่อธิบายว่าทำไม MiddayNormal ถึงชนะ Fixed ทั้งค่าเฉลี่ยและหาง (max 85.8 เทียบ 94.2) ในขณะที่ EveningPeak แพ้ — และทำไมเราไม่เห็นมันตอนเทสด้วยมือ
+That explains why MiddayNormal beat Fixed on both mean and tail (max 85.8 against 94.2) while EveningPeak
+did not - and why manual testing never showed it.
 
 ---
 
-## 4. สิ่งที่ต้องแก้ (ฝั่ง Unity เท่านั้น)
+## 4. The fix (Unity only)
 
-เพิ่มการรีเซ็ตนาฬิกาให้หัวที่อยู่ในกลุ่มต่อเนื่อง หลังเปิดไฟเขียวของเฟสใหม่
+Reset the clock for heads continuing in the group, after turning green for the new phase.
 
 ```csharp
-// เก็บไว้ก่อน activeGroup ถูกเขียนทับ
+// captured before activeGroup is overwritten
 List<int> servedLastPhase = new List<int>(activeGroup);
 List<int> dropping = Except(activeGroup, nextGroup);
 ...
 SetGroupState(turningOn, TrafficLight.LightState.Green);
 activeGroup = new List<int>(nextGroup);
 
-ResetContinuingHeads(servedLastPhase, dropping);   // ⭐ เพิ่มบรรทัดนี้
+ResetContinuingHeads(servedLastPhase, dropping);   // the added line
 ```
 
 ```csharp
@@ -198,142 +227,186 @@ public void ResetContinuingHeads(List<int> servedLastPhase, List<int> dropping)
 }
 ```
 
-แยกเป็นเมธอดสาธารณะเพื่อให้เทสเรียกลำดับเดียวกับ production ได้จริง ไม่ใช่เทสจำลองตรรกะเอง
+It is a public method so that the test can call the same sequence production does, rather than reproducing
+the logic itself.
 
-หลังแก้ โค้ดจะตรงกับ §4 ของ baseline และตรงกับ `end_phase()` ของ `soda.py` พอดี ไม่มีกฎใหม่เกิดขึ้น
+After the fix the code matches section 4 of the baseline and `end_phase()` in `soda.py` exactly. No new
+rule is introduced.
 
-**ช่องโหว่ของเทสเดิมที่ต้องบันทึกไว้** `SodaTest` §1 ทดสอบว่า "หัวที่ไม่เคยว่างต้องไม่ล็อกเลนอื่น" จริง แต่สร้างสถานการณ์ด้วยการให้หัวนั้นหลุดออกจากกลุ่มไปเป็นแดงทุกเฟส ซึ่งเป็นเส้นทางที่โค้ดทำถูกอยู่แล้ว เคสที่หัวเดิม **อยู่ในกลุ่มต่อเนื่องโดยไม่เคยเป็นแดง** ไม่เคยถูกทดสอบ `QueueClockTest` มาปิดช่องนี้
+**A gap in the old test, worth recording.** `SodaTest` section 1 really does test that "a head which never
+empties must not lock out the others", but it creates the situation by dropping that head to red every
+phase - the path the code already handled. The case where a head **stays in the group and never goes red**
+was never tested. `QueueClockTest` closes that gap.
 
 ---
 
-## 5. เทสที่ยืนยัน
+## 5. The test that confirms it
 
-เพิ่มชุดใหม่ `QueueClockTest` (`Test9.cs`) จำลองลำดับกลุ่มจาก log จริงข้างบน คือ B อยู่ในกลุ่มทุกเฟส CB ไม่เคยถูกเลือก ทุกเลนมีรถค้าง 4 คันไม่เคยว่าง
+A new suite, `QueueClockTest` (`Test9.cs`), reproduces the group sequence from the log above: B in the
+group every phase, CB never chosen, every lane holding 4 vehicles and never empty.
 
-**ก่อนแก้ — ตก 4 ข้อ**
+**Before the fix - 4 failures**
 
 ```
-      H_A   queueStart=   1100  ระบบคิดว่ารอ    0s
-      H_B   queueStart=    900  ระบบคิดว่ารอ  200s     <- เขียวอยู่ตลอด แต่ระบบคิดว่ารอนานสุด
-      H_Bx  queueStart=   1080  ระบบคิดว่ารอ   20s
-      H_CB  queueStart=   1000  ระบบคิดว่ารอ  100s     <- อดจริง
-  FAIL  หัวที่เพิ่งได้ไฟเขียวจบเฟส ต้องมี queueStart ไม่เก่ากว่าเวลาที่เฟสนั้นเริ่ม
-  FAIL  หัวที่อดจริง (CB) ต้องมีคิวเก่ากว่าหัวที่เพิ่งได้เขียว (B)
+      H_A   queueStart=   1100  system thinks it waited    0s
+      H_B   queueStart=    900  system thinks it waited  200s     <- permanently green, yet believed to have waited longest
+      H_Bx  queueStart=   1080  system thinks it waited   20s
+      H_CB  queueStart=   1000  system thinks it waited  100s     <- genuinely starved
+  FAIL  a head whose green has just ended must have a queueStart no older than that phase's start
+  FAIL  the genuinely starved head (CB) must have an older queue than the one just served (B)
       Q1 FindStarvingHead      -> H_B
-  FAIL  Q1 ต้องชี้ไปที่ H_CB ไม่ใช่ H_B ที่เขียวอยู่ตลอด
+  FAIL  Q1 must point at H_CB, not the permanently green H_B
       Q2 ChooseLeaderByQueueStart -> H_B
-  FAIL  Q2 ต้องเลือก H_CB เป็น leader ของเฟสถัดไป
+  FAIL  Q2 must choose H_CB as the next phase leader
 ```
 
-**หลังแก้ — ผ่านทั้งหมด**
+**After the fix - all pass**
 
 ```
-      H_A   queueStart=   1100  ระบบคิดว่ารอ    0s
-      H_B   queueStart=   1100  ระบบคิดว่ารอ    0s
-      H_Bx  queueStart=   1080  ระบบคิดว่ารอ   20s
-      H_CB  queueStart=   1000  ระบบคิดว่ารอ  100s
-  PASS  หัวที่เพิ่งได้ไฟเขียวจบเฟส ต้องมี queueStart ไม่เก่ากว่าเวลาที่เฟสนั้นเริ่ม
-  PASS  หัวที่อดจริง (CB) ต้องมีคิวเก่ากว่าหัวที่เพิ่งได้เขียว (B)
+      H_A   queueStart=   1100  system thinks it waited    0s
+      H_B   queueStart=   1100  system thinks it waited    0s
+      H_Bx  queueStart=   1080  system thinks it waited   20s
+      H_CB  queueStart=   1000  system thinks it waited  100s
+  PASS  a head whose green has just ended must have a queueStart no older than that phase's start
+  PASS  the genuinely starved head (CB) must have an older queue than the one just served (B)
       Q1 FindStarvingHead      -> H_CB
       Q2 ChooseLeaderByQueueStart -> H_CB
-  PASS  ServeOnePhase ยังเรียก ResetContinuingHeads(servedLastPhase, dropping) อยู่
-  PASS  phaseCounter++ อยู่ก่อน early return
+  PASS  ServeOnePhase still calls ResetContinuingHeads(servedLastPhase, dropping)
+  PASS  phaseCounter++ comes before the early return
 ```
 
-ชุดเทสเดิมทั้ง 8 ชุดผ่านหมดหลังแก้ ไม่มี regression
+All 8 existing suites still pass after the fix; no regressions.
 
 ```
-ConflictTest · FixedCycleTest · BatchMathTest · EtaTest · SharedLaneTest
-GeometryTest · SceneAuditTest · SodaTest · QueueClockTest
+ConflictTest - FixedCycleTest - BatchMathTest - EtaTest - SharedLaneTest
+GeometryTest - SceneAuditTest - SodaTest - QueueClockTest
 ########## ALL SUITES PASSED ##########
 ```
 
-มีเทสกันถอยหลังด้วย คือสแกนซอร์สของ `ServeOnePhase` ว่ายังเรียก `ResetContinuingHeads` อยู่จริง ถ้าใครลบทิ้งเทสจะตกทันที แบบเดียวกับที่ `SodaTest` §3 สแกนว่าไม่มี API ของ tracker หลงเหลือ
+There is also a guard against regression: the test scans the source of `ServeOnePhase` to confirm it still
+calls `ResetContinuingHeads`, so deleting it fails the test immediately - the same approach `SodaTest`
+section 3 uses to scan for leftover tracker APIs.
 
 ---
 
-## 6. อีกสองเรื่องที่เจอ เป็น measurement-only
+## 6. Two further findings, measurement-only
 
-### C2 — แถว Fixed ใน `summary_all_runs.csv` แบกตัวเลขของ Adaptive รอบก่อนหน้า
+### C2 - Fixed rows in `summary_all_runs.csv` carried the previous Adaptive run's numbers
 
-`ScenarioManager.ApplyController` เรียก `adaptiveController.ForceStop()` ก่อนรันรอบ Fixed แต่ `ForceStop()` ไม่ได้ล้างตัวนับ ล้างเฉพาะใน `RestartCycle()` ซึ่งไม่ถูกเรียกตอนรัน Fixed
+`ScenarioManager.ApplyController` calls `adaptiveController.ForceStop()` before a Fixed run, but
+`ForceStop()` did not clear the counters. They were cleared only in `RestartCycle()`, which is not called
+for a Fixed run.
 
-ตรวจแล้ว **107 จาก 108 แถว Fixed มีค่า `CollectCount`, `CollectDuration`, `SkippedHeads`, `QueueStartResets`, `TieBreaksApplied`, `TieBreaksExcludingBx` ตรงเป๊ะกับแถว Adaptive ที่อยู่เหนือมัน** (แถวแรกเป็น 0 เพราะยังไม่มีอะไรรันมาก่อน)
+Checked: **107 of 108 Fixed rows have `CollectCount`, `CollectDuration`, `SkippedHeads`,
+`QueueStartResets`, `TieBreaksApplied` and `TieBreaksExcludingBx` exactly equal to the Adaptive row above
+them** (the first row is 0, since nothing had run before it).
 
-ไม่กระทบ `AvgWaitTime`, `MaxWaitTime`, `TotalSpawned`, `VehiclesCleared`, `StarvationEvents`, `IdleLaneSeconds` ซึ่งเป็นตัวเลขที่ใช้เปรียบเทียบจริง
+It does not affect `AvgWaitTime`, `MaxWaitTime`, `TotalSpawned`, `VehiclesCleared`, `StarvationEvents` or
+`IdleLaneSeconds`, which are the figures actually compared.
 
-แก้โดยล้างตัวนับใน `ForceStop()` ด้วย
+Fixed by clearing the counters in `ForceStop()` as well.
 
-### C3 — `PhaseIndex` ใน `phases_*.csv` เป็น 0 ทั้งไฟล์
+### C3 - `PhaseIndex` is 0 throughout every `phases_*.csv`
 
-`phaseCounter++` อยู่ใน `TraceBegin()` **หลัง** บรรทัด `if (!showDecisionPanel) return;` ตอนรัน batch เราปิด decision panel ทุกรอบ ตัวนับจึงไม่เคยเดิน
+`phaseCounter++` sat inside `TraceBegin()` **after** the line `if (!showDecisionPanel) return;`. The
+decision panel is off for every batch run, so the counter never advanced.
 
-แก้โดยย้าย `phaseCounter++` ขึ้นไปก่อน early return
-
----
-
-## 7. ผลที่คาดว่าจะเกิดหลังแก้ และสิ่งที่ยังไม่รู้
-
-คาดว่า
-
-- หางของ EveningPeak จะหดลงมาก CB ไม่ควรเกินราว 100 วินาที เพราะ Q1 จะเห็นมันภายใน 42.75 วินาทีหลังมันเริ่มรอ
-- EveningPeak น่าจะพลิกจาก −2.2 % เป็นบวก
-- `StarvationEvents` จะลดลงมาใกล้ความจริง
-
-ยังไม่รู้และต้องยอมรับตรง ๆ
-
-- **ค่าเฉลี่ยของ MorningPeak กับ MiddayNormal อาจลดลงบ้าง** เพราะการเพิ่มความเป็นธรรมมักแลกมาด้วย throughput ตัวเลข 38 % กับ 34.8 % อาจไม่คงอยู่เท่าเดิม
-- ตัวเลขพาดหัว 25.6 % จะเปลี่ยน ต้องรันใหม่ถึงจะรู้
-
-ถ้าตัวเลขลดลงบ้างแต่หางหายไป ผมคิดว่านั่นคือผลที่ดีกว่าสำหรับการ defend เพราะ "ค่าเฉลี่ยดีขึ้นแต่มีคนรอ 344 วินาที" เป็นจุดที่กรรมการถามแน่ ๆ และตอบยากกว่า "ค่าเฉลี่ยดีขึ้นน้อยลงหน่อยแต่ไม่มีใครรอเกิน 100 วินาที"
+Fixed by moving `phaseCounter++` above the early return.
 
 ---
 
-## 7b. อิทิ่มทานแล้ว — 11 ก.ย. 2026
+## 7. What to expect after the fix, and what is still unknown
 
-ยืนยันสาเหตุตรงกันสามทาง: อ่านโค้ดตรงกัน · สเปค §4 อ่านได้ทางเดียว · และ **พิสูจน์ด้วยการรัน** เขาเขียน `test_queueclock.py` ให้ `soda.py` จำลองสภาพอิ่มตัวถาวร ทุกหัวมีรถค้าง 6 คัน ไม่มีเลนไหนว่างเลย 10 เฟส
+Expected:
+
+- the EveningPeak tail should shrink considerably; CB should not exceed about 100 seconds, because Q1 sees it within 42.75 seconds of it starting to wait
+- EveningPeak should turn from -2.2% to positive
+- `StarvationEvents` should fall to something close to reality
+
+Unknown, stated plainly:
+
+- **the MorningPeak and MiddayNormal means may drop somewhat**, because more fairness usually costs throughput. The 38% and 34.8% figures may not hold.
+- the headline 25.6% will change; only a fresh run will say by how much
+
+If the numbers fall a little but the tail disappears, that is the better result to defend. "The mean
+improved but somebody waited 344 seconds" is a question the examiners will certainly ask and is hard to
+answer; "the mean improved slightly less, and nobody waited over 100 seconds" is not.
+
+---
+
+## 7b. Reviewed by Itim - 11 September 2026
+
+The cause is confirmed three ways: we read the code the same way, section 4 of the specification admits
+only one reading, and **he proved it by running it**. He wrote `test_queueclock.py` for `soda.py`,
+simulating permanent saturation with 6 vehicles held on every head and no lane ever emptying, over 10
+phases.
 
 ```
 leaders : A Bx CB A Bx CB A Bx CB A
 served  : A 4, B 7, Bx 3, CB 3
 ```
 
-B คือหัวที่อยู่ในกลุ่มข้ามเฟส เทียบได้กับ H_B ของฝั่ง Unity แต่ `queueStart` ถูกรีเซ็ตเป็น 30.0 ตอนจบเฟส ซึ่งคือบรรทัดที่ Unity ขาดพอดี ผลคือไม่มีการล็อกเอาต์ ทุกหัวได้คิว
+B is the head that stays in the group across phases, the counterpart of Unity's H_B, but its `queueStart`
+is reset to 30.0 at the end of the phase - precisely the line Unity was missing. The result is no lock-out;
+every head gets its turn.
 
-เขารันตัวเลขของเราใหม่ทั้งหมด ตรงทุกช่อง 38.0 / 34.8 / 28.0 / −2.2 และตรวจ C2 ได้ 107 แถวตรง 0 แถวต่าง
+He re-ran all our figures and matched every cell: 38.0 / 34.8 / 28.0 / -2.2, and verified C2 at 107 rows
+matching and 0 differing.
 
-สามจุดที่เขาให้แก้ก่อนเขียนลงรายงาน แก้ในเอกสารฉบับนี้แล้วทั้งหมด: เลข `StarvationEvents` ของ Rep17 (137 ไม่ใช่ 145) · คำว่า "แพ้" ของ EveningPeak (ต้องเป็น "ไม่ต่างอย่างมีนัยสำคัญ") · และเปลี่ยนหลักฐานหลักจาก Rep17 รอบเดียวเป็นทั้ง 27 รอบ
+Three things he asked to be corrected before this goes into the report, all now corrected in this document:
+Rep17's `StarvationEvents` figure (137, not 145), the word "lost" for EveningPeak (it must be "not
+significantly different"), and changing the main evidence from Rep17 alone to all 27 runs.
 
-**สิ่งที่เขาบอกให้จับตาหลังแก้** Q3 เรียง candidate ตาม `queueStart` พอรีเซ็ตหัวที่ต่อเนื่องแล้ว หัวพวกนั้นจะกลายเป็น "ใหม่สุด" เลยถูกลองท้ายสุดตอนสร้างกลุ่ม อาจทำให้กลุ่มสลับบ่อยขึ้น = จ่าย clearance 5 วินาทีถี่ขึ้น ให้ดู **จำนวนเฟสต่อรอบ** กับอัตราส่วน **`GreenUsed / GreenGiven`** เทียบ v1 กับ v2 ถ้าจำนวนเฟสเพิ่มเยอะ นั่นคือที่มาของ throughput ที่หายไป — บันทึกเป็น §8.9 ใน baseline แล้ว
-
----
-
-## 8. สถานะของงานฝั่งอิทิ่ม (§8.2, §8.5 ปิดแล้ว)
-
-**§8.2 ปิดแล้ว** — counting window ลบแล้ว · gap-out นับเป็น "จำนวนครั้งที่อ่านได้ศูนย์" ไม่ใช่วินาที ยิงตอนอ่านศูนย์ครั้งที่ 2 = 4 วิหลังอ่านค่าไม่ศูนย์ครั้งสุดท้าย · COLLECT ใส่แล้วพร้อม early exit ทั้งสองข้อ · starvation tie ตรงกับ Q2 แล้ว · S1–S5 ตรงทุกบรรทัด รวมเวลาที่ green เปิดและจบ ไม่ใช่แค่ leader/group/G
-
-เขายังแก้อีกจุดที่ไม่อยู่ในลิสต์ D1–D3 ของผม: **§4.4 บอกว่า G ต้องอ่าน count ใหม่ตอน green เปิด** แต่ `soda.py` เดิมคิดจาก count ตอนตัดสินใจ ซึ่งเก่ากว่า 5 วินาที (เหลือง 3 + all-red 2) ตอนพีคคือรถ 2–3 คัน — **ผมเช็กฝั่ง C# แล้ว ทำถูกอยู่แล้ว** `CalculateGreenDuration` ถูกเรียกหลัง `SetGroupState(…Green)` และ `DemandOf` อ่าน ROI สด ๆ ตอนนั้น ไม่ได้ใช้ `lastCount` เก่า
-
-**§8.5 ปิดแล้ว** — headway 39 ตัวอย่าง `DJI_20260714084627_0005_D.MP4` อังคาร 14 ก.ค. 2026 หน้าต่าง 08:46–09:06 · detector 298/303 `DJI_20260713084049_0002_D.MP4` จันทร์ 13 ก.ค. 2026 หน้าต่าง 08:40–09:05 · ชื่อไฟล์ DJI เข้ารหัส YYYYMMDDHHMMSS และ `tally_*.json` เขียนวันไว้ในฟิลด์ `source` ไม่ต้องพึ่งความจำใคร → ใส่ใน §4.4 และ §7 L5 ของ baseline แล้ว
-
-**ที่ยังค้าง (§8.10)** ไฟล์ `soda.py`, `test_soda.py`, `test_queueclock.py` ฉบับล่าสุดของอิทิ่มยังไม่ได้อยู่ในรีโป คู่ C#/Python ของเคส C1 จึงมีแค่ครึ่งเดียว `Tests/verify_traces.py` ลบบรรทัด `waited_once` / `waiting_until` ออกแล้วตามที่เขาบอก แต่ยังไม่ได้รันกับ `soda.py` ตัวใหม่
+**What he asked us to watch after the fix:** Q3 orders candidates by `queueStart`, and once the continuing
+heads are reset they become the "newest" and are tried last when the group is built. That may make the
+group change more often and pay the 5 second clearance more frequently. Compare **phases per run** and the
+**`GreenUsed / GreenGiven`** ratio between v1 and v2. A large rise in phase count is where the lost
+throughput went. Recorded as section 8.9 in the baseline.
 
 ---
 
-## 9. สถานะปัจจุบัน
+## 8. Status of Itim's side (8.2 and 8.5 closed)
 
-C1 + C2 + C3 merge เข้า `AdaptiveController.cs` แล้ว 11 ก.ย. · `SODA_BASELINE.md` ขึ้นเป็น v1.5 ปิด §8.2 §8.5 §8.7 §8.8 เปิด §8.9 §8.10 · ขั้นต่อไปคือรัน batch v2 216 รอบ
+**8.2 closed.** The counting window is removed. Gap-out counts zero *readings* rather than seconds, firing
+on the second zero reading, 4 s after the last non-zero one. COLLECT is implemented with both early exits.
+The starvation tie now matches Q2. S1-S5 agree line for line, including when green opens and closes, not
+just leader / group / G.
 
-ผล batch v1 ยังเก็บไว้ครบทุกไฟล์ใน `SimulationResults/` เป็นครึ่ง "before" ของการเทียบ before/after ซึ่งมีค่าสำหรับรายงาน เพราะแสดงให้เห็นว่ากลไก anti-starvation มีผลจริงแค่ไหนเมื่อมันทำงานกับตอนมันไม่ทำงาน — แต่ห้ามอ้างเป็นผลการทดลอง
+He also fixed something outside my D1-D3 list: **section 4.4 says G must re-read the count when green
+opens**, but the old `soda.py` computed it from the count at decision time, which is 5 seconds stale
+(3 yellow + 2 all-red) - 2 or 3 vehicles at peak. **I checked the C# and it was already correct:**
+`CalculateGreenDuration` is called after `SetGroupState(...Green)` and `DemandOf` reads the ROI live at
+that moment, not a stale `lastCount`.
+
+**8.5 closed.** Headway from 39 samples in `DJI_20260714084627_0005_D.MP4`, Tuesday 14 Jul 2026, window
+08:46-09:06. Detector 298/303 from `DJI_20260713084049_0002_D.MP4`, Monday 13 Jul 2026, window 08:40-09:05.
+DJI filenames encode YYYYMMDDHHMMSS and `tally_*.json` records the date in its `source` field, so nobody
+has to remember. Both are now in section 4.4 and section 7 L5 of the baseline.
+
+**Still outstanding (8.10).** Itim's latest `soda.py`, `test_soda.py` and `test_queueclock.py` are not yet
+in the repo, so the C#/Python pair for the C1 case is only half present. `Tests/verify_traces.py` has had
+the `waited_once` / `waiting_until` lines removed as he asked, but has not been run against the new
+`soda.py`.
 
 ---
 
-## ภาคผนวก — ไฟล์ที่เกี่ยวข้อง
+## 9. Current status
 
-| ไฟล์ | ใช้ทำอะไร |
+C1, C2 and C3 are merged into `AdaptiveController.cs` as of 11 Sep. `SODA_BASELINE.md` is now v1.5, closing
+sections 8.2, 8.5, 8.7 and 8.8 and opening 8.9 and 8.10. The next step is batch v2, 216 runs.
+
+Every batch v1 file is kept in `SimulationResults/` as the "before" half of a before/after comparison,
+which is valuable for the report because it shows how much the anti-starvation mechanism actually does
+when it works against when it does not - but it must not be cited as a result.
+
+---
+
+## Appendix - related files
+
+| File | Purpose |
 |---|---|
-| `SimulationResults/summary_all_runs.csv` | 216 แถว ตัวเลขหลักทั้งหมด |
-| `SimulationResults/phases_Adaptive_EveningPeak_Rep17_*.csv` | log ที่ยกมาในข้อ 2 |
-| `SimulationResults/detailed_*_EveningPeak_Rep*.csv` | เวลารอรายคัน ใช้คำนวณ p95/max รายเลน |
-| `SimulationResults/batch_summary_20260911_142347.txt` | สรุปที่ ScenarioManager เขียนเอง |
-| `Tests/QueueClockTest.cs` | เทสใหม่ ยังไม่ commit |
+| `SimulationResults/summary_all_runs.csv` | 216 rows, all the headline figures |
+| `SimulationResults/phases_Adaptive_EveningPeak_Rep17_*.csv` | the log quoted in section 2 |
+| `SimulationResults/detailed_*_EveningPeak_Rep*.csv` | per-vehicle waits, used for p95 and max by lane |
+| `SimulationResults/batch_summary_20260911_142347.txt` | the summary ScenarioManager writes itself |
+| `Tests/QueueClockTest.cs` | the new test, not yet committed |

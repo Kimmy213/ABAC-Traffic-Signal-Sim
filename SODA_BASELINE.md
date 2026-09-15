@@ -59,7 +59,7 @@ SODA is the project's existing adaptive controller made to run on **camera-reali
 
 ### 2.1 Signal heads, not lanes
 
-The junction has seven movements and **four signal heads**. The unit of control is the head. [code `AdaptiveController.BuildHeads` — groups signal indices that reference the same `TrafficLight` object] [test SodaTest header — "แยกนี้มี 4 หัวไฟ", "H_A คุมทั้ง A และ A2"]
+The junction has seven movements and **four signal heads**. The unit of control is the head. [code `AdaptiveController.BuildHeads` - groups signal indices that reference the same `TrafficLight` object] [test SodaTest header - "this junction has 4 heads", "H_A controls both A and A2"]
 
 | Head | Signals | ROI(s) summed into its count | Note |
 |---|---|---|---|
@@ -153,7 +153,7 @@ phase end            for each served head: lastCount>0 → queueStart = now, els
 
 ### 4.1 Q1 — starvation override
 
-A head with vehicles that has waited `now − queueStart ≥ starvationSelectThreshold × maxWaitTime = 0.95 × 45 = 42.75 s` leads the next phase and a `StarvationEvent` is logged. Among several, the longest wait leads. [code `FindStarvingHead(starvationSelectThreshold, null)`] [test SodaTest "ของเดิมที่ห้ามแตะ" — fires at 43 s, not at 10 s]
+A head with vehicles that has waited `now - queueStart >= starvationSelectThreshold x maxWaitTime = 0.95 x 45 = 42.75 s` leads the next phase and a `StarvationEvent` is logged. Among several, the longest wait leads. [code `FindStarvingHead(starvationSelectThreshold, null)`] [test SodaTest "Things that must not change" - fires at 43 s, not at 10 s]
 
 Among heads over the threshold the longest wait leads; on an exact tie the same `CompareHeads` order as Q2 applies (A → B → Bx → CB). Until 10 Sep the comparison was `>=`, which made the *last* declared head win a tie — the reverse of Option A and of `soda.py`; fixed the same day (change log). [code `FindStarvingHead` — `CompareHeads(h, worst) < 0`] [test SodaTest §9 — A and CB tied at 50 s → H_A; CB at 60 s beats A at 50 s; nobody over 42.75 → null]
 
@@ -197,7 +197,7 @@ The max is over *signals* in the group, so H_A contributes `max(ROI_A, ROI_Ax)`,
 | g_min | 8 s | [tuned] Kimmy, v1.0 spec; traffic-engineering practice, no field basis |
 | g_max | 45 s | [tuned] Kimmy, v1.0 spec; practice, no field basis |
 
-[test SodaTest "ของเดิมที่ห้ามแตะ" — G(4) = 12.19] [test GeometryTest §9 — constants equal 2.95 / 2.31 and are not 1.0, 2.0 or 2.5] [test SceneAuditTest — the scene file carries 2.95 / 2.31, not the stale 1 / 2.5]
+[test SodaTest "Things that must not change" - G(4) = 12.19] [test GeometryTest section 9 - constants equal 2.95 / 2.31 and are not 1.0, 2.0 or 2.5] [test SceneAuditTest - the scene file carries 2.95 / 2.31, not the stale 1 / 2.5]
 
 Response table (linear for D = 3 … 18; D_max at the cap is (45 − 2.95)/2.31 = 18.2):
 

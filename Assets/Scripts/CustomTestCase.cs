@@ -33,19 +33,19 @@ public class CustomTestCase : MonoBehaviour
     private readonly Dictionary<string, float> spacing = new Dictionary<string, float>();
     private readonly Dictionary<string, float> startAt = new Dictionary<string, float>();
 
-    // ---------- แจกรถจากยอดรวม แทนที่จะกรอกทีละเลน ----------
-    /// <summary>true = กรอกยอดรวมครั้งเดียวแล้วแบ่งเป็น % ต่อเลน · false = กรอกจำนวนทีละเลนแบบเดิม</summary>
+    // ---------- Distribute cars from a single total instead of filling in each lane ----------
+    /// <summary>true = enter one total and split it by percentage per lane - false = enter a count per lane</summary>
     private bool splitByShare = true;
     private int totalCars = 40;
     private readonly Dictionary<string, float> sharePct = new Dictionary<string, float>();
 
-    /// <summary>ช่องว่างระหว่างรถในเลนเดียวกัน — คงที่ หรือสุ่มในช่วง</summary>
+    /// <summary>Gap between cars in the same lane - constant, or random within a range</summary>
     private enum GapMode { Constant, RandomRange }
     private GapMode gapMode = GapMode.Constant;
-    private float gapConstant = 2f;      // ทุก ๆ กี่วินาที
-    private float gapMin = 1f;           // สุ่มช่วงต่ำสุด
-    private float gapMax = 5f;           // สุ่มช่วงสูงสุด
-    private int   gapSeed = 1;           // ให้ผลซ้ำได้
+    private float gapConstant = 2f;      // one car every this many seconds
+    private float gapMin = 1f;           // low end of the random range
+    private float gapMax = 5f;           // high end of the random range
+    private int   gapSeed = 1;           // makes the draw repeatable
 
     // Poisson: mean seconds between arrivals per lane
     private readonly Dictionary<string, float> interval = new Dictionary<string, float>();
@@ -83,10 +83,10 @@ public class CustomTestCase : MonoBehaviour
     }
 
     /// <summary>
-    /// แปลง % ต่อเลน เป็นจำนวนคันจริง โดยให้ผลรวมเท่ากับ totalCars เป๊ะ
+    /// Turns per-lane percentages into whole cars whose total is exactly totalCars.
     ///
-    /// ใช้วิธี largest remainder: ปัดลงก่อนทุกเลน แล้วแจกเศษที่เหลือให้เลนที่มีทศนิยมมากสุดตามลำดับ
-    /// ปัดแบบธรรมดาจะทำให้ผลรวมคลาดจากยอดที่ผู้ใช้ตั้งไว้ ซึ่งสับสนเวลาอ่านผล
+    /// Largest-remainder method: floor every lane first, then hand the leftovers to the lanes
+    /// with the largest fractions. Plain rounding would miss the total the user asked for.
     /// </summary>
     Dictionary<string, int> ResolveCounts()
     {
@@ -131,7 +131,7 @@ public class CustomTestCase : MonoBehaviour
         return result;
     }
 
-    /// <summary>ยอดรวมที่จะได้จริงหลังปัดเศษ — ใช้แสดงในแผงให้เห็นก่อนกดรัน</summary>
+    /// <summary>Total that will actually be produced after rounding - shown on the panel before running</summary>
     int ResolvedTotal()
     {
         int t = 0;
@@ -174,20 +174,20 @@ public class CustomTestCase : MonoBehaviour
 
             if (gapMode == GapMode.Constant)
             {
-                // ช่องว่างคงที่ = burst เดียวปล่อย N คัน ห่างกันคันละ gapConstant
+                // Constant gap = one burst releasing N cars, gapConstant apart
                 tc.schedules.Add(new LaneSchedule(n,
                     new ScheduledBurst(startAt[n], cars, Mathf.Max(0.2f, gapConstant))));
             }
             else
             {
-                // สุ่มช่วง = หนึ่ง burst ต่อหนึ่งคัน เวลาสะสมไปเรื่อย ๆ
-                // ทำแบบนี้แทนที่จะเพิ่ม ArrivalMode ใหม่ เพราะไม่ต้องแตะ CarSpawner เลย
-                // และเดินผ่านเส้นทาง Scripted เดิมที่มีเทสคุมอยู่แล้ว
+                // Random range = one burst per car, with the time accumulating.
+                // Done this way rather than adding a new ArrivalMode so CarSpawner is untouched
+                // and it goes through the existing Scripted path, which the tests already cover.
                 float lo = Mathf.Min(gapMin, gapMax), hi = Mathf.Max(gapMin, gapMax);
                 lo = Mathf.Max(0.2f, lo); hi = Mathf.Max(lo, hi);
 
-                // seed ผูกกับชื่อเลนด้วย StableHash เพื่อให้แต่ละเลนสุ่มคนละชุด
-                // แต่ยังได้ผลเดิมทุกครั้งที่ใช้ seed เดิม — ไม่แตะ Random ของ Unity
+                // The seed is mixed with the lane name via StableHash so each lane draws a different
+                // sequence, while the same seed still reproduces it. Unity's Random is never touched.
                 var rng = new System.Random(gapSeed * 7919 + IntersectionConfig.StableHash(n));
 
                 var bursts = new List<ScheduledBurst>();
@@ -217,8 +217,8 @@ public class CustomTestCase : MonoBehaviour
             if (c > 0) parts.Add($"{n}:{c}");
         }
         string gap = mode == ArrivalMode.Poisson ? ""
-                   : gapMode == GapMode.Constant ? $"  · ห่างคงที่ {gapConstant:0.#}s"
-                   : $"  · ห่างสุ่ม {Mathf.Min(gapMin,gapMax):0.#}-{Mathf.Max(gapMin,gapMax):0.#}s (seed {gapSeed})";
+                   : gapMode == GapMode.Constant ? $"  \u00B7 constant gap {gapConstant:0.#}s"
+                   : $"  \u00B7 random gap {Mathf.Min(gapMin,gapMax):0.#}-{Mathf.Max(gapMin,gapMax):0.#}s (seed {gapSeed})";
         return string.Join("  ", parts) + gap;
     }
 
@@ -298,17 +298,17 @@ public class CustomTestCase : MonoBehaviour
         {
             GUILayout.Label("HOW MANY CARS", UITheme.H2);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Toggle(splitByShare, "  ยอดรวม + แบ่ง %", GUILayout.Width(150))) splitByShare = true;
-            if (GUILayout.Toggle(!splitByShare, "  กรอกทีละเลน")) splitByShare = false;
+            if (GUILayout.Toggle(splitByShare, "  Total + % split", GUILayout.Width(150))) splitByShare = true;
+            if (GUILayout.Toggle(!splitByShare, "  Per lane")) splitByShare = false;
             GUILayout.EndHorizontal();
 
             if (splitByShare)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("รถทั้งหมด", UITheme.Body, GUILayout.Width(70));
+                GUILayout.Label("Total cars", UITheme.Body, GUILayout.Width(70));
                 totalCars = Mathf.RoundToInt(
                     GUILayout.HorizontalSlider(totalCars, 0f, 300f, GUILayout.Width(180)));
-                GUILayout.Label($"{totalCars} คัน", UITheme.Value, GUILayout.Width(66));
+                GUILayout.Label($"{totalCars} cars", UITheme.Value, GUILayout.Width(66));
                 GUILayout.EndHorizontal();
 
                 float sum = 0f;
@@ -317,41 +317,41 @@ public class CustomTestCase : MonoBehaviour
                         if (lane != null) sum += Mathf.Max(0f, sharePct[lane.laneName]);
 
                 GUILayout.Label(sum <= 0.0001f
-                    ? "ยังไม่ได้ใส่ % ให้เลนไหนเลย — จะไม่มีรถเกิดขึ้น"
-                    : $"รวม % ที่ใส่ = {sum:F0}  ·  ไม่ต้องรวมได้ 100 ระบบหารตามสัดส่วนให้  ·  แจกจริง {ResolvedTotal()} คัน",
+                    ? "No lane has a share yet - no cars will be created"
+                    : $"Shares total {sum:F0}  \u00B7  they need not add to 100, they are normalised  \u00B7  {ResolvedTotal()} cars allocated",
                     UITheme.Dim);
             }
 
             GUILayout.Space(8f);
-            GUILayout.Label("รถมาห่างกันแค่ไหน", UITheme.H2);
+            GUILayout.Label("How far apart cars arrive", UITheme.H2);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Toggle(gapMode == GapMode.Constant, "  คงที่", GUILayout.Width(110)))
+            if (GUILayout.Toggle(gapMode == GapMode.Constant, "  Constant", GUILayout.Width(110)))
                 gapMode = GapMode.Constant;
-            if (GUILayout.Toggle(gapMode == GapMode.RandomRange, "  สุ่มในช่วง"))
+            if (GUILayout.Toggle(gapMode == GapMode.RandomRange, "  Random range"))
                 gapMode = GapMode.RandomRange;
             GUILayout.EndHorizontal();
 
             if (gapMode == GapMode.Constant)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("ทุก ๆ", UITheme.Body, GUILayout.Width(70));
+                GUILayout.Label("Every", UITheme.Body, GUILayout.Width(70));
                 gapConstant = Mathf.Round(
                     GUILayout.HorizontalSlider(gapConstant, 0.2f, 10f, GUILayout.Width(180)) * 10f) / 10f;
                 GUILayout.Label($"{gapConstant:0.#} s", UITheme.Value, GUILayout.Width(66));
                 GUILayout.EndHorizontal();
-                GUILayout.Label("รถทุกคันในเลนเดียวกันมาห่างเท่ากันหมด ผลซ้ำได้ทุกครั้ง", UITheme.Dim);
+                GUILayout.Label("Every car in a lane arrives the same distance apart; repeatable every run", UITheme.Dim);
             }
             else
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("ต่ำสุด", UITheme.Body, GUILayout.Width(70));
+                GUILayout.Label("Min", UITheme.Body, GUILayout.Width(70));
                 gapMin = Mathf.Round(
                     GUILayout.HorizontalSlider(gapMin, 0.2f, 10f, GUILayout.Width(180)) * 10f) / 10f;
                 GUILayout.Label($"{gapMin:0.#} s", UITheme.Value, GUILayout.Width(66));
                 GUILayout.EndHorizontal();
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("สูงสุด", UITheme.Body, GUILayout.Width(70));
+                GUILayout.Label("Max", UITheme.Body, GUILayout.Width(70));
                 gapMax = Mathf.Round(
                     GUILayout.HorizontalSlider(gapMax, 0.2f, 20f, GUILayout.Width(180)) * 10f) / 10f;
                 GUILayout.Label($"{gapMax:0.#} s", UITheme.Value, GUILayout.Width(66));
@@ -364,8 +364,8 @@ public class CustomTestCase : MonoBehaviour
                 GUILayout.Label($"{gapSeed}", UITheme.Value, GUILayout.Width(66));
                 GUILayout.EndHorizontal();
 
-                GUILayout.Label($"คันถัดไปมาในอีก {Mathf.Min(gapMin,gapMax):0.#}-{Mathf.Max(gapMin,gapMax):0.#} วินาที สุ่มทีละคัน " +
-                                "· seed เดิมได้ลำดับเดิมทุกครั้ง", UITheme.Dim);
+                GUILayout.Label($"Next car arrives in {Mathf.Min(gapMin,gapMax):0.#}-{Mathf.Max(gapMin,gapMax):0.#} s, drawn per car " +
+                                "\u00B7 the same seed gives the same sequence", UITheme.Dim);
             }
 
             GUILayout.Space(8f);
@@ -375,7 +375,7 @@ public class CustomTestCase : MonoBehaviour
 
         // ---- per-lane demand ----
         GUILayout.Label(mode == ArrivalMode.Scripted
-            ? (splitByShare ? "PER-LANE TRAFFIC  (ส่วนแบ่ง % · เวลาเริ่ม)"
+            ? (splitByShare ? "PER-LANE TRAFFIC  (share % \u00B7 start time)"
                             : "PER-LANE TRAFFIC  (cars · start)")
             : "PER-LANE TRAFFIC  (mean seconds between cars)", UITheme.H2);
         GUILayout.Space(2f);
@@ -458,7 +458,7 @@ public class CustomTestCase : MonoBehaviour
 
             Dictionary<string, int> c = ResolveCounts();
             int got = c.ContainsKey(lane) ? c[lane] : 0;
-            GUILayout.Label($"= {got} คัน", UITheme.Body, GUILayout.Width(56));
+            GUILayout.Label($"= {got} cars", UITheme.Body, GUILayout.Width(56));
 
             startAt[lane] = Mathf.Round(
                 GUILayout.HorizontalSlider(startAt[lane], 0f, 180f, GUILayout.Width(52)));

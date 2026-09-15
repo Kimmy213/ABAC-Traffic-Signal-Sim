@@ -1,195 +1,202 @@
-# คู่มือตั้ง Scene 4-Phase — ABAC Traffic Simulation
+# Setting up the 4-phase scene - ABAC Traffic Simulation
 
-**Unity 6 (6000.5.4f1), Built-In RP** · อัปเดต 20 สิงหาคม 2026
+**Unity 6 (6000.5.4f1), Built-In RP** - updated 20 August 2026
 
-> **ทางลัด:** ถ้าไม่อยากวางมือทีละชิ้น ข้ามไปข้อ 3 → กด `ABAC ▸ Build 4-Phase Scene` จบใน 1 คลิก
-> ข้อ 4-6 คือรายละเอียดว่า builder ทำอะไรให้บ้าง (ไว้ตรวจ/ปรับเอง)
+> **Shortcut:** to avoid placing everything by hand, skip to section 3 and run `ABAC > Build 4-Phase Scene`. One click does it.
+> Sections 4-6 describe what the builder does, for checking or adjusting by hand.
 
 ---
 
-## 1. ผังแยกจริง (ยืนยันจากพิกัดในซีนแล้ว)
+## 1. The real junction layout (confirmed against the scene coordinates)
 
-⚠️ **แก้จาก progress doc เดิม:** ทางเข้า ABAC อยู่ทาง **เหนือ (+Z)** ไม่ใช่ทางใต้
-ผมอ่านพิกัดจริงใน `SampleScene.unity` มาแล้ว — `Road_ABAC` วางจาก z=0 ถึง z=200 และ `SpawnPoint_C` อยู่ที่ z=200
-คำว่า "ตะวันออก/ตะวันตก" ใน doc เดิมจึงสลับกัน แต่ **ชื่อเลนและการมี/ไม่มีไฟถูกต้องทั้งหมด**
+**Corrected from the old progress doc:** the ABAC entrance is to the **north (+Z)**, not the south.
+Reading the real coordinates in `SampleScene.unity`: `Road_ABAC` runs from z=0 to z=200 and `SpawnPoint_C`
+sits at z=200. So "east" and "west" were swapped in the old document, but **all the lane names and which
+lanes have signals were correct**.
 
 ```
-                        ทิศเหนือ (+Z)
-                            ↑
-                     ┌─────────────┐
-                     │    ABAC     │
-                     └──────┬──────┘
-              เข้า ↑↑        │        ↓↓ ออก
-           x=-4.0  x=-1.8    │   x=+1.5  x=+3.8
-                    ╲   ╲    │    ╱   ╱
-  ═══════════════════════════╪═══════════════════════  z=+6.5  Ax →
-  ═══════════════════════════╪═══════════════════════  z=+3.0  A  →  (ไปตะวันออก +X)
-  ───────────────────────────┼───────────────────────  z=+0.88 centerline
-  ═══════════════════════════╪═══════════════════════  z=−1.2  Bx ←
-  ═══════════════════════════╪═══════════════════════  z=−4.5  B  ←  (ไปตะวันตก −X)
+                        North (+Z)
+                            |
+                     +-------------+
+                     |    ABAC     |
+                     +------+------+
+                 in  ^^     |     vv  out
+           x=-4.0  x=-1.8   |   x=+1.5  x=+3.8
+                    \   \   |   /   /
+  ==========================+==========================  z=+6.5  Ax ->
+  ==========================+==========================  z=+3.0  A  ->  (east, +X)
+  --------------------------+--------------------------  z=+0.88 centreline
+  ==========================+==========================  z=-1.2  Bx <-
+  ==========================+==========================  z=-4.5  B  <-  (west, -X)
 ```
 
-ประเทศไทยขับ **ชิดซ้าย** → A (มุ่งตะวันออก) อยู่ครึ่งเหนือ, B (มุ่งตะวันตก) อยู่ครึ่งใต้
+Thailand drives on the **left**, so A (eastbound) is on the northern half and B (westbound) on the southern half.
 
-| เลน | การเคลื่อนที่ | ไฟ? | เหตุผล |
+| Lane | Movement | Signal? | Why |
 |---|---|---|---|
-| **A** | มุ่งตะวันออก (+X) วิ่งตรง | ✅ | |
-| **Ax** | แยกจาก A **เลี้ยวซ้าย**เข้า ABAC | ❌ ฟรี | ABAC อยู่ทางซ้ายของ A — เลี้ยวเข้าเลนใกล้ตัว ไม่ตัดใคร |
-| **B** | มุ่งตะวันตก (−X) วิ่งตรง | ✅ | |
-| **Bx** | แยกจาก B **เลี้ยวขวา**เข้า ABAC | ✅ | ต้องตัดผ่านกระแส A |
-| **CB** | ออกจาก ABAC **เลี้ยวขวา** ไป merge เลน B | ✅ | ต้องข้ามเลน A ก่อนถึงเลน B |
-| **CA** | ออกจาก ABAC **เลี้ยวซ้าย** ไป merge เลน A | ❌ ฟรี | merge เลนใกล้ตัว ไม่ต้องข้ามใคร |
+| **A** | eastbound (+X), straight through | yes | |
+| **Ax** | splits from A, **turns left** into ABAC | no, free | ABAC is on A's left, so it turns into the nearest lane and crosses nobody |
+| **B** | westbound (-X), straight through | yes | |
+| **Bx** | splits from B, **turns right** into ABAC | yes | it has to cross the A stream |
+| **CB** | leaves ABAC **turning right** to merge into B | yes | it must cross lane A to reach lane B |
+| **CA** | leaves ABAC **turning left** to merge into A | no, free | merges into the nearest lane, crossing nobody |
 
-### ตาราง conflict (ห้ามเขียวพร้อมกัน)
+### Conflict table (must never be green together)
 
 |  | A | B | Bx | CB |
 |---|---|---|---|---|
-| **A** | — | ✅ ได้ | ❌ | ❌ |
-| **B** | ✅ ได้ | — | ✅ ได้ | ❌ |
-| **Bx** | ❌ | ✅ ได้ | — | ❌ |
-| **CB** | ❌ | ❌ | ❌ | — |
+| **A** | - | compatible | conflict | conflict |
+| **B** | compatible | - | compatible | conflict |
+| **Bx** | conflict | compatible | - | conflict |
+| **CB** | conflict | conflict | conflict | - |
 
-**ประเด็นสำหรับ defence:** ระบบมี **4 ไฟ แต่ 3 เฟส** เพราะ A กับ B เป็นกระแสตรงสวนทาง ไม่ตัดกัน ควรได้เขียวพร้อมกันตามหลัก HCM/ITE
-ถ้าแยกเป็น 4 เฟสจะเสียเวลา inter-green เกินจำเป็น และทำให้ Fixed baseline อ่อนกว่าความจริง = unfair comparison
+**A point for the defence:** the system has **4 signals but 3 phases**, because A and B are opposing
+through movements that do not cross and should be green together under HCM/ITE practice. Splitting them
+into 4 phases would waste inter-green time and make the Fixed baseline weaker than reality - an unfair
+comparison.
 
 ---
 
-## 2. สิ่งที่เปลี่ยนจากของเดิม
+## 2. What changed from the old version
 
-| เดิม | ใหม่ |
+| Before | Now |
 |---|---|
-| Controller ถือ `lightA/lightB/lightC` ตรง ๆ | อ่านทุกอย่างจาก **`IntersectionConfig`** ตัวเดียว |
-| 3 เลน A/B/C | 6 เลน **A, Ax, B, Bx, CB, CA** (มีไฟ 4) |
-| 1 เฟส = 1 เลน | 1 เฟส = **หลายเลนพร้อมกันได้** ถ้าไม่ conflict |
-| ไม่มีกฎห้ามชน | **conflict matrix** บังคับ ตั้งผิดขึ้น error ทันที |
-| รถวิ่งตรงอย่างเดียว | **เลี้ยวตาม waypoint** ได้ |
-| ถนน 8 ม. (2 เลน) | ถนนกว้าง 18 ม. (4 เลน) + ถนน ABAC 14 ม. (4 เลน) |
+| the controller held `lightA/lightB/lightC` directly | everything is read from a single **`IntersectionConfig`** |
+| 3 lanes A/B/C | 6 lanes **A, Ax, B, Bx, CB, CA** (4 signalised) |
+| one phase = one lane | one phase = **several lanes at once**, if they do not conflict |
+| no rule against collisions | a **conflict matrix** is enforced, with an immediate error on a bad setup |
+| cars only drove straight | cars **turn along waypoints** |
+| an 8 m road (2 lanes) | an 18 m road (4 lanes) plus a 14 m ABAC road (4 lanes) |
 
-**ไฟล์ใหม่:** `Assets/Scripts/IntersectionConfig.cs`, `Assets/Editor/ABACSceneBuilder.cs`, `Analysis/analyze_results.py`
-**เขียนทับ:** `FixedController.cs`, `AdaptiveController.cs`, `ScenarioManager.cs`, `CarAgent.cs`, `CarSpawner.cs`, `ROIZone.cs`, `TrafficLight.cs`, `DataLogger.cs`
+**New files:** `Assets/Scripts/IntersectionConfig.cs`, `Assets/Editor/ABACSceneBuilder.cs`, `Analysis/analyze_results.py`
+**Rewritten:** `FixedController.cs`, `AdaptiveController.cs`, `ScenarioManager.cs`, `CarAgent.cs`, `CarSpawner.cs`, `ROIZone.cs`, `TrafficLight.cs`, `DataLogger.cs`
 
-⚠️ เปิด Unity ครั้งแรกหลังเปลี่ยนไฟล์ **reference ใน Inspector ของ controller เดิมจะหาย** (field เปลี่ยนชื่อ) — เป็นเรื่องปกติ builder ต่อให้ใหม่หมด
-
----
-
-## 3. ทางลัด — ให้ builder สร้างให้ (แนะนำ)
-
-1. **commit git ก่อน** (สำคัญ — builder แก้ซีนจริง)
-2. เปิด Unity รอ compile จนไม่มี error แดง
-3. เปิด `SampleScene`
-4. เมนูบนสุด → **`ABAC` ▸ `Build 4-Phase Scene`** → กด "สร้างเลย"
-5. ดู Console ต้องขึ้น
-   ```
-   [IntersectionConfig] ✓ ผ่านทั้งหมด — 6 เลน (4 เลนมีไฟ), 4 conflict pairs
-   [ABACSceneBuilder] สร้างซีนเสร็จแล้ว
-   ```
-6. **Ctrl+S** บันทึกซีน
-7. เมนู → **`ABAC` ▸ `Validate Scene`** ตรวจซ้ำอีกรอบ
-
-**builder ทำอะไรให้บ้าง:**
-
-- ขยายถนน E-W เป็น 18 ม. และถนน ABAC เป็น 14 ม. + ขยับป้อมยามออกนอกถนน
-- สร้าง/ย้าย `Light_A/B/Bx/CB` (เปลี่ยนชื่อ `Light_C` → `Light_CB` อัตโนมัติ)
-- สร้าง `StopLine_A/B/Bx/CB`
-- สร้าง ROI ครบ 6 เลน ยาว 100 ม. จ่อเส้นหยุด พร้อมตั้ง `guiSlot` ไม่ให้ทับกัน
-- **ลบ collider ตัวที่ไม่ใช่ trigger ออกจาก ROI** (ของเดิมมี 2 ตัวซ้อนกัน)
-- สร้าง waypoint 3 จุดต่อเลนเลี้ยว (Ax, Bx, CB, CA)
-- สร้าง/ต่อ spawner ครบ 6 เลน — หา spawner เดิมจาก `laneName` ไม่ใช่ชื่อ object (ของเดิมชื่อมีอักขระไทยปนอยู่)
-- ต่อ `IntersectionConfig` + `FixedController` (preset 120s) + `AdaptiveController` + `ScenarioManager` (preset 5 scenarios)
-
-กดซ้ำได้ ไม่สร้างของซ้ำ และ **Ctrl+Z ย้อนได้**
+On first opening Unity after the change, **the Inspector references on the old controllers will be gone**
+because fields were renamed. That is expected; the builder rewires everything.
 
 ---
 
-## 4. พิกัดที่ builder ใช้ (ไว้ปรับเอง)
+## 3. The shortcut - let the builder do it (recommended)
 
-### เลนบนถนนหลัก (แกน Z)
-| เลน | z | spawn | rotationY |
+1. **Commit to git first** (important - the builder rewrites the real scene)
+2. Open Unity and wait for compilation with no red errors
+3. Open `SampleScene`
+4. Top menu -> **`ABAC` > `Build 4-Phase Scene`** -> press "Build"
+5. The Console should show
+   ```
+   [IntersectionConfig] all checks passed - 6 lanes (4 signalised), 4 conflict pairs
+   [ABACSceneBuilder] scene built
+   ```
+6. **Ctrl+S** to save the scene
+7. Menu -> **`ABAC` > `Validate Scene`** to check again
+
+**What the builder does:**
+
+- widens the E-W road to 18 m and the ABAC road to 14 m, moving the guard huts clear of the road
+- creates or moves `Light_A/B/Bx/CB` (renaming `Light_C` to `Light_CB` automatically)
+- creates `StopLine_A/B/Bx/CB`
+- creates ROIs for all 6 lanes, 100 m back from the stop line, with non-overlapping `guiSlot` values
+- **removes the non-trigger collider from each ROI** (there used to be two stacked)
+- creates 3 waypoints per turning lane (Ax, Bx, CB, CA)
+- creates and wires spawners for all 6 lanes, finding existing ones by `laneName` rather than object name (some old names had corrupted characters)
+- wires up `IntersectionConfig`, `FixedController` (120 s preset), `AdaptiveController` and `ScenarioManager` (5-scenario preset)
+
+It is safe to press again - nothing is duplicated - and **Ctrl+Z undoes it**.
+
+---
+
+## 4. The coordinates the builder uses (for adjusting by hand)
+
+### Lanes on the main road (along Z)
+| Lane | z | spawn | rotationY |
 |---|---|---|---|
-| Ax | +6.5 | (−200, 0.5, 6.5) | 90 |
-| A | +3.0 | (−200, 0.5, 3.0) | 90 |
-| Bx | −1.2 | (+200, 0.5, −1.2) | −90 |
-| B | −4.5 | (+200, 0.5, −4.5) | −90 |
+| Ax | +6.5 | (-200, 0.5, 6.5) | 90 |
+| A | +3.0 | (-200, 0.5, 3.0) | 90 |
+| Bx | -1.2 | (+200, 0.5, -1.2) | -90 |
+| B | -4.5 | (+200, 0.5, -4.5) | -90 |
 
-### เลนบนถนน ABAC (แกน X)
-| เลน | x | spawn | rotationY |
+### Lanes on the ABAC road (along X)
+| Lane | x | spawn | rotationY |
 |---|---|---|---|
-| ขาเข้าจาก Ax | −4.0 | — | — |
-| ขาเข้าจาก Bx | −1.8 | — | — |
-| CB (ออก) | +1.5 | (1.5, 0.5, 200) | 180 |
-| CA (ออก) | +3.8 | (3.8, 0.5, 200) | 180 |
+| inbound from Ax | -4.0 | - | - |
+| inbound from Bx | -1.8 | - | - |
+| CB (outbound) | +1.5 | (1.5, 0.5, 200) | 180 |
+| CA (outbound) | +3.8 | (3.8, 0.5, 200) | 180 |
 
-### เส้นหยุด
-`StopLine_A` x=−10.5 · `StopLine_B` / `StopLine_Bx` x=+9.5 · `StopLine_CB` z=+10.9
+### Stop lines
+`StopLine_A` x=-10.5 - `StopLine_B` / `StopLine_Bx` x=+9.5 - `StopLine_CB` z=+10.9
 
-### Waypoint (y = 0.5 ทุกจุด)
-| เลน | WP1 | WP2 | WP3 |
+### Waypoints (y = 0.5 throughout)
+| Lane | WP1 | WP2 | WP3 |
 |---|---|---|---|
-| Ax | (−8.0, 6.5) | (−4.0, 14.0) | (−4.0, 90) |
-| Bx | (2.0, 0.0) | (−1.8, 14.0) | (−1.8, 90) |
-| CB | (1.5, 4.0) | (−6.0, −4.5) | (−90, −4.5) |
+| Ax | (-8.0, 6.5) | (-4.0, 14.0) | (-4.0, 90) |
+| Bx | (2.0, 0.0) | (-1.8, 14.0) | (-1.8, 90) |
+| CB | (1.5, 4.0) | (-6.0, -4.5) | (-90, -4.5) |
 | CA | (3.8, 14.0) | (9.0, 3.0) | (90, 3.0) |
 
-**หลักการวาง waypoint:**
-WP1 ต้องอยู่ **ตรงหน้ารถพอดี** (ไม่ให้รถเริ่มเบี่ยงตั้งแต่ spawn) → WP2 คือจุดหักเลี้ยว → WP3 คือปลายทางไกล ๆ
-รถจะวิ่งตรงจนผ่านเส้นหยุดก่อนเสมอ แล้วค่อยเริ่มเลี้ยว (เลนที่ไม่มีเส้นหยุดคือ Ax/CA จะเริ่มเลี้ยวตั้งแต่ spawn จึงต้องมี WP1 ตรงหน้า)
+**The placement principle:** WP1 must sit **directly ahead of the car**, so it does not start drifting at
+spawn; WP2 is the turn point; WP3 is a distant endpoint. A car always drives straight until past the stop
+line before turning. The lanes without a stop line (Ax and CA) begin turning at spawn, which is why WP1
+must be straight ahead of them.
 
 ---
 
-## 5. กฎเหล็ก 2 ข้อของเลนฟรี (Ax, CA)
+## 5. Two hard rules for the free lanes (Ax, CA)
 
-1. **ห้ามใส่ `Stop Line Target`** — รถจะเบรกจอดแล้วไม่ไปต่อตลอดกาล (เพราะไม่มีไฟให้เขียว)
-2. **ห้ามใส่ `Assigned Light`**
+1. **Never set `Stop Line Target`** - the car will brake, stop and never move again, because it has no signal to turn green.
+2. **Never set `Assigned Light`.**
 
-`ABAC ▸ Validate Scene` เช็คสองข้อนี้ให้อยู่แล้ว ถ้าผิดจะขึ้น error แดง
+`ABAC > Validate Scene` checks both and raises a red error if either is set.
 
-> เลนฟรียังต้องมี **ROI** อยู่ เพราะเราต้องวัด waiting time เพื่อพิสูจน์ว่าค่าใกล้ 0 จริง — เป็นหลักฐาน sanity check ที่ดีสำหรับรายงาน
+> A free lane still needs an **ROI**, because we measure its waiting time to prove it really is near zero -
+> a good sanity check for the report.
 
 ---
 
-## 6. ตั้งค่า Controller
+## 6. Controller settings
 
-### FixedController — preset 120s/cycle
+### FixedController - the 120 s preset
 
-| เฟส | เลนเขียว | Green |
+| Phase | green lanes | green |
 |---|---|---|
-| P1 MainThrough | A + B | 45s |
-| P2 EastRightTurn | B + Bx | 30s |
-| P3 ABACExit | CB | 30s |
+| P1 MainThrough | A + B | 45 s |
+| P2 EastRightTurn | B + Bx | 30 s |
+| P3 ABACExit | CB | 30 s |
 
-Yellow 3s + All-Red 2s × 3 = 15s → **รวม 120s พอดี** (ตรวจได้ด้วย context menu `Print Cycle Length`)
+Yellow 3 s + all-red 2 s, three times = 15 s, giving exactly **120 s** (verifiable from the
+`Print Cycle Length` context menu).
 
-Timeline จริงที่ verify มาแล้ว:
+The verified timeline:
 ```
 t=  0s +45s   A=G B=G Bx=R CB=R
-t= 45s + 3s   A=Y B=G Bx=R CB=R   ← A ขึ้นเหลือง แต่ B เขียวต่อ ไม่กระพริบ
+t= 45s + 3s   A=Y B=G Bx=R CB=R   <- A goes yellow while B stays green, no flicker
 t= 48s + 2s   A=R B=G Bx=R CB=R
-t= 50s +30s   A=R B=G Bx=G CB=R   ← Bx เข้าร่วมหลัง all-red
+t= 50s +30s   A=R B=G Bx=G CB=R   <- Bx joins after the all-red
 t= 80s + 3s   A=R B=Y Bx=Y CB=R
 t= 83s + 2s   A=R B=R Bx=R CB=R
 t= 85s +30s   A=R B=R Bx=R CB=G
 t=115s + 3s   A=R B=R Bx=R CB=Y
 t=118s + 2s   A=R B=R Bx=R CB=R
-t=120s        วนกลับ P1
+t=120s        back to P1
 ```
 
-### AdaptiveController — ค่าที่แนะนำ
+### AdaptiveController - recommended values
 
-| ช่อง | ค่า | หมายเหตุ |
+| Field | Value | Note |
 |---|---|---|
-| G Min / G Max | 8 / 45 | เท่าเดิม |
-| Startup Lost Time | 3 | HCM (⚠️ ของเดิมในซีนตั้งเป็น 1 — builder ไม่แตะ ให้แก้เอง) |
+| G Min / G Max | 8 / 45 | unchanged |
+| Startup Lost Time | 3 | HCM (the scene had 1; the builder does not touch it, so fix it by hand) |
 | Saturation Headway | 2.5 | HCM |
-| Max Continuous Green | 90 | ⭐ ใหม่ กันเลนเดิมเขียวยาวไม่จบ |
-| Enable Concurrent Phases | ✅ | ⭐ ใหม่ ให้รวม A+B ได้ |
-| Counting Window | 4 | (⚠️ ของเดิมตั้ง 8) |
+| Max Continuous Green | 90 | new - stops one group holding green indefinitely |
+| Enable Concurrent Phases | yes | new - allows A+B together |
+| Counting Window | 4 | (the scene had 8) |
 | Gap Out Delay | 3 | |
 | Max Wait Time | 45 | |
 | Min Green Before Interrupt | 20 | |
 
-### ScenarioManager — ค่ารันจริง
+### ScenarioManager - settings for the real run
 
-`Run Duration` = **1800** · `Repetitions Per Scenario` = **27** · `Warmup Duration` = **120** · `Simulation Speed` = **10** (ดูข้อ 8)
+`Run Duration` = **1800** - `Repetitions Per Scenario` = **27** - `Warmup Duration` = **120** - `Simulation Speed` = **10** (see section 8)
 
 | Scenario | A | Ax | B | Bx | CB | CA |
 |---|---|---|---|---|---|---|
@@ -197,116 +204,120 @@ t=120s        วนกลับ P1
 | EveningPeak | medium | low | high | low | **high** | **high** |
 | MiddayNormal | low | low | low | low | low | low |
 | ABACEvent | medium | **veryHigh** | medium | **veryHigh** | high | high |
-| Night | veryLow | ×6 ทุกเลน | | | | |
+| Night | veryLow on all six lanes | | | | | |
 
 ---
 
-## 7. Checklist ทดสอบมือ (ทำก่อนรันจริงเสมอ)
+## 7. Manual test checklist (always before a real run)
 
-ตั้ง `Repetitions Per Scenario = 1`, `Run Duration = 60`, `Warmup Duration = 10`, `Simulation Speed = 1` แล้วกด Play
+Set `Repetitions Per Scenario = 1`, `Run Duration = 60`, `Warmup Duration = 10`, `Simulation Speed = 1`, then press Play.
 
-- [ ] Console ไม่มี error แดง
-- [ ] `ABAC ▸ Validate Scene` ผ่านหมด
-- [ ] ไฟ A กับ B เขียว**พร้อมกัน**ได้ (ยืนยัน concurrent phase)
-- [ ] ไฟ CB **ไม่เคย**เขียวพร้อม A, B หรือ Bx เลยสักครั้ง ⭐ สำคัญสุด
-- [ ] ไฟ Bx **ไม่เคย**เขียวพร้อม A
-- [ ] รถ Ax เลี้ยวซ้ายเข้า ABAC จริง ไม่วิ่งทะลุ
-- [ ] รถ Bx รอไฟแล้วเลี้ยวขวาเข้า ABAC จริง
-- [ ] รถ CB/CA ออกจาก ABAC เข้าถนนถูกฝั่ง (CB→เลน B, CA→เลน A)
-- [ ] รถไม่วิ่งวนเป็นวงกลม (ถ้าวน = waypoint ไกลเกิน/`Steer Rate` ต่ำเกิน)
-- [ ] กล่อง ROI 6 กล่องขึ้นครบ ไม่ทับกัน
-- [ ] waiting time ของ **Ax และ CA ≈ 0**
-- [ ] สลับ Fixed ↔ Adaptive แล้วไม่มีไฟค้างเขียว 2 กลุ่มพร้อมกัน
-- [ ] CSV ออกใน `SimulationResults/` ครบ 2 ไฟล์
+- [ ] no red errors in the Console
+- [ ] `ABAC > Validate Scene` passes entirely
+- [ ] A and B do go green **together** (confirming concurrent phases)
+- [ ] CB is **never** green alongside A, B or Bx - the most important check
+- [ ] Bx is **never** green alongside A
+- [ ] Ax vehicles really do turn left into ABAC rather than driving through
+- [ ] Bx vehicles wait for the signal and then turn right into ABAC
+- [ ] CB and CA leave ABAC into the correct side (CB into lane B, CA into lane A)
+- [ ] no car drives in circles (circling means a waypoint is too far away or `Steer Rate` too low)
+- [ ] all 6 ROI boxes appear and do not overlap
+- [ ] waiting time for **Ax and CA is about 0**
+- [ ] switching Fixed to Adaptive leaves no two groups stuck green at once
+- [ ] both CSVs appear in `SimulationResults/`
 
 ---
 
-## 8. ก่อนปล่อยรัน 270 runs
+## 8. Before launching 270 runs
 
-### 8.1 ลบ CSV เก่าก่อน ⭐
-`summary_all_runs.csv` เขียนแบบ append — ข้อมูลทดสอบเก่าจะปนเข้าไปด้วย
+### 8.1 Delete the old CSVs first
+`summary_all_runs.csv` is appended to, so old test data mixes in.
 
-> ตอนนี้ `DataLogger` ตรวจหัวตารางให้แล้ว ถ้ารูปแบบไม่ตรงจะย้ายไฟล์เก่าไปเป็น `summary_all_runs_OLD_<เวลา>.csv` อัตโนมัติ
-> (ไฟล์เดิมของโปรเจคนี้มีปัญหานี้อยู่จริง — มีทั้งแถว 7 และ 8 คอลัมน์ปนกัน 18/22 แถว)
+> `DataLogger` now checks the header and, if the format differs, moves the old file to
+> `summary_all_runs_OLD_<timestamp>.csv` automatically.
+> (This project's own file really did have the problem - 18 of 22 rows mixing 7-column and 8-column forms.)
 
-### 8.2 Warm-up คืออะไร (ควรเขียนในรายงาน)
-เดิมทุก run เริ่มจากถนนว่าง → รถ 10-20 คันแรกไม่ต้องรอไฟเลย ทำให้ค่าเฉลี่ยต่ำกว่าจริงและเอนเอียงเข้าข้าง Fixed
-ตอนนี้ปล่อยรถวิ่ง 120 วินาทีก่อน แล้วล้าง log เริ่มนับใหม่ → ได้ข้อมูล **steady-state** ล้วน (วิธีมาตรฐานของ discrete-event simulation)
+### 8.2 What warm-up is (worth writing up in the report)
+Every run used to start on an empty road, so the first 10-20 vehicles never waited for a signal, pulling
+the mean down and favouring Fixed. Traffic now runs for 120 seconds before the log is cleared and counting
+begins, giving purely **steady-state** data - the standard approach in discrete-event simulation.
 
-### 8.3 Validate timeScale ⭐ กรรมการชอบถาม
-เวลาจำลองรวม = 270 × (1800+120) = **144 ชม.จำลอง**
+### 8.3 Validate timeScale (examiners like asking about this)
+Total simulated time = 270 x (1800+120) = **144 simulated hours**.
 
-| Time Scale | เวลาจริง (ถ้าเครื่องตามทัน) |
+| Time Scale | real time if the machine keeps up |
 |---|---|
-| 10x | ~14.4 ชม. |
-| 20x | ~7.2 ชม. |
-| 50x | ~2.9 ชม. |
+| 10x | about 14.4 h |
+| 20x | about 7.2 h |
+| 50x | about 2.9 h |
 
-ที่ timeScale สูง `Time.deltaTime` ต่อเฟรมใหญ่ขึ้น → การเบรก/เร่งใน `CarAgent` คลาดเคลื่อน
+At high timeScale each frame's `Time.deltaTime` grows, so braking and acceleration in `CarAgent` drift.
 
-**วิธีตรวจ:** รัน scenario เดียวกัน seed เดียวกัน ที่ 1x / 10x / 20x แล้วเทียบ `AvgWaitTime`
-ต่างเกิน ~5% = เร็วเกินไป ให้ลดลง — ทำครั้งเดียวแล้วบันทึกไว้ใส่รายงาน
+**How to check:** run the same scenario on the same seed at 1x / 10x / 20x and compare `AvgWaitTime`. More
+than about 5% apart means it is too fast and should be reduced. Do it once and record the result for the report.
 
-### 8.4 อื่น ๆ
-- ปิด Scene view ใน Unity เหลือแต่ Game view (เร็วขึ้นเยอะ)
-- ตั้งเครื่องไม่ให้ sleep แล้วรันข้ามคืน
-- commit git ก่อนกดรัน
+### 8.4 Other points
+- close the Scene view in Unity and leave only the Game view (much faster)
+- stop the machine sleeping and run overnight
+- commit to git before pressing run
 
 ---
 
-## 9. วิเคราะห์ผล
+## 9. Analysing the results
 
 ```bash
 pip install pandas scipy matplotlib
 cd Analysis
-python analyze_results.py            # อ่านจาก ../SimulationResults อัตโนมัติ
+python analyze_results.py            # reads ../SimulationResults automatically
 ```
 
-ได้ไฟล์ใน `SimulationResults/analysis_output/`:
+Produces, in `SimulationResults/analysis_output/`:
 
-| ไฟล์ | เนื้อหา |
+| File | Contents |
 |---|---|
-| `results_summary.txt` | ตัวเลขทั้งหมด + **ประโยคสำเร็จรูปสำหรับ abstract** |
-| `paired_table.csv` | ตารางรายคู่ Fixed vs Adaptive |
-| `01_overall_comparison.png` | เทียบภาพรวม + boxplot |
-| `02_by_scenario.png` | แยก scenario พร้อมดาวนัยสำคัญ |
-| `03_by_lane.png` | แยกรายเลน (ตรวจว่า Ax/CA ใกล้ 0) |
-| `04_paired_differences.png` | การกระจายผลต่างรายคู่ |
-| `05_throughput.png` | จำนวนรถที่ระบายได้ |
+| `results_summary.txt` | every figure, plus a **ready-made sentence for the abstract** |
+| `paired_table.csv` | the paired Fixed vs Adaptive table |
+| `01_overall_comparison.png` | overall comparison plus boxplot |
+| `02_by_scenario.png` | by scenario, with significance stars |
+| `03_by_lane.png` | by lane (check that Ax and CA are near 0) |
+| `04_paired_differences.png` | distribution of the paired differences |
+| `05_throughput.png` | vehicles cleared |
 
-**สคริปต์ทำให้ครบ:** paired t-test, Wilcoxon (เผื่อข้อมูลไม่ปกติ), Cohen's d, 95% CI, Shapiro-Wilk ตรวจสมมติฐาน, แยกราย scenario และรายเลน
+**The script covers:** paired t-test, Wilcoxon (in case the data are not normal), Cohen's d, 95% CI,
+Shapiro-Wilk for the assumption, and breakdowns by scenario and by lane.
 
-⚠️ **เรื่อง starvation ที่ต้องระวังตอนเขียนรายงาน:**
-`StarvationEvents` ในระบบนี้นับ "จำนวนครั้งที่กลไกกันอดทำงาน" ไม่ใช่ "จำนวนครั้งที่เลนโดนอด"
-ค่ามากกว่า 0 = กลไกทำหน้าที่ของมัน ไม่ใช่ระบบล้มเหลว
-ถ้าจะเคลม *zero starvation* ให้ดูจาก `MaxWaitTime` ว่าไม่มี run ไหนเกิน threshold แทน (สคริปต์รายงานให้แล้ว)
+**A caution about starvation when writing the report:**
+`StarvationEvents` counts "how often the anti-starvation mechanism fired", not "how often a lane was
+starved". Above 0 means the mechanism did its job, not that the system failed.
+To claim *zero starvation*, use `MaxWaitTime` and show that no run exceeded the threshold - the script
+reports that already.
 
 ---
 
-## 10. แก้ปัญหา
+## 10. Troubleshooting
 
-| อาการ | สาเหตุ |
+| Symptom | Cause |
 |---|---|
-| ROI นับรถเป็น 0 ตลอด | Box Collider ไม่ได้ติ๊ก `Is Trigger` / `laneName` ไม่ตรงกันระหว่าง ROI กับ Spawner |
-| รถวิ่งทะลุไม่เลี้ยว | ไม่ได้ใส่ `Path Waypoints` หรือเรียงลำดับผิด |
-| รถวิ่งวนเป็นวงกลม | `Steer Rate` ต่ำเกิน หรือ WP วางไกลจากแนวรถเกินไป |
-| **รถเลนฟรีจอดแช่ไม่ไปไหน** | ใส่ `Stop Line Target` ให้เลน Ax/CA (ห้ามใส่ — ดูข้อ 5) |
-| รถเริ่มเบี่ยงตั้งแต่ spawn | WP1 ของเลนฟรีไม่ได้อยู่ตรงหน้ารถ |
-| ไฟเขียวชนกัน | conflict pair ตกไป — กด `Validate Configuration` |
-| `NullReferenceException` ตอน Play | `Config` ในตัว controller ยังว่าง หรือมีเลนที่ยังไม่ได้ลาก ROI |
-| ไฟค้างเขียวไม่เปลี่ยน | ไม่มีรถในเลนอื่นเลย (rest-in-green = พฤติกรรมที่ถูกต้อง) |
-| Unity ค้างตอนกด Play | (บั๊ก recursion แก้แล้วในโค้ดชุดใหม่) ถ้ายังเจอ เช็คว่ามี `IntersectionConfig` ซ้ำมากกว่า 1 ตัวไหม |
-| pandas อ่าน CSV ไม่ออก | ไฟล์มีหลายสคีมาปนกัน — สคริปต์ข้ามให้เองแล้ว แต่ควรลบไฟล์เก่าทิ้ง |
-| กราฟขึ้นสี่เหลี่ยมแทนตัวอักษร | ข้อความบนกราฟเป็นอังกฤษหมดแล้ว ถ้ายังเจอแปลว่าแก้ข้อความเป็นไทยเอง |
+| the ROI always counts 0 | the Box Collider has no `Is Trigger`, or `laneName` differs between the ROI and the spawner |
+| cars drive through instead of turning | `Path Waypoints` not set, or in the wrong order |
+| cars drive in circles | `Steer Rate` too low, or a waypoint placed too far off the car's line |
+| **free-lane cars sit forever** | a `Stop Line Target` was set on Ax or CA (never do this - see section 5) |
+| cars drift off line at spawn | WP1 on a free lane is not directly ahead of the car |
+| conflicting greens | a conflict pair is missing - run `Validate Configuration` |
+| `NullReferenceException` on Play | `Config` on the controller is empty, or a lane has no ROI assigned |
+| the light stays green and never changes | no vehicles in any other lane (rest-in-green is the correct behaviour) |
+| Unity hangs on Play | the recursion bug, fixed in the new code. If it recurs, check for more than one `IntersectionConfig` |
+| pandas cannot read the CSV | the file mixes schemas - the script skips them, but delete the old file |
+| charts show boxes instead of letters | all chart text is English now; if it recurs, someone changed the text |
 
 ---
 
-## 11. ลำดับงานถัดไป
+## 11. What comes next
 
-1. ✅ โค้ด 4-phase + builder + สคริปต์วิเคราะห์ — เสร็จแล้ว
-2. ⬜ กด `ABAC ▸ Build 4-Phase Scene` แล้วผ่าน checklist ข้อ 7
-3. ⬜ Validate timeScale (ข้อ 8.3) บันทึกผลไว้ใส่รายงาน
-4. ⬜ ลบ CSV เก่า → ปล่อยรัน 270 runs ข้ามคืน
-5. ⬜ `python analyze_results.py` → เอากราฟกับตัวเลขใส่รายงาน
-6. ⬜ (ถ้ามีเวลา) ปิด `Enable Concurrent Phases` รันเทียบ → ได้ ablation study 3 ระบบ
-7. ⬜ Exhibition 25 ก.ย. · Defence 14-16 ต.ค.
+1. Done - the 4-phase code, the builder and the analysis script
+2. To do - run `ABAC > Build 4-Phase Scene` and work through the checklist in section 7
+3. To do - validate timeScale (section 8.3) and record the result for the report
+4. To do - delete the old CSVs, then run 270 runs overnight
+5. To do - `python analyze_results.py` and put the charts and figures into the report
+6. To do, time permitting - turn off `Enable Concurrent Phases` and run a comparison, giving a three-system ablation study
+7. Exhibition 25 Sep - defence 14-16 Oct

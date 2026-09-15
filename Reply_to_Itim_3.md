@@ -1,85 +1,97 @@
-# ตอบ reply_to_badin_3
+# Reply to reply_to_badin_3
 
-ใส่ทั้งหมดที่ใช้ได้ทันทีเข้าโมเดลแล้วครับ เทสผ่านหมด สรุปให้ว่าทำอะไรไปบ้าง
+Everything that could be applied straight away is now in the model and all tests pass. Here is what was done.
 
 ---
 
-## ข้อ 1 — เปลี่ยนจาก 50/50 เป็น 18/82 แล้ว
+## Item 1 - the 50/50 split is now 18/82
 
-แก้ตรง ๆ ในโค้ด: เดิม `aSplit = A * 2f` (แบ่งครึ่ง) → ตอนนี้เป็น
+Changed directly in the code. It used to be `aSplit = A * 2f` (an even split); it is now
 
 ```
-aInner (เลนใน, A)  = A / (1 - 0.18)  = A / 0.82
-aOuter (เลนนอก, A2) = A / 0.18
+aInner (inner lane, A)  = A / (1 - 0.18)  = A / 0.82
+aOuter (outer lane, A2) = A / 0.18
 ```
 
-ผลคือเลนนอกมีรถน้อยกว่าเดิมเยอะ (interval ยาวขึ้น ~5.6 เท่า) ตรงกับตัวเลขที่ back-calculate มา
-ทำเป็นค่าคงที่ `A2_SHARE = 0.18f` ไว้จุดเดียว มี comment อ้างอิงที่มาชัดเจน เปลี่ยนทีเดียวได้ถ้านับจริงแล้วได้ตัวอื่น
+The outer lane now gets far fewer vehicles (its interval is about 5.6 times longer), matching the
+back-calculated figure. It lives in one constant, `A2_SHARE = 0.18f`, with a comment citing where it
+came from, so a single edit updates it if a direct count gives something else.
 
-ยังไม่ได้ทำ sensitivity ที่ 13%/23% เป็นโค้ดจริง (แค่เตรียมโครงไว้ ตัวแปรเดียว) จะรันจริงตอนได้ตัวเลข A/A2 นับแยกจากคลิป
-
----
-
-## ข้อ 2 — CB/CA เช้า = ปิดจริง ใส่แล้ว
-
-เดิม MorningPeak ใช้ `VERY_LOW` (ยังมีรถน้อย ๆ) เปลี่ยนเป็นค่าคงที่ใหม่ `CLOSED` (interval ใหญ่มากพอที่แทบไม่มีรถ
-เกิดขึ้นเลยตลอด run 30 นาที) — เขียน comment กำกับว่ายืนยันจาก รปภ. แล้ว ไม่ใช่สมมติฐาน
-
-รอฟุตเทจเลน C วันจันทร์สำหรับ rate จริงตอนเปิด (เย็น/scenario อื่น)
+The 13% / 23% sensitivity run is not implemented yet - only the structure is in place, behind that one
+variable. It will be run once we have A and A2 counted separately from the clip.
 
 ---
 
-## เลนฉุกเฉิน — implement แล้ว ไม่ใช่แค่เขียนเป็น limitation
+## Item 2 - CB/CA genuinely closed in the morning: applied
 
-เห็นด้วยว่าถ้าปล่อย car-following ล้วน ๆ จะ overstate การบล็อก เลยเพิ่มกลไกจริง:
+MorningPeak used `VERY_LOW` (still a trickle of vehicles). It now uses a new constant, `CLOSED`, whose
+interval is large enough that essentially nothing arrives during a 30-minute run. A comment records
+that this was confirmed by the security staff rather than assumed.
 
-- รถ Ax แต่ละคันตอน spawn มีโอกาส **65%** (ค่ากลางของ 60-70% ที่เสนอมา) ถูก mark ว่า "แซงเลนฉุกเฉินได้"
-- คันที่ mark แล้ว จะ**ไม่นับรถ A2 ที่จอดขวางเป็นตัวบล็อก** แต่ยังชะลอตามรถ Ax คันอื่นข้างหน้าปกติ (คิวของ Ax เอง
-  ยังมีอยู่ ไม่ได้หายไปเลย)
-- สุ่มจาก RNG ของ spawner เอง (คนละตัวกับ Unity Random) เพื่อรักษา reproducibility ที่ seed เดียวกันให้ผล
-  เหมือนกันเป๊ะระหว่าง Fixed/Adaptive — สำคัญกับ paired t-test
-
-ตอนนี้ตั้งไว้ที่ 65% แบบ global (ทุกคัน Ax มีโอกาสเท่ากัน) ถ้ามีข้อมูลจริงว่ามันขึ้นกับอะไร (เวลาในวัน / driver type /
-ความยาวคิว ณ ขณะนั้น) บอกได้ครับ จะทำให้ dynamic ขึ้น ตอนนี้เป็น simplification แบบที่เสนอไว้
-
-**ข้อจำกัดที่บอกตรง ๆ:** ผมตรวจ geometry/physics logic นี้ด้วย automated test ไม่ได้ เพราะ test harness ที่ผมใช้
-(compile-check นอก Unity) เป็น stub ที่ไม่มี physics จริง ต้องรอเปิด Unity จริงแล้วดูด้วยตาว่า Ax คันไหนแซงได้บ้าง
-ตอนรัน T13
+Waiting on Monday's lane C footage for the real rate while it is open (evening and the other scenarios).
 
 ---
 
-## ข้อ 5 — PCU/vehicle mix: มีประโยชน์แต่ยังไม่ได้ wire เข้า Unity
+## The emergency lane - implemented, not just written up as a limitation
 
-ตอนนี้ตัว sim ไม่ได้ distinguish รถยนต์/มอไซค์/รถใหญ่ทางกายภาพเลย (ทุกคันเป็น `CarAgent` เดียวกันหมด สีแยกแค่ตาม
-กลุ่มเลน A/B/C ไม่ใช่ตามประเภทรถ) ตัวเลข PCU ที่ส่งมามีประโยชน์มากสำหรับ**เขียนรายงาน**และคำนวณ capacity แบบ
-ถ่วงน้ำหนักด้วยมือ/Python (analyze_results.py) แต่ยังไม่กระทบพฤติกรรม simulation โดยตรง
+Agreed that pure car-following overstates the blocking, so there is now a real mechanism:
 
-ถ้าอยากให้มอไซค์วิ่งเร็ว/แทรกได้มากกว่า หรือรถใหญ่กินพื้นที่คิวมากกว่า ต้องเพิ่มเป็นฟีเจอร์ใหม่ (ใหญ่พอสมควร) —
-แจ้งได้ว่าอยากให้ทำไหม ตอนนี้ผมมองว่านอก scope ของรอบนี้
+- each Ax vehicle has a **65%** chance at spawn (the midpoint of the 60-70% suggested) of being marked
+  as able to pass along the emergency lane
+- a marked vehicle **does not treat a stopped A2 car as a blocker**, but still follows the Ax vehicles
+  ahead of it normally, so the Ax queue itself does not vanish
+- the draw uses the spawner's own RNG, separate from Unity's, so the same seed reproduces exactly
+  between Fixed and Adaptive - which matters for the paired t-test
 
-แก้ตัวเลข "Ax มอไซค์ 39%" ที่เคยพูดถึงเป็น 28% ตามที่แก้มาแล้ว (เป็นแค่ note ในเอกสาร ไม่ได้อยู่ในโค้ด)
+It is currently a global 65% (every Ax vehicle has the same chance). If there is evidence it depends on
+something - time of day, driver type, queue length at that moment - say so and it can be made dynamic.
+For now it is the simplification that was proposed.
 
----
-
-## ข่าวดี — detector validate แล้ว
-
-98.7% ตรงกับ ground truth เป็นตัวเลขที่ดีมาก แถมรู้แล้วว่า mAP 76% ไม่ได้สะท้อนความแม่นของการนับจริง (คนละ metric)
-เขียนอธิบายต่างนี้ในรายงานได้เลย เดี๋ยวกรรมการถามว่า "mAP ต่ำงี้นับแม่นได้ไง"
-
-รอ bin เพิ่มจากคลิปที่เหลือ — พอมีเยอะขึ้นแล้ว noise ของ A (±28%) ควรลดลง จะ re-run T8/T10 ให้ตรงขึ้น
-
----
-
-## เรื่อง "รัน 3 กรณีเทียบ" (Fixed / Adaptive ตาบอด Ax / Adaptive เห็น Ax)
-
-เห็นด้วยว่าเป็น finding ที่ดี ตอนนี้โมเดลยังเป็นแค่ 2 กรณีแรก (Fixed vs Adaptive-ที่ไม่เห็น Ax เพราะ Ax ไม่มีไฟ)
-กรณีที่ 3 (Adaptive + Ax-aware) ยังไม่ได้ทำ — ต้องป้อน ROI ของ Ax เข้าไปในการตัดสินใจของ AdaptiveController
-เป็นงานเพิ่มที่แยกจากรอบนี้ เก็บไว้เป็นขั้นถัดไปหลังยืนยันว่ากรณีกลางแพ้ Fixed จริงก่อน (ถ้าไม่แพ้ก็ไม่ต้องทำกรณีที่ 3)
+**A limitation, stated plainly:** this geometry and physics logic cannot be checked by automated test,
+because the harness used here (a compile check outside Unity) is a stub with no real physics. It has to
+be watched by eye in Unity while running T13, to see which Ax vehicles actually pass.
 
 ---
 
-## สรุปสถานะตอนนี้
+## Item 5 - PCU and vehicle mix: useful, but not wired into Unity
 
-พร้อมรัน T8 (MorningPeak) ด้วยค่าที่อัปเดตแล้วได้เลย — A/Ax/B/Bx วัดจริง, CB/CA ปิดจริง, shared lane 18/82,
-เลนฉุกเฉิน 65% ยังขาดแค่ arrival rate ของ CB/CA ตอนเปิด (เย็น/บ่าย) กับ phase timing เฟส A/B/Bx เพื่อรัน scenario
-ที่เหลือให้ครบ ไม่ต้องรีบ รอฟุตเทจวันจันทร์ได้เลยครับ
+The simulation does not distinguish cars, motorcycles and heavy vehicles physically at all; every
+vehicle is the same `CarAgent`, and the colours mark lane groups A/B/C, not vehicle types. The PCU
+figures are very useful for **writing the report** and for computing weighted capacity by hand or in
+Python (analyze_results.py), but they do not yet affect simulation behaviour.
+
+Making motorcycles faster or able to filter, or heavy vehicles take more queue space, would be a new
+feature of some size. Say if you want it; for now it seems outside the scope of this round.
+
+The "Ax motorcycles 39%" figure mentioned earlier has been corrected to 28% as advised (it is only a
+note in the document, not in the code).
+
+---
+
+## Good news - the detector is validated
+
+98.7% against ground truth is a very good figure, and it is now clear that the 76% mAP does not reflect
+counting accuracy (a different metric). That distinction can go straight into the report, ready for the
+examiners asking how counting can be accurate with such a low mAP.
+
+Waiting on more bins from the remaining clips. With more data the noise on A (+/-28%) should fall, and
+T8/T10 can be re-run to match more closely.
+
+---
+
+## On running three cases (Fixed / Adaptive blind to Ax / Adaptive aware of Ax)
+
+Agreed that this is a good finding. The model currently covers only the first two cases (Fixed vs
+Adaptive, which cannot see Ax because Ax has no signal). The third case, Adaptive with Ax awareness, is
+not done: it needs the Ax ROI fed into AdaptiveController's decision. That is separate work, kept as the
+next step once the middle case is confirmed to lose to Fixed. If it does not lose, the third case is
+unnecessary.
+
+---
+
+## Where things stand
+
+T8 (MorningPeak) is ready to run with the updated values: A/Ax/B/Bx measured, CB/CA genuinely closed,
+the shared lane at 18/82 and the emergency lane at 65%. What is still missing is the CB/CA arrival rate
+while open (evening and afternoon) and the phase timing for A/B/Bx, to complete the remaining
+scenarios. No hurry - Monday's footage is soon enough.

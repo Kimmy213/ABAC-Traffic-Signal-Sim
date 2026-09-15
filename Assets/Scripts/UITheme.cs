@@ -1,18 +1,18 @@
 using UnityEngine;
 
 /// <summary>
-/// ธีมกลางของ UI ทุกแผงในโปรเจกต์ (IMGUI)
+/// Shared theme for every IMGUI panel in the project.
 ///
-/// ใช้ยังไง: ครอบ OnGUI ของแผงด้วย UITheme.Begin() ... UITheme.End()
-/// แล้ว GUI.Box / GUI.Label / GUI.Button ที่เขียนไว้เดิม "ทุกบรรทัด" จะเปลี่ยนหน้าตาตามธีมทันที
-/// โดยไม่ต้องแก้ call site — เพราะ Begin() สลับ GUI.skin ให้ทั้งชุด แล้ว End() คืนค่าเดิม
+/// How to use it: wrap a panel OnGUI in UITheme.Begin() ... UITheme.End().
+/// Every existing GUI.Box / GUI.Label / GUI.Button line then picks up the theme immediately,
+/// with no change at the call site, because Begin() swaps GUI.skin and End() puts it back.
 ///
-/// เท็กซ์เจอร์ทุกใบสร้างในหน่วยความจำตอนรันครั้งแรก (ไม่มีไฟล์ asset ให้หลุด)
-/// และมีการเช็ค null ทุกครั้ง เผื่อโดนคืนหน่วยความจำตอนสลับ play mode
+/// All textures are built in memory on first use, so no asset files can go missing,
+/// and everything is null-checked in case memory is reclaimed on a play-mode switch.
 /// </summary>
 public static class UITheme
 {
-    // ===================== พาเลตสี =====================
+    // ===================== Palette =====================
     public static readonly Color BgPanel    = new Color(0.086f, 0.094f, 0.118f, 0.960f);
     public static readonly Color BgRaised   = new Color(0.137f, 0.149f, 0.180f, 0.980f);
     public static readonly Color BgSunken   = new Color(0.055f, 0.060f, 0.075f, 0.980f);
@@ -22,26 +22,26 @@ public static class UITheme
     public static readonly Color TextMid    = new Color(0.72f, 0.75f, 0.80f, 1f);
     public static readonly Color TextDim    = new Color(0.50f, 0.54f, 0.60f, 1f);
 
-    public static readonly Color Accent     = new Color(0.31f, 0.60f, 1.00f, 1f);   // ฟ้า — ปุ่มหลัก
+    public static readonly Color Accent     = new Color(0.31f, 0.60f, 1.00f, 1f);   // blue - primary buttons
     public static readonly Color AccentDark = new Color(0.18f, 0.38f, 0.72f, 1f);
 
-    // สีสถานะไฟจราจร — ใช้ชุดเดียวกันทั้งเกมและ UI จะได้ไม่สับสน
+    // Signal state colours - the same set in the scene and the UI, to avoid confusion
     public static readonly Color SigGreen   = new Color(0.24f, 0.80f, 0.42f, 1f);
     public static readonly Color SigYellow  = new Color(0.98f, 0.75f, 0.18f, 1f);
     public static readonly Color SigRed     = new Color(0.93f, 0.33f, 0.31f, 1f);
     public static readonly Color Neutral    = new Color(0.45f, 0.49f, 0.56f, 1f);
 
-    // สีประจำกลุ่มเลน — ให้ตรงกับสีรถในซีน (A=น้ำเงิน B=ส้ม C=เขียว)
+    // Lane group colours - match the car colours in the scene (A=blue B=orange C=green)
     public static readonly Color LaneA      = new Color(0.23f, 0.51f, 0.96f, 1f);
     public static readonly Color LaneB      = new Color(0.96f, 0.62f, 0.07f, 1f);
     public static readonly Color LaneC      = new Color(0.13f, 0.77f, 0.37f, 1f);
 
-    // ===================== ขนาดมาตรฐาน =====================
+    // ===================== Standard sizes =====================
     public const int Pad = 10;
     public const int RowH = 20;
     public const int Radius = 6;
 
-    // ===================== ทรัพยากรภายใน =====================
+    // ===================== Internal resources =====================
     static GUISkin skin;
     static GUISkin prevSkin;
     static Texture2D texPanel, texRaised, texSunken, texAccent, texAccentHover, texWhite, texLine;
@@ -50,7 +50,7 @@ public static class UITheme
 
     static bool Alive(Texture2D t) { return t != null; }
 
-    /// <summary>สร้าง/ซ่อมทรัพยากรของธีม — เรียกซ้ำได้ ไม่เปลืองถ้าของครบแล้ว</summary>
+    /// <summary>Builds or repairs the theme resources - safe to call repeatedly, cheap once built.</summary>
     public static void Ensure()
     {
         if (skin != null && Alive(texPanel) && Alive(texAccent) && Alive(texWhite)) return;
@@ -138,7 +138,7 @@ public static class UITheme
         return s;
     }
 
-    /// <summary>เริ่มวาดด้วยธีมนี้ — ต้องมี End() คู่กันเสมอ</summary>
+    /// <summary>Starts drawing with this theme - must always be paired with End().</summary>
     public static void Begin()
     {
         Ensure();
@@ -151,9 +151,9 @@ public static class UITheme
         GUI.skin = prevSkin;
     }
 
-    // ===================== วิดเจ็ตสำเร็จรูป =====================
+    // ===================== Ready-made widgets =====================
 
-    /// <summary>กล่องแผงพร้อมหัวข้อ — คืนค่า Rect ของ "พื้นที่ข้างใน" ที่เอาไปวางเนื้อหาต่อได้</summary>
+    /// <summary>Panel box with a title - returns the Rect of the inner area to lay content into.</summary>
     public static Rect Panel(Rect r, string title)
     {
         Ensure();
@@ -168,7 +168,7 @@ public static class UITheme
         return inner;
     }
 
-    /// <summary>เส้นคั่นบาง ๆ</summary>
+    /// <summary>Thin separator line</summary>
     public static void Rule(Rect r)
     {
         Ensure();
@@ -177,7 +177,7 @@ public static class UITheme
         GUI.color = old;
     }
 
-    /// <summary>ป้ายสถานะทรงแคปซูล เช่น GREEN / RED / RUNNING</summary>
+    /// <summary>Capsule status badge, e.g. GREEN / RED / RUNNING</summary>
     public static void Pill(Rect r, string text, Color c)
     {
         Ensure();
@@ -189,7 +189,7 @@ public static class UITheme
         GUI.Label(r, text, PillText);
     }
 
-    /// <summary>จุดกลมสีสถานะไฟ</summary>
+    /// <summary>Round signal-state dot</summary>
     public static void Dot(Rect r, Color c)
     {
         Ensure();
@@ -199,7 +199,7 @@ public static class UITheme
         GUI.color = old;
     }
 
-    /// <summary>แถบความคืบหน้า / มิเตอร์ (t = 0..1)</summary>
+    /// <summary>Progress bar / meter (t = 0..1)</summary>
     public static void Bar(Rect r, float t, Color c)
     {
         Ensure();
@@ -218,7 +218,7 @@ public static class UITheme
         GUI.color = old;
     }
 
-    /// <summary>แถวข้อมูล "ชื่อ .......... ค่า" — ใช้ให้ทุกแผงหน้าตาเหมือนกัน</summary>
+    /// <summary>A "name .......... value" row - keeps every panel looking the same</summary>
     public static void Row(Rect r, string key, string val)
     {
         Ensure();
@@ -226,7 +226,7 @@ public static class UITheme
         GUI.Label(new Rect(r.x + r.width * 0.58f, r.y, r.width * 0.42f, r.height), val, Value);
     }
 
-    /// <summary>สีของสถานะไฟจราจร</summary>
+    /// <summary>Colour for a signal state</summary>
     public static Color SignalColor(TrafficLight.LightState s)
     {
         if (s == TrafficLight.LightState.Green)  return SigGreen;
@@ -234,7 +234,7 @@ public static class UITheme
         return SigRed;
     }
 
-    /// <summary>สีประจำเลน — ดูจากตัวอักษรตัวแรกของชื่อเลน</summary>
+    /// <summary>Lane colour, taken from the first letter of the lane name</summary>
     public static Color LaneColor(string lane)
     {
         if (string.IsNullOrEmpty(lane)) return Neutral;
@@ -245,7 +245,7 @@ public static class UITheme
         return Neutral;
     }
 
-    // ===================== สร้างเท็กซ์เจอร์ =====================
+    // ===================== Texture building =====================
 
     static Texture2D Solid(Color c)
     {
@@ -256,7 +256,7 @@ public static class UITheme
         return t;
     }
 
-    /// <summary>สี่เหลี่ยมมุมมน + เส้นขอบ 1px สำหรับใช้เป็นพื้นหลังแบบ 9-slice</summary>
+    /// <summary>Rounded rectangle with a 1px border, for use as a 9-slice background</summary>
     static Texture2D Rounded(int radius, Color fill, Color border)
     {
         int size = radius * 2 + 4;
@@ -270,7 +270,7 @@ public static class UITheme
             for (int x = 0; x < size; x++)
             {
                 float d = CornerDistance(x, y, size, radius);
-                // d < 0 = อยู่ในรูป, ใกล้ 0 = ขอบ  (ไล่ขอบให้เนียนกันหยัก)
+                // d < 0 = inside the shape, near 0 = the edge (feathered to avoid jaggies)
                 float inside = Mathf.Clamp01(0.5f - d);
                 float edge = Mathf.Clamp01(1f - Mathf.Abs(d + 0.5f) * 1.4f);
                 Color c = Color.Lerp(fill, border, edge * border.a);
@@ -283,7 +283,7 @@ public static class UITheme
         return t;
     }
 
-    /// <summary>ระยะจากขอบรูปมุมมน (ลบ = ข้างใน)</summary>
+    /// <summary>Distance from the edge of the rounded rect (negative = inside)</summary>
     static float CornerDistance(int x, int y, int size, int radius)
     {
         float cx = Mathf.Min(x + 0.5f, size - x - 0.5f);

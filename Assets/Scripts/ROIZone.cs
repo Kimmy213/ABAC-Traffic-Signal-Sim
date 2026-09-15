@@ -8,17 +8,17 @@ public class ROIZone : MonoBehaviour
         carsInZone.Clear();
     }
     [Header("Lane Identity")]
-    [Tooltip("ชื่อเลนหลักของ ROI นี้ (ใช้แสดงผลและเป็นชื่อที่ IntersectionConfig อ้างถึง)")]
+    [Tooltip("Primary lane name for this ROI (used for display and referenced by IntersectionConfig)")]
     public string laneName = "A";
 
-    [Tooltip("เลนอื่นที่ใช้ ROI ตัวเดียวกันนี้ — สำหรับกรณีที่หลาย movement อยู่ใน 'เลนกายภาพเดียวกัน'\n\n" +
-             "ใช้กับเลนนอกฝั่งขาตะวันออก: A2 (วิ่งตรง) กับ Ax (เลี้ยวเข้ามอ) อยู่เลนเดียวกันจริง ๆ\n" +
-             "กล้อง/เครื่องตรวจจับตัวจริงแยกไม่ออกว่าคันไหนจะตรงคันไหนจะเลี้ยว จึงต้องเป็น ROI เดียว\n" +
-             "GetVehicleCount() จึงคืน 'จำนวนรถในเลนนอกทั้งหมด' = สิ่งที่ detector จริงเห็น\n\n" +
-             "⚠️ สถิติเวลารอยังแยกราย movement ได้ปกติ เพราะ LogVehicle ใช้ car.assignedLane ไม่ใช่ laneName")]
+    [Tooltip("Other lanes sharing this same ROI - for when several movements occupy one physical lane.\n\n" +
+             "Used on the outer eastbound lane: A2 (through) and Ax (turning into the campus) really do share it.\n" +
+             "A real camera cannot tell which vehicle will go straight and which will turn, so it has to be one ROI.\n" +
+             "GetVehicleCount() therefore returns the total in the outer lane = what a real detector sees.\n\n" +
+             "Wait-time statistics still separate by movement, because LogVehicle uses car.assignedLane, not laneName")]
     public string[] alsoCountLanes = new string[0];
 
-    /// <summary>เลนนี้ถูกนับใน ROI ตัวนี้ไหม</summary>
+    /// <summary>Is this lane counted by this ROI?</summary>
     public bool Accepts(string lane)
     {
         if (lane == laneName) return true;
@@ -29,7 +29,7 @@ public class ROIZone : MonoBehaviour
 
     [Header("Debug Display")]
     public bool showDebugGUI = true;
-    [Tooltip("ลำดับช่องที่จะแสดงบนจอ (0 = บนสุด) ตั้งไม่ให้ซ้ำกันระหว่างเลน")]
+    [Tooltip("Display order on screen (0 = top). Keep these unique across lanes.")]
     public int guiSlot = 0;
 
     private Dictionary<CarAgent, float> carsInZone = new Dictionary<CarAgent, float>();
@@ -38,7 +38,7 @@ public class ROIZone : MonoBehaviour
     {
         CarAgent car = other.GetComponent<CarAgent>();
         if (car == null) return;
-        if (!Accepts(car.assignedLane)) return;   // ไม่ใช่เลนที่ ROI นี้รับผิดชอบ ไม่นับ
+        if (!Accepts(car.assignedLane)) return;   // not a lane this ROI covers
 
         if (!carsInZone.ContainsKey(car))
         {
@@ -55,13 +55,13 @@ public class ROIZone : MonoBehaviour
 
         if (carsInZone.ContainsKey(car))
         {
-            // ===== รายงานเวลาที่รอ ก่อนจะลบออกจาก dictionary =====
+            // ===== Report the wait before removing it from the dictionary =====
             float waitTime = Time.time - carsInZone[car];
             if (DataLogger.Instance != null)
             {
-                // ⚠️ ใช้ชื่อเลนของ "ตัวรถ" ไม่ใช่ของ ROI — ROI เดียวอาจครอบหลาย movement (A2 + Ax)
-                //    ถ้าใช้ laneName สถิติเวลารอของ Ax กับ A2 จะปนกันแล้วแยกไม่ออกอีกเลย
-                //    ซึ่งเวลารอของ Ax คือตัวชี้วัดหลักของงานทั้งหมด
+                // Use the car's own lane name, not the ROI's - one ROI can cover several movements (A2 + Ax).
+                //    Using laneName would mix the Ax and A2 wait statistics beyond separating again,
+                //    and the Ax wait is the headline measure of the whole project.
                 DataLogger.Instance.LogVehicle(car.assignedLane, waitTime, car.driverType.ToString());
             }
 
@@ -71,7 +71,7 @@ public class ROIZone : MonoBehaviour
         }
     }
 
-    /// <summary>ชื่อที่แสดงบนจอ — ถ้า ROI นี้ครอบหลายเลนก็โชว์ให้ครบ เช่น "Ax+A2"</summary>
+    /// <summary>Display name - shows every lane if this ROI covers more than one, e.g. "Ax+A2"</summary>
     public string DisplayName
     {
         get
@@ -81,28 +81,28 @@ public class ROIZone : MonoBehaviour
         }
     }
 
-    /// <summary>จำนวนรถทั้งหมดใน ROI = สิ่งที่ detector จริงเห็น (แยก movement ไม่ออก)</summary>
+    /// <summary>Total vehicles in the ROI = what a real detector sees (it cannot separate movements)</summary>
     public int GetVehicleCount()
     {
         return carsInZone.Count;
     }
 
     // ===================================================================================
-    //  API ที่ controller ใช้ได้ vs. API ที่เป็น ground truth ของ sim เท่านั้น
+    //  APIs the controller may use vs. APIs that are sim-only ground truth
     // ===================================================================================
-    //  ⭐ GetSampledCount()  — ตัวเลขเดียวที่กล้อง YOLO ที่ "ไม่มี tracker" ผลิตได้จริง
-    //     คือ "นับหัวรถในกรอบ ณ วินาทีนี้" ไม่ต้องรู้ว่าคันไหนเป็นคันไหน ไม่ต้องจับคู่ข้ามเฟรม
-    //     AdaptiveController ต้องเรียกเฉพาะตัวนี้เท่านั้น
+    //  GetSampledCount() - the only number a YOLO camera with no tracker can actually produce:
+    //     "count the vehicles in frame this second", with no identity and no frame-to-frame matching.
+    //     AdaptiveController must call only this one.
     //
     //  🛑 GetOldestArrivalTime / GetLongestWaitTime / GetCarsInZone
-    //     ต้องมี ByteTrack/DeepSORT ต่อท้าย YOLO ถึงจะทำได้ = ต้นทุน hardware ที่รับไม่ไหว
-    //     ยังเก็บไว้เพราะ DataLogger ใช้วัด "ผลการทดลอง" ซึ่งเป็นตัวแปรตาม ไม่ใช่ input ของ controller
-    //     มีเทส (NoTrackerTest) สแกนว่า AdaptiveController ไม่แตะสามตัวนี้
+    //     Those need ByteTrack/DeepSORT behind YOLO, which is hardware we cannot afford.
+    //     They stay because DataLogger uses them to measure results, which are outputs, not controller inputs.
+    //     A test (NoTrackerTest) scans that AdaptiveController never touches those three.
     // ===================================================================================
 
     /// <summary>
-    /// snapshot count — จำนวนรถที่มองเห็น ณ วินาทีนี้ ไม่มี ID ไม่มีประวัติ
-    /// นี่คือ "ทุกสิ่งที่ controller มองเห็น" หลังตัด tracker ออก
+    /// Snapshot count - vehicles visible this second, no IDs and no history.
+    /// This is everything the controller can see once the tracker is removed.
     /// </summary>
     public int GetSampledCount()
     {
@@ -111,14 +111,14 @@ public class ROIZone : MonoBehaviour
     }
 
     /// <summary>
-    /// -1 = ปิด (ใช้จำนวนรถจริง) · >= 0 = บังคับให้ snapshot คืนค่านี้
-    /// สำหรับเทสอัตโนมัติและการไล่สถานการณ์ด้วยมือใน Editor เท่านั้น
-    /// ⚠️ ต้องเป็น -1 เสมอตอนรัน batch — batch จะไม่แตะฟิลด์นี้
+    /// -1 = off (use the real vehicle count) - >= 0 = force the snapshot to return this value.
+    /// For automated tests and manual scenario walkthroughs in the Editor only.
+    /// Must always be -1 during a batch; a batch never touches this field.
     /// </summary>
-    [Tooltip("เทสเท่านั้น: -1 = ปิด, >= 0 = บังคับค่าที่ snapshot มองเห็น")]
+    [Tooltip("Tests only: -1 = off, >= 0 = force the value the snapshot sees")]
     public int simulatedCountOverride = -1;
 
-    /// <summary>จำนวนรถเฉพาะ movement เดียว — ใช้ตรวจสอบ/ดีบักเท่านั้น detector จริงทำแบบนี้ไม่ได้</summary>
+    /// <summary>Count for one movement only - for inspection and debugging; a real detector cannot do this.</summary>
     public int GetVehicleCount(string lane)
     {
         int n = 0;
@@ -126,7 +126,7 @@ public class ROIZone : MonoBehaviour
         return n;
     }
 
-    /// <summary>🛑 ต้องมี tracker — ground truth ของ sim เท่านั้น ห้าม controller เรียก</summary>
+    /// <summary>Requires a tracker - sim-only ground truth, never for the controller.</summary>
     public float GetOldestArrivalTime()
     {
         if (carsInZone.Count == 0) return Mathf.Infinity;
@@ -139,7 +139,7 @@ public class ROIZone : MonoBehaviour
         return oldest;
     }
 
-    /// <summary>🛑 ต้องมี tracker — ground truth ของ sim เท่านั้น ห้าม controller เรียก</summary>
+    /// <summary>Requires a tracker - sim-only ground truth, never for the controller.</summary>
     public float GetLongestWaitTime()
     {
         float oldest = GetOldestArrivalTime();
@@ -147,7 +147,7 @@ public class ROIZone : MonoBehaviour
         return Time.time - oldest;
     }
 
-    /// <summary>🛑 ต้องมี tracker — ground truth ของ sim เท่านั้น ห้าม controller เรียก</summary>
+    /// <summary>Requires a tracker - sim-only ground truth, never for the controller.</summary>
     public List<CarAgent> GetCarsInZone()
     {
         return new List<CarAgent>(carsInZone.Keys);
@@ -172,9 +172,9 @@ public class ROIZone : MonoBehaviour
 #endif
     }
 
-    // จำนวนรถที่ถือว่า "เต็มเลน" ใช้เทียบเป็นสัดส่วนของแถบมิเตอร์เท่านั้น
+    // Vehicle count treated as "lane full" - only used to scale the meter bar
     const int BarFullCars = 15;
-    // เวลารอที่ถือว่า "นานเกินรับได้" — เกินนี้แถบเป็นสีแดง (อ้างจาก maxWaitTime ของ Adaptive = 45s)
+    // Wait treated as "longer than acceptable" - above this the bar turns red (from Adaptive maxWaitTime = 45 s)
     const float WaitCritical = 45f;
 
     void OnGUI()
@@ -191,14 +191,14 @@ public class ROIZone : MonoBehaviour
         float wait = GetLongestWaitTime();
         Color laneCol = UITheme.LaneColor(laneName);
 
-        // จุดสีประจำกลุ่มเลน + ชื่อเลน
+        // Lane-group colour dot and lane name
         UITheme.Dot(new Rect(card.x + 10f, card.y + 11f, 9f, 9f), laneCol);
         GUI.Label(new Rect(card.x + 25f, card.y + 6f, 120f, 18f), DisplayName, UITheme.Title);
 
-        // ตัวเลขคันรถชิดขวา อ่านง่ายสุดในจอเดียว
+        // Vehicle count right-aligned, easiest to read in a single glance
         GUI.Label(new Rect(card.x + W - 96f, card.y + 6f, 88f, 18f), cars.ToString(), UITheme.Value);
 
-        // แถบมิเตอร์ความหนาแน่น + เวลารอ
+        // Density meter bar and wait time
         UITheme.Bar(new Rect(card.x + 10f, card.y + 30f, W - 96f, 6f),
                     cars / (float)BarFullCars, laneCol);
 

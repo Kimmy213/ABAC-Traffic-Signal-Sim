@@ -1,232 +1,248 @@
-# คำถามถึง Itim — ข้อมูลที่โมดูล Simulation ยังขาด
+# Questions for Itim - data the simulation module still lacks
 
-**จาก:** Badin (Simulation module)
-**ถึง:** Itim (Field measurement module)
-**วันที่:** 23 ส.ค. 2026
-**อ้างอิง:** `SP1_HANDOFF_for_Badin.md`
-
----
-
-## สรุปสั้น ๆ ก่อน
-
-handoff ที่ส่งมาปิดช่องว่างไปเยอะมาก — ตอนนี้เลน A / Ax / B / Bx มีค่าจริงครบทั้ง morning และ midday แล้ว
-สิ่งที่เหลือคือ **6 ช่องที่ยังว่าง** ซึ่งบล็อกไม่ให้รันชุดทดลองเต็มได้ ผมเรียงตามความสำคัญไว้ให้แล้ว
-
-ถ้าได้แค่ **P0 สองข้อแรก** ผมรันได้ทันที ที่เหลือเป็นการเพิ่มคุณภาพ
+**From:** Badin (simulation module)
+**To:** Itim (field measurement module)
+**Date:** 23 Aug 2026
+**Reference:** `SP1_HANDOFF_for_Badin.md`
 
 ---
 
-## P0 — ต้องมี ไม่งั้นรันไม่ได้
+## Short version first
 
-### 1. สัดส่วนรถตรงที่เข้าเลนใน vs เลนนอก (เลนที่แชร์กับ Ax)
+The handoff closed a great many gaps. Lanes A / Ax / B / Bx now have real values for both morning and
+midday. What remains is **six empty cells** that block running the full experiment. They are ordered by
+importance below.
 
-**ทำไมต้องมี:** นี่คือตัวแปรที่กำหนดผลหลักของทั้งงานเลย
+With just the **two P0 items** I can run immediately; the rest raise the quality.
 
-ตอนนี้ผมกำลังจะเพิ่ม movement ใหม่ชื่อ `A2` = รถที่จะไป**ตรง** แต่ดันไปเข้า**เลนนอก** (เลนเดียวกับ Ax)
-รถ `A2` จะหยุดที่ไฟแดง → รถ `Ax` ที่มาทีหลังถูกขังอยู่ข้างหลัง ทั้งที่ Ax ไม่ต้องรอไฟเลย
+---
 
-ถ้าสัดส่วนนี้ผิด ตัวเลข delay ของ Ax จะผิดไปทั้งหมด
+## P0 - required, or nothing can run
 
-**สิ่งที่อยากได้:**
+### 1. The share of through traffic using the inner lane vs the outer lane (the one shared with Ax)
 
-| ต้องการ | หน่วย |
+**Why it matters:** this single variable determines the headline result of the whole project.
+
+I am about to add a new movement, `A2`: vehicles going **straight** that nonetheless use the **outer**
+lane, the same one as Ax. An `A2` vehicle stops at the red, so the `Ax` vehicles arriving behind it are
+trapped, even though Ax never has to wait for a signal at all.
+
+Get this share wrong and every Ax delay figure is wrong.
+
+**What I need:**
+
+| Wanted | Unit |
 |---|---|
-| รถ**ตรง**ที่เข้าเลนใน (เลนติดเกาะกลาง) | คัน หรือ % |
-| รถ**ตรง**ที่เข้าเลนนอก (เลนแชร์กับคนเลี้ยวเข้ามอ) | คัน หรือ % |
+| **Through** vehicles using the inner lane (next to the median) | count or % |
+| **Through** vehicles using the outer lane (shared with those turning into the campus) | count or % |
 
-**วิธีวัดที่เร็วที่สุด:** เปิดคลิปโดรน เลือกช่วง 5 นาทีเดียวที่เคยนับมาแล้ว
-นับเฉพาะรถที่**วิ่งตรงผ่านสี่แยกไป** แล้วดูว่าตอนเข้าคิวมันอยู่เลนไหน แค่นั้น ไม่ต้องนับใหม่ทั้งหมด
+**Fastest way to measure it:** open the drone clip, take the same five-minute window already counted, and
+for vehicles that **go straight through the junction**, note which lane they queued in. Nothing has to be
+recounted from scratch.
 
-ถ้าเลนนอกกว้างพอให้สองแถวขนานกัน (มอไซค์แทรกซ้าย) บอกด้วยครับ ผมต้องโมเดลต่างออกไป
+Tell me too if the outer lane is wide enough for two parallel rows (motorcycles filtering on the left),
+because that needs a different model.
 
-**ถ้าไม่มีเวลา:** ผมจะใช้ 50/50 ไปก่อน แล้วทำ sensitivity ที่ 30/70 กับ 70/30
-แต่ในรายงานต้องเขียนว่า "assumed" ซึ่งอ่อนกว่า "measured" เยอะ
+**If there is no time:** I will use 50/50 for now and run a sensitivity at 30/70 and 70/30, but the report
+then has to say "assumed", which is much weaker than "measured".
 
 ---
 
-### 2. Arrival rate ของ CB และ CA
+### 2. Arrival rates for CB and CA
 
-**ทำไมต้องมี:** เป็น 2 ใน 6 movement ของโมเดล ตอนนี้ยังเป็นค่าเดาล้วน ๆ
+**Why it matters:** they are 2 of the model's 6 movements and are currently pure guesswork.
 
-- `CB` = รถออกจากมหาลัย **เลี้ยวไปทางทิศ B** (ต้องรอไฟ — มีเฟสของตัวเอง 31 วิ)
-- `CA` = รถออกจากมหาลัย **เลี้ยวไปทางทิศ A** (ไหลอิสระ ไม่ต้องรอไฟ)
+- `CB` = leaving the campus **turning towards B** (signalised, with its own 31 s phase)
+- `CA` = leaving the campus **turning towards A** (free-flowing, no signal)
 
-**สิ่งที่อยากได้:** แค่ headway เฉลี่ยเป็นวินาที เหมือนรูปแบบที่ส่งมารอบที่แล้วเป๊ะ — **ยังรอของ Monday อยู่**
-(Itim บอกจะถ่ายเลน C midday + evening เพิ่ม ดู reply_to_badin_4.md ข้อ 6)
+**What I need:** just the mean headway in seconds, in exactly the format you sent last time. **Still
+waiting on Monday's data** (you said you would film lane C at midday and in the evening - see
+reply_to_badin_4.md item 6).
 
-| | เช้า | กลางวัน | เย็น |
+| | morning | midday | evening |
 |---|---|---|---|
-| CB (วินาที/คัน) | ปิด (ยืนยันแล้ว) | ? | ? |
-| CA (วินาที/คัน) | ปิด (ยืนยันแล้ว) | ? | ? |
+| CB (s/veh) | closed (confirmed) | ? | ? |
+| CA (s/veh) | closed (confirmed) | ? | ? |
 
-**✅ อัปเดต (reply_to_badin_4.md):** เลน C ขาออกปิดจริง แต่**แค่ 08:30–09:00 (~15-30 นาที)** ไม่ใช่ทั้งเช้าอย่างที่
-บอกไว้รอบก่อน — พอดีตรงกับช่วง peak จริงที่เพิ่งวัดได้ (08:15-09:00) เลยยังใช้ MorningPeak scenario แบบ CB≈CA≈0
-ได้เหมือนเดิม แต่ถ้าจะจำลองช่วงเช้าทั้งช่วง (ก่อน/หลัง 08:30-09:00) ต้องเปิด CB/CA ตามค่าที่ยังไม่มี (ของ Monday)
+**Update (reply_to_badin_4.md):** the lane C exit really does close, but **only 08:30-09:00, about 15-30
+minutes**, not all morning as previously stated. That happens to coincide exactly with the measured peak
+(08:15-09:00), so the MorningPeak scenario can still use CB and CA at roughly 0. Simulating the wider
+morning (before and after 08:30-09:00) would need CB/CA opened at rates we do not have yet - Monday's data.
 
 ---
 
-## P1 — มีแล้วรายงานแข็งขึ้นมาก
+## P1 - would make the report much stronger
 
-### 3. เวลาสัญญาณไฟของเฟสที่เหลือ ✅ ตอบแล้ว (reply_to_badin_4.md, 24 ส.ค.)
+### 3. Signal timing for the remaining phases - answered (reply_to_badin_4.md, 24 Aug)
 
-วัดมาแล้ว: **CB = เขียว 40 วิ / แดง 70 วิ → รอบ ~115 วิ** ← อันนี้ดีมาก ผมแก้โมเดลตามเลย
+Measured: **CB = 40 s green / 70 s red, so a cycle of about 115 s.** Very useful; the model was updated
+accordingly.
 
-ที่ยังขาดคือเฟสอื่นในรอบเดียวกัน — ถ้ายืนอยู่จุดเดิมแล้วจับเวลาต่ออีก 3–4 รอบ จะได้ครบ:
+What is still missing is the other phases in the same cycle. Standing in the same spot for another three
+or four cycles would complete it:
 
-| เฟส | เขียวกี่วิ | เหลืองกี่วิ | แดงหมดทุกทางกี่วิ |
+| Phase | green (s) | yellow (s) | all-red (s) |
 |---|---|---|---|
-| ทิศ A (จากหน้ามหาลัยไปทางตะวันออก) | | | |
-| ทิศ B (ตรงข้าม A) | | | |
-| Bx (เลี้ยวขวาจากทิศ B) | | | |
-| CB (ออกจากมหาลัย) | **40** | | |
-| **รวมทั้งรอบ** | | | **~115?** |
+| Direction A (from the campus front, heading east) | | | |
+| Direction B (opposite A) | | | |
+| Bx (right turn from B) | | | |
+| CB (leaving the campus) | **40** | | |
+| **Whole cycle** | | | **~115?** |
 
-**เรื่องที่น่าสนใจ:** โมเดลผมเดา Bx ไว้ที่ **30 วิ** โดยไม่รู้อะไรเลย
-Itim อนุมานจากพฤติกรรมคิวได้ **~30 วิ** เหมือนกัน — ตรงกันโดยบังเอิญ
-ถ้าวัดจริงแล้วยังได้ ~30 อีก อันนี้เขียนลงรายงานได้เลยว่าเป็น independent validation ของ baseline
+**An interesting detail:** my model guessed Bx at **30 s** with nothing to go on, and you inferred **about
+30 s** from queue behaviour. They agree by coincidence. If a direct measurement gives about 30 again, that
+goes into the report as independent validation of the baseline.
 
 ---
 
-### 3.1 อัปเดต 24 ส.ค. — ผมลองจับเวลาเองที่หน้างาน ตัวเลขไม่ตรงกับที่ Itim วัดไว้ ช่วยเช็กให้หน่อย
+### 3.1 Update 24 Aug - I timed the signal myself and my numbers differ from yours; please check
 
-ผม (Badin/Kimmy) ไปยืนจับเวลาไฟจริงมาเอง เพราะจอนับถอยหลังมีให้ดูแค่เลน C เลนเดียว (A/B/Bx ไม่มีจอ
-ต้องเดา/จับเวลาด้วยมือ) ได้ตัวเลขนี้:
+I (Badin/Kimmy) went and timed the real signal, because only lane C has a countdown display (A, B and Bx
+have none, so they have to be timed by hand). I got:
 
-| เลน | เขียว | เหลือง | แดง |
+| Lane | green | yellow | red |
 |---|---|---|---|
-| C (=CB) | **31 วิ** | **3 วิ** | **75 วิ** (รวมรอบ C = 109 วิ) |
-| A | ~**50 วิ** | | |
-| B | ~**90-95 วิ** (ค่อนข้างไม่มั่นใจ ไม่มีจอนับ) | | |
-| Bx | ~**20 วิ** | | |
+| C (=CB) | **31 s** | **3 s** | **75 s** (C cycle total 109 s) |
+| A | about **50 s** | | |
+| B | about **90-95 s** (not at all confident, no display) | | |
+| Bx | about **20 s** | | |
 
-เช็กความสอดคล้องในตัวเองแล้วเจอจุดที่ขัดกัน: ตอนที่ C เหลือแดงอีก 25 วิ (ใกล้จะเขียว) ผมนับว่า B ยังเหลือเขียวอีก
-ตั้ง 45 วิ — ถ้าจริง แปลว่า B กับ C จะเขียวทับกันประมาณ 20 วิ ซึ่งไม่ควรเกิดขึ้น (B กับ CB ตัดกระแสกัน) ผมเชื่อว่า
-ตัวเลข B น่าจะนับผิดเพราะไม่มีจอนับถอยหลังให้ดู ไม่ใช่ว่าไฟจริงทับกัน แต่อยากให้ยืนยัน
+Checking it against itself, something does not add up: when C had 25 s of red left (nearly green), I
+counted B as still having 45 s of green. If true, B and C would overlap green by about 20 s, which must not
+happen (B and CB cross each other). I believe my B figure is simply miscounted for lack of a display,
+rather than the real signal overlapping - but please confirm.
 
-ที่น่าเป็นห่วงกว่าคือ **เลน C เอง (มีจอนับถอยหลังจริง เชื่อถือได้สุด) ผมนับเขียวได้ 31 วิ แต่ที่ Itim วัดจากคลิปโดรน
-รอบก่อนได้ 40 วิ** ต่างกันเกือบ 25% — เหลือง 3 วิ ตรงกันเป๊ะ (ดีใจที่วิธีนับผมยังพอเชื่อถือได้) แต่เขียวกับรอบรวม
-ต่างกันชัดเจน (109 วิ ของผม vs ~115 วิ ที่วัดไว้)
+More worrying: **lane C itself, which has a real countdown display and should be the most reliable, I
+counted at 31 s green, while your earlier drone measurement gave 40 s** - nearly 25% apart. The yellow at
+3 s matches exactly (reassuring about my counting), but the green and the cycle clearly differ (my 109 s
+against the measured 115 s).
 
-**✅ ตอบแล้ว (24 ส.ค.):** Itim วิเคราะห์วิดีโอที่ผมถ่ายมาซ้ำ ได้ A=40s / B=65s / Bx=20-23s / CB=31s เขียว,
-CB แดง=73.5s (วัดซ้ำ 2 รอบเท่ากันเป๊ะ → ยืนยันเป็น fixed-time จริง ไม่ใช่ actuated) ใกล้เคียงกับที่ผมจับเองมาก
-แก้ `FixedController.cs` เป็น 40/21/31 (รวม intergreen = 107s) แล้ว — เช็คคืนด้วยเลขแดงที่คำนวณได้ (107-31-3=73s)
-ตรงกับที่วัดจากวิดีโอ 73.5s คลาดแค่ 0.5s ปิดประเด็นนี้ได้
-
----
-
-### 4. ยืนยันเรื่องไฟกระพริบเหลือง ✅ ตอบแล้ว (reply_to_badin_4.md, 24 ส.ค.)
-
-**ยืนยันแล้ว:** ไฟทำงานจริงแค่ 05:00-09:00 และ 15:00-18:00 (รวม 7 ชม./24 ชม. = 29% ของวัน) นอกนั้น
-กระพริบเหลืองทั้งหมด ตรงกับทุก session ที่ถ่ายมา 4/4 คลิป — เรื่องนี้ใหญ่จริงตามที่กังวลไว้ กระทบ scope ของ
-MiddayNormal (T10) โดยตรงเพราะคลิปที่ใช้วัด arrival rate (11:37-12:00) อยู่ในช่วงกระพริบพอดี ต้องตัดสินใจว่าจะ
-รายงาน T10 แบบไหน (ดูที่ผมถามคนใช้งานเพิ่มด้านล่างของแชทหลัก) ไม่ต้องรอ Itim ตอบเพิ่มในข้อนี้แล้ว
+**Answered (24 Aug):** Itim re-analysed the video I shot and got A=40s / B=65s / Bx=20-23s / CB=31s green,
+with CB red = 73.5s (two passes giving identical figures, confirming it is genuinely fixed-time, not
+actuated). Very close to my own timing. `FixedController.cs` is now 40/21/31 (107 s including intergreen),
+cross-checked against the computed red (107-31-3 = 73 s) against the 73.5 s measured on video - 0.5 s apart.
+Closed.
 
 ---
 
-### 5. สัดส่วนประเภทยานพาหนะต่อเลน (สำหรับ PCU)
+### 4. Confirming the flashing amber - answered (reply_to_badin_4.md, 24 Aug)
 
-มีแล้ว: **Ax มีมอไซค์ 39%**
+**Confirmed:** the signal only operates 05:00-09:00 and 15:00-18:00, 7 hours out of 24, or 29% of the day.
+The rest of the time it flashes amber, consistent across all 4 clips filmed. This is as significant as
+feared. It directly affects the scope of MiddayNormal (T10), because the clip used to measure its arrival
+rates (11:37-12:00) falls squarely in the flashing period. We have to decide how to report T10 (see the
+question to the user further down the main chat). No further answer needed from Itim on this.
 
-ที่ขาดคือเลนอื่น โมเดลถ่วงน้ำหนักด้วย PCU (รถยนต์ 1.0 / มอไซค์ 0.33 / รถใหญ่ 2.0)
-ถ้าใช้ 39% กับทุกเลนเหมือนกันหมด ค่าความจุจะเพี้ยน
+---
 
-| เลน | รถยนต์ % | มอไซค์ % | รถใหญ่ (กระบะใหญ่/บัส/บรรทุก) % |
+### 5. Vehicle type mix per lane (for PCU)
+
+Known so far: **Ax is 39% motorcycles.**
+
+The other lanes are missing. The model weights by PCU (car 1.0 / motorcycle 0.33 / heavy 2.0), and applying
+39% to every lane would distort capacity.
+
+| Lane | car % | motorcycle % | heavy (large pickup / bus / lorry) % |
 |---|---|---|---|
-| A (ตรง) | | | |
-| Ax (เลี้ยวเข้ามอ) | | **39** | |
-| B (ตรง) | | | |
-| Bx (เลี้ยวขวา) | | | |
+| A (through) | | | |
+| Ax (into the campus) | | **39** | |
+| B (through) | | | |
+| Bx (right turn) | | | |
 | CB | | | |
 | CA | | | |
 
-ไม่ต้องแม่นระดับ 1% ครับ ระดับ ±5% พอ
+It does not need to be accurate to 1%; +/-5% is fine.
 
 ---
 
-## P2 — ถ้ามีเวลาเหลือ
+## P2 - if there is time left over
 
-### 6. ยามโบกรถ — เปลี่ยนเป็นตัวเลขได้ไหม
+### 6. The security staff directing traffic - can it become a number?
 
-handoff เขียนว่ายามโบกให้คนเลี้ยวซ้าย **40–60% ของเวลา** ซึ่งกว้างเกินกว่าจะเอาไปโมเดลได้
+The handoff says they wave left-turning traffic through **40-60% of the time**, which is too wide a range
+to model.
 
-ถ้าจับเวลาได้แค่ 10 นาที ก็พอจะได้ตัวเลขที่ใช้ได้แล้ว:
+Even ten minutes with a stopwatch would give something usable:
 
-- ยามโบก**กี่ครั้ง**ใน 10 นาที
-- โบกทีนึงปล่อยไป**กี่คัน**
-- โบกตอนไฟทิศนั้นเป็นสีอะไร (แดง / เขียวอยู่แล้ว)
+- **how many times** they wave in 10 minutes
+- **how many vehicles** go through each time
+- what colour that direction's signal is when they wave (red, or already green)
 
-ถ้ามีตัวเลขนี้ ผมโมเดลเป็น "ความจุพิเศษที่แทรกเข้ามาเป็นช่วง ๆ" ได้
-ถ้าไม่มี ผมจะเขียนเป็น limitation ว่า "ไม่ได้จำลองการโบกด้วยมือของเจ้าหน้าที่"
-
----
-
-### 7. Saturation headway จริง (discharge rate)
-
-ตอนนี้โมเดลใช้ค่ามาตรฐาน HCM คือ **2.0 วิ/คัน** และ startup lost time **2.0 วิ**
-ซึ่งเป็นค่าของอเมริกา — สภาพจราจรไทยที่มีมอไซค์แทรกมักจะ**ต่ำกว่า**นี้
-
-**วิธีวัด (ใช้เวลา ~10 นาที):**
-ตอนไฟเปลี่ยนเป็นเขียวและมีคิวยาว จับเวลาว่ารถคันที่ 4, 5, 6, 7, 8 ข้ามเส้นหยุดตอนวินาทีที่เท่าไหร่
-เอาเวลาห่างระหว่างคันมาเฉลี่ย = saturation headway
-
-ทำแค่ 3–4 รอบไฟก็พอ ทำที่เลนไหนก็ได้ที่คิวยาวสุด (น่าจะเป็น Bx)
-
-**ทำไมถึงคุ้ม:** ตัวเลขนี้กระทบ**ทุกผลลัพธ์**ในรายงาน ถ้าของจริงคือ 1.6 วิ ไม่ใช่ 2.0 วิ
-แปลว่าความจุจริงสูงกว่าที่โมเดลคิดอยู่ 25% — และเป็นตัวเลขที่กรรมการชอบถามว่า "เอามาจากไหน"
+With those I can model it as intermittent extra capacity. Without them I will write it up as a limitation:
+"manual direction by staff is not modelled".
 
 ---
 
-### 8. ระยะทางกายภาพ 2–3 ค่า
+### 7. The real saturation headway (discharge rate)
 
-มีแล้ว: **Bx ถึงสี่แยกถัดไป ~78 m จอดได้ ~12 คัน**
+The model currently uses the HCM standard of **2.0 s/veh** with **2.0 s** startup lost time. Those are
+American figures; Thai traffic with motorcycles filtering is usually **lower**.
 
-ที่อยากได้เพิ่ม (จาก Google Maps ก็ได้ ไม่ต้องไปวัดจริง):
+**How to measure it (about 10 minutes):** when the light turns green on a long queue, note the second at
+which vehicles 4, 5, 6, 7 and 8 cross the stop line. The mean gap between them is the saturation headway.
 
-- ความยาวเลนแชร์ A/Ax — จากเส้นหยุดย้อนไปถึงจุดที่รถเริ่มแยกเลน (**ค่านี้กำหนดว่า Ax ถูกขังได้กี่คัน**)
-- ความกว้างเลน (~3.0 m หรือ ~3.5 m)
-- ระยะจากประตูมหาลัยถึงเส้นหยุดของ CB
+Three or four cycles is enough, on whichever lane has the longest queue - probably Bx.
+
+**Why it is worth it:** this number affects **every result** in the report. If the real figure is 1.6 s
+rather than 2.0 s, actual capacity is 25% higher than the model assumes - and it is exactly the sort of
+number examiners ask the source of.
 
 ---
 
-## สิ่งที่ผมยืนยันกลับไป (ตอบคำถามหัวข้อ 11 ใน handoff)
+### 8. Two or three physical distances
 
-| คำถาม | คำตอบ |
+Known so far: **Bx to the next junction is about 78 m, holding about 12 vehicles.**
+
+What else would help (Google Maps is fine; no need to measure on site):
+
+- the length of the shared A/Ax lane, from the stop line back to where vehicles begin to separate (**this sets how many Ax vehicles can be trapped**)
+- lane width (about 3.0 m or about 3.5 m)
+- the distance from the campus gate to the CB stop line
+
+---
+
+## What I can confirm back (answering section 11 of the handoff)
+
+| Question | Answer |
 |---|---|
-| **1.** Ax ถูกบล็อกโดยคิวของ A ได้ไหม | **ได้** — ระบบตรวจรถคันหน้าใช้ระยะห่างจริง ไม่ได้ดูว่าอยู่เลนไหน เอารถสองขบวนวางพิกัดเดียวกันก็บล็อกกันเอง กำลังจะทำ ขาดแค่ข้อ 1 ข้างบน |
-| **2.** shared lane เป็น limitation ไหม | **ไม่ต้องเป็น** ทำได้จริง |
-| **3.** เปิด/ปิดเส้นทางรายซานาริโอ | **ได้** ตั้ง rate = 0 = ปิด ใช้กับเลน C ช่วง 08:30-09:00 (แก้แล้วจาก "ทั้งเช้า") — ซอยป้ากุ๊กเปิด **15:30-17:00** (แก้แล้วจาก 16:00) ยังไม่ได้ wire เข้า scenario ไหน (นอกขอบเขตตอนนี้) |
-| **4.** green split ที่โมเดลใช้อยู่ | ✅ อัปเดตแล้ว (24 ส.ค.) รอบ **107 วิ**: A+A2+B 40 / B+Bx 21 / CB 31 / เหลือง+แดงหมด 15 — ตามค่าที่ Kimmy จับเวลาจริง + Itim ยืนยันจากวิดีโอ |
-| **5.** จำลองสี่แยกถัดไปไหม | **ไม่** นอกขอบเขต แต่จะเขียน caveat ว่าโมเดลสมมติ Bx ระบายได้อิสระ ของจริงมี spillback → **ตัวเลข delay ของ Bx ที่ได้เป็นค่าต่ำสุด ของจริงแย่กว่านี้** |
+| **1.** Can Ax be blocked by the A queue? | **Yes.** Car detection uses real distance, not lane membership, so putting two streams at the same coordinates makes them block each other. It is being built; only item 1 above is missing. |
+| **2.** Is the shared lane a limitation? | **It need not be.** It can be modelled properly. |
+| **3.** Opening and closing routes per scenario | **Yes.** Setting the rate to 0 closes a route, used for lane C during 08:30-09:00 (corrected from "all morning"). Soi Pa Kook opens **15:30-17:00** (corrected from 16:00) and is not yet wired into any scenario (out of scope for now). |
+| **4.** The green split the model uses | Updated 24 Aug to a **107 s** cycle: A+A2+B 40 / B+Bx 21 / CB 31 / 15 s of yellow and all-red, from Kimmy's field timing confirmed by Itim on video. |
+| **5.** Do we model the next junction? | **No**, out of scope, but the report will carry a caveat that the model assumes Bx discharges freely while the real one suffers spillback, so **the Bx delay figures are a lower bound; reality is worse**. |
 
 ---
 
-## ข้อค้นพบจากข้อมูลของ Itim ที่ผมคำนวณต่อ
+## What I derived from Itim's data
 
-**เลนแชร์ไม่ได้เต็ม — แต่มันตัน**
+**The shared lane is not full - it is blocked.**
 
-| | A (เลนแชร์) | Ax | รวม | v/c |
+| | A (shared lane) | Ax | total | v/c |
 |---|---|---|---|---|
-| เช้า | 96 คัน/ชม. | 712 คัน/ชม. | 808 | **0.56** |
-| กลางวัน | 62 คัน/ชม. | 372 คัน/ชม. | 434 | **0.30** |
+| morning | 96 veh/hr | 712 veh/hr | 808 | **0.56** |
+| midday | 62 veh/hr | 372 veh/hr | 434 | **0.30** |
 
-v/c ต่ำทั้งคู่ = **ถนนรับไหวสบาย ๆ** ปัญหาคือรถ A ไม่กี่คันที่จอดรอไฟแดง ไปขวางรถ Ax หลายร้อยคันที่ไม่ต้องรอไฟเลย
+Both v/c figures are low, so **the road copes easily**. The problem is that a handful of A vehicles waiting
+at a red obstruct hundreds of Ax vehicles that have no reason to wait at all.
 
-- ตอนเช้า โอกาสที่ Ax วิ่งมาแล้วเจอ A จอดขวาง = **86%**
-- เฉลี่ยมี Ax ติดค้างอยู่หลังคิว **~12.8 คัน**
+- in the morning, the chance an Ax vehicle arrives to find an A vehicle blocking it is **86%**
+- on average about **12.8** Ax vehicles are trapped behind the queue
 
-**นี่คือปัญหา blocking ไม่ใช่ปัญหา capacity** — และเป็นเหตุผลว่าทำไมข้อ 1 ถึงสำคัญที่สุดในเอกสารนี้
+**This is a blocking problem, not a capacity problem** - and it is why item 1 is the most important thing
+in this document.
 
-**Bx คือคอขวดจริง**
+**Bx is the real bottleneck.**
 
-รถ Bx มาต่อรอบ = **12.0 คัน** = ที่จอดถึงสี่แยกถัดไปพอดี (12 คัน / 78 m) → **v/c = 1.00 ไม่มีเผื่อเลย**
-ขณะที่ A ต้องการเขียวจริง ๆ แค่ ~11 วิ แต่ได้ไป 45 วิ
+Bx receives **12.0 vehicles per cycle**, exactly the storage available to the next junction (12 vehicles in
+78 m), so **v/c = 1.00 with no margin at all**. Meanwhile A genuinely needs about 11 s of green and gets 45.
 
-**ย้ายเขียวจาก A ไป Bx แค่ ~5 วิ → v/c ของ Bx ตกมาที่ 0.86** ← นี่คือข้อเสนอเชิงนโยบายของโปรเจกต์
-และเป็นสิ่งที่ adaptive controller **ควรจะคิดออกเอง** โดยไม่ต้องมีใครบอก ถ้ามันทำได้ = พิสูจน์ว่า adaptive ชนะ
+**Moving about 5 s of green from A to Bx brings Bx's v/c down to 0.86.** That is the project's policy
+proposal, and it is something the adaptive controller **ought to work out for itself** without being told.
+If it does, that proves adaptive wins.
 
 ---
 
-## ติดต่อกลับ
+## Reply
 
-ตอบมาข้อไหนก่อนก็ได้ครับ ไม่ต้องรอครบ
-ได้ **ข้อ 1 กับ 2** เมื่อไหร่ ผมรันชุดทดลองเต็มได้ทันที
+Answer whichever item you like first; there is no need to wait for a complete set.
+**Items 1 and 2** are all I need to run the full experiment.

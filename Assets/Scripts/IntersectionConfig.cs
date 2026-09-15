@@ -2,59 +2,59 @@ using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
-/// ข้อมูลของ "ทางเข้า/ทิศทางการเคลื่อนที่" หนึ่งเส้นทาง (approach movement)
-/// เช่น A = ตรงฝั่งตะวันตก, Bx = เลี้ยวขวาเข้า ABAC, CA = ออกจาก ABAC เลี้ยวซ้ายฟรี
+/// One approach movement into the junction,
+/// e.g. A = westbound through, Bx = right turn into ABAC, CA = free left turn out of ABAC.
 /// </summary>
 [System.Serializable]
 public class ApproachLane
 {
-    [Tooltip("ชื่อเลน ต้องตรงกับ laneName ใน CarSpawner และ ROIZone เป๊ะ ๆ")]
+    [Tooltip("Lane name - must match laneName in CarSpawner and ROIZone exactly")]
     public string laneName = "A";
 
-    [Tooltip("true = มีไฟจราจรคุม (A, B, Bx, CB) / false = ไหลอิสระไม่มีไฟ (Ax, CA)")]
+    [Tooltip("true = controlled by a signal (A, B, Bx, CB) / false = free-flowing (Ax, CA)")]
     public bool isSignalized = true;
 
-    [Tooltip("ปล่อยว่างได้ถ้า isSignalized = false")]
+    [Tooltip("May be left empty when isSignalized = false")]
     public TrafficLight trafficLight;
 
-    [Tooltip("ROI Zone ของเลนนี้ (ใช้ทั้งนับ demand และวัด waiting time)")]
+    [Tooltip("ROI zone for this lane (used both to count demand and to measure waiting time)")]
     public ROIZone roi;
 
-    [Tooltip("Spawner ของเลนนี้")]
+    [Tooltip("Spawner for this lane")]
     public CarSpawner spawner;
 
-    [Tooltip("คำอธิบายสำหรับใส่ในรายงาน (ไม่มีผลกับ logic)")]
+    [Tooltip("Description for the report (no effect on logic)")]
     public string movementDescription = "";
 }
 
 /// <summary>
-/// คู่เลนที่ "ห้ามเขียวพร้อมกัน" เพราะเส้นทางตัดกัน
+/// A pair of lanes that must never be green together, because their paths cross
 /// </summary>
 [System.Serializable]
 public class ConflictPair
 {
     public string laneA;
     public string laneB;
-    [Tooltip("เหตุผลของ conflict — ใช้อ้างอิงในรายงาน")]
+    [Tooltip("Reason for the conflict - cited in the report")]
     public string reason = "";
 }
 
 /// <summary>
-/// ศูนย์กลางข้อมูลของแยก: รายชื่อเลนทั้งหมด + ตารางความขัดแย้ง (conflict matrix)
-/// ทั้ง FixedController, AdaptiveController และ ScenarioManager อ่านจากที่นี่ที่เดียว
-/// ทำให้เพิ่ม/ลดเลนได้โดยไม่ต้องแก้โค้ด controller
+/// Central data for the junction: every lane plus the conflict matrix.
+/// FixedController, AdaptiveController and ScenarioManager all read from here and nowhere else,
+/// so lanes can be added or removed without touching any controller code.
 /// </summary>
 public class IntersectionConfig : MonoBehaviour
 {
-    [Header("เลนทั้งหมดในแยก (signalized + free-flow)")]
+    [Header("Every lane in the junction (signalised + free-flow)")]
     public List<ApproachLane> lanes = new List<ApproachLane>();
 
-    [Header("คู่เลนที่ห้ามเขียวพร้อมกัน")]
+    [Header("Lane pairs that must not be green together")]
     public List<ConflictPair> conflicts = new List<ConflictPair>();
 
-    // ===== ข้อมูลที่ build ขึ้นมาตอน runtime =====
-    private bool[,] conflictMatrix;     // index ในปริภูมิ "signal index" (เฉพาะเลนที่มีไฟ)
-    private List<int> signalToLane = new List<int>();   // signalIndex -> index ใน lanes
+    // ===== Data built at runtime =====
+    private bool[,] conflictMatrix;     // indexed in signal-index space (signalised lanes only)
+    private List<int> signalToLane = new List<int>();   // signalIndex -> index into lanes
     private bool isBuilt = false;
 
     void Awake()
@@ -63,8 +63,8 @@ public class IntersectionConfig : MonoBehaviour
     }
 
     /// <summary>
-    /// เรียกได้ปลอดภัยหลายครั้ง — Controller ควรเรียกอันนี้ใน Awake() ของตัวเอง
-    /// เพราะลำดับ Awake() ระหว่าง MonoBehaviour ไม่การันตี
+    /// Safe to call repeatedly - a controller should call this from its own Awake(),
+    /// because Awake() ordering between MonoBehaviours is not guaranteed.
     /// </summary>
     public void EnsureBuilt()
     {
@@ -84,11 +84,11 @@ public class IntersectionConfig : MonoBehaviour
         int n = signalToLane.Count;
         conflictMatrix = new bool[n, n];
 
-        // ต้องตั้ง isBuilt ตรงนี้ ก่อนวน conflicts
-        // เพราะข้างล่างเรียก SignalIndexOf() ซึ่งเรียก EnsureBuilt() -> Build() วนไม่จบ
+        // isBuilt must be set here, before the conflict loop, because the code below calls
+        // SignalIndexOf(), which calls EnsureBuilt() -> Build() and would never terminate.
         isBuilt = true;
 
-        // เลนเดียวกันไม่ conflict กับตัวเอง, ที่เหลือ default = ไม่ conflict
+        // A lane never conflicts with itself; everything else defaults to no conflict
         foreach (ConflictPair pair in conflicts)
         {
             if (pair == null) continue;
@@ -98,7 +98,7 @@ public class IntersectionConfig : MonoBehaviour
             if (a == -1 || b == -1)
             {
                 Debug.LogWarning($"[IntersectionConfig] Conflict pair ({pair.laneA}, {pair.laneB}) " +
-                                 $"อ้างถึงเลนที่ไม่มีอยู่ หรือเลนนั้นไม่ใช่ signalized — ข้ามไป");
+                                 $"refers to a lane that does not exist or is not signalised - skipping");
                 continue;
             }
             if (a == b) continue;
@@ -110,7 +110,7 @@ public class IntersectionConfig : MonoBehaviour
 
     // ===================== Accessors =====================
 
-    /// <summary>จำนวนเลนที่มีไฟจราจรคุม (ABAC = 4: A, B, Bx, CB)</summary>
+    /// <summary>Number of signal-controlled lanes (ABAC = 4: A, B, Bx, CB)</summary>
     public int SignalCount
     {
         get { EnsureBuilt(); return signalToLane.Count; }
@@ -126,7 +126,7 @@ public class IntersectionConfig : MonoBehaviour
     public TrafficLight SignalLight(int signalIndex) => GetSignalLane(signalIndex).trafficLight;
     public ROIZone SignalRoi(int signalIndex) => GetSignalLane(signalIndex).roi;
 
-    /// <summary>แปลงชื่อเลน -> signal index (คืน -1 ถ้าไม่เจอ หรือเลนนั้นไม่มีไฟ)</summary>
+    /// <summary>Lane name -> signal index (-1 if not found, or the lane has no signal)</summary>
     public int SignalIndexOf(string laneName)
     {
         EnsureBuilt();
@@ -139,7 +139,7 @@ public class IntersectionConfig : MonoBehaviour
         return -1;
     }
 
-    /// <summary>หาเลน (รวม free-flow) จากชื่อ</summary>
+    /// <summary>Finds a lane by name, including free-flow lanes</summary>
     public ApproachLane FindLane(string laneName)
     {
         foreach (ApproachLane lane in lanes)
@@ -149,7 +149,7 @@ public class IntersectionConfig : MonoBehaviour
         return null;
     }
 
-    /// <summary>true = เลนสองเส้นนี้เขียวพร้อมกันไม่ได้</summary>
+    /// <summary>true = these two lanes cannot be green at the same time</summary>
     public bool AreConflicting(int signalA, int signalB)
     {
         EnsureBuilt();
@@ -159,7 +159,7 @@ public class IntersectionConfig : MonoBehaviour
         return conflictMatrix[signalA, signalB];
     }
 
-    /// <summary>true = เลน candidate เขียวพร้อมกับทุกเลนในกลุ่มได้</summary>
+    /// <summary>true = the candidate lane can be green alongside every lane in the group</summary>
     public bool IsCompatibleWithGroup(int candidate, List<int> group)
     {
         foreach (int member in group)
@@ -177,25 +177,25 @@ public class IntersectionConfig : MonoBehaviour
         return string.Join("+", names);
     }
 
-    // ===================== Lane control (ใช้ร่วมกันระหว่าง ScenarioManager กับ Control Panel) =====================
+    // ===================== Lane control (shared by ScenarioManager and the Control Panel) =====================
 
     /// <summary>
-    /// ล้างสถานะทุกเลนแล้วตั้ง seed ประจำเลน + เริ่ม spawn ใหม่
-    /// seed แต่ละเลนคำนวณจาก runSeed + ชื่อเลน → Fixed กับ Adaptive ที่ seed เดียวกัน
-    /// จะเจอลำดับรถเหมือนกันเป๊ะ (สำคัญกับ paired t-test)
+    /// Clears every lane, sets its per-lane seed and restarts spawning.
+    /// Each lane seed comes from runSeed plus the lane name, so Fixed and Adaptive on the same
+    /// seed see exactly the same vehicle sequence - essential for the paired t-test.
     /// </summary>
     public void ResetAllLanes(int runSeed)
     {
-        // ⚠️ ต้องแยกเป็น 2 รอบ ห้ามรวมเป็นลูปเดียว
+        // These must be two separate passes and must not be merged into one loop.
         //
-        // เหตุผล: RestartSpawning() เรียก StartCoroutine ซึ่งรัน body ทันทีจนถึง yield แรก
-        // ในโหมด Scripted burst ที่ atTime = 0 จะ "spawn รถคันแรกทันที" ตรงนั้นเลย
-        // แล้วรถคันนั้นจะไป RegisterCar กับไฟ
-        // ถ้าเราเรียก ClearRegistrations() ทีหลังในลูปเดียวกัน = ลบทะเบียนรถคันนั้นทิ้ง
-        // ผลคือรถคันแรกของทุกเลนไม่เคยได้รับแจ้งว่าไฟเขียว → จอดแช่ตลอดกาล
-        // และรถที่ตามมาข้างหลังก็ติดตามไปด้วยทั้งแถว
+        // Reason: RestartSpawning() calls StartCoroutine, which runs the body immediately up to
+        // the first yield. In Scripted mode a burst at atTime = 0 spawns its first car right there,
+        // and that car registers itself with the signal.
+        // Calling ClearRegistrations() later in the same loop would wipe that registration, so the
+        // first car in every lane would never hear that the light went green and would sit forever,
+        // with the whole queue behind it stuck too.
 
-        // ---- รอบที่ 1: ล้างของเก่าให้หมดก่อน ----
+        // ---- pass 1: clear everything first ----
         foreach (ApproachLane lane in lanes)
         {
             if (lane == null) continue;
@@ -204,7 +204,7 @@ public class IntersectionConfig : MonoBehaviour
             if (lane.trafficLight != null) lane.trafficLight.ClearRegistrations();
         }
 
-        // ---- รอบที่ 2: ตั้ง seed แล้วค่อยเริ่มปล่อยรถ ----
+        // ---- pass 2: set the seed, then start releasing cars ----
         foreach (ApproachLane lane in lanes)
         {
             if (lane == null || lane.spawner == null) continue;
@@ -214,7 +214,7 @@ public class IntersectionConfig : MonoBehaviour
         }
     }
 
-    /// <summary>ล้างรถออกจากถนนทั้งหมด โดยไม่เริ่ม spawn ใหม่</summary>
+    /// <summary>Clears every vehicle from the road without restarting spawning</summary>
     public void ClearAllCars()
     {
         foreach (ApproachLane lane in lanes)
@@ -234,7 +234,7 @@ public class IntersectionConfig : MonoBehaviour
         return total;
     }
 
-    /// <summary>จำนวนรถที่ยังวิ่งอยู่บนถนนทั้งแยก</summary>
+    /// <summary>Vehicles still on the road across the whole junction</summary>
     public int GetActiveCarCount()
     {
         int total = 0;
@@ -243,7 +243,7 @@ public class IntersectionConfig : MonoBehaviour
         return total;
     }
 
-    /// <summary>true = ทุกเลนอยู่ในโหมด Scripted และปล่อยรถครบตามตารางหมดแล้ว</summary>
+    /// <summary>true = every lane is Scripted and has released its whole schedule</summary>
     public bool AllScheduledSpawned()
     {
         bool anyScripted = false;
@@ -263,7 +263,7 @@ public class IntersectionConfig : MonoBehaviour
             if (lane != null && lane.spawner != null) lane.spawner.ResetSpawnCount();
     }
 
-    /// <summary>ตั้งค่าทุกเลนตาม TestCase ที่เลือก (รองรับทั้ง Poisson และ Scripted)</summary>
+    /// <summary>Applies the selected TestCase to every lane (both Poisson and Scripted)</summary>
     public void ApplyTestCase(TestCase testCase, float poissonFallback = 7f)
     {
         if (testCase == null) return;
@@ -284,7 +284,7 @@ public class IntersectionConfig : MonoBehaviour
         }
     }
 
-    /// <summary>เปิด/ปิด debug GUI ของ ROI ทุกเลนพร้อมกัน</summary>
+    /// <summary>Shows or hides the ROI debug GUI on every lane at once</summary>
     public void SetRoiDebugGUI(bool on)
     {
         foreach (ApproachLane lane in lanes)
@@ -292,8 +292,8 @@ public class IntersectionConfig : MonoBehaviour
     }
 
     /// <summary>
-    /// FNV-1a — ต้องใช้แทน string.GetHashCode() เพราะของ .NET ไม่การันตีว่าเท่ากันข้าม session
-    /// ถ้า hash ไม่คงที่ seed จะไม่ reproducible และ paired comparison จะพัง
+    /// FNV-1a - needed instead of string.GetHashCode(), which .NET does not guarantee to be
+    /// stable across sessions. An unstable hash makes seeds irreproducible and breaks the pairing.
     /// </summary>
     public static int StableHash(string text)
     {
@@ -320,88 +320,88 @@ public class IntersectionConfig : MonoBehaviour
 
         foreach (ApproachLane lane in lanes)
         {
-            if (lane == null) { Debug.LogError("[IntersectionConfig] มีช่องเลนว่าง (null) ใน list"); problems++; continue; }
+            if (lane == null) { Debug.LogError("[IntersectionConfig] there is an empty (null) lane slot in the list"); problems++; continue; }
 
             if (string.IsNullOrEmpty(lane.laneName))
             {
-                Debug.LogError("[IntersectionConfig] มีเลนที่ยังไม่ได้ตั้งชื่อ"); problems++;
+                Debug.LogError("[IntersectionConfig] a lane has no name"); problems++;
             }
             if (lane.isSignalized && lane.trafficLight == null)
             {
-                Debug.LogError($"[IntersectionConfig] เลน {lane.laneName} ตั้งเป็น signalized แต่ยังไม่ได้ลาก TrafficLight"); problems++;
+                Debug.LogError($"[IntersectionConfig] lane {lane.laneName} is signalised but has no TrafficLight assigned"); problems++;
             }
             if (lane.roi == null)
             {
-                Debug.LogError($"[IntersectionConfig] เลน {lane.laneName} ยังไม่ได้ลาก ROIZone"); problems++;
+                Debug.LogError($"[IntersectionConfig] lane {lane.laneName} has no ROIZone assigned"); problems++;
             }
             else if (!lane.roi.Accepts(lane.laneName))
             {
-                // ⚠️ ใช้ Accepts() ไม่ใช่เทียบ laneName ตรง ๆ เพราะ ROI ตัวเดียวรับผิดชอบได้หลายเลน
-                //    (A2 กับ Ax อยู่เลนกายภาพเดียวกัน จึงใช้ ROI_Ax ร่วมกัน — ดู ROIZone.alsoCountLanes)
-                Debug.LogError($"[IntersectionConfig] ROIZone '{lane.roi.name}' ของเลน {lane.laneName} ไม่ได้นับเลนนี้ " +
-                               $"(laneName='{lane.roi.laneName}', alsoCountLanes ไม่มี '{lane.laneName}') → demand จะเป็น 0 ตลอด"); problems++;
+                // Uses Accepts() rather than comparing laneName directly, because one ROI can cover
+                //    several lanes (A2 and Ax share a physical lane, so they share ROI_Ax - see ROIZone.alsoCountLanes)
+                Debug.LogError($"[IntersectionConfig] ROIZone '{lane.roi.name}' on lane {lane.laneName} does not count this lane " +
+                               $"(laneName='{lane.roi.laneName}', alsoCountLanes has no '{lane.laneName}') - demand will always read 0"); problems++;
             }
             if (lane.spawner == null)
             {
-                Debug.LogWarning($"[IntersectionConfig] เลน {lane.laneName} ยังไม่ได้ลาก CarSpawner (จะไม่มีรถในเลนนี้)");
+                Debug.LogWarning($"[IntersectionConfig] lane {lane.laneName} has no CarSpawner assigned (no vehicles will appear in it)");
             }
             else if (lane.spawner.laneName != lane.laneName)
             {
-                Debug.LogError($"[IntersectionConfig] CarSpawner ของเลน {lane.laneName} ตั้ง laneName เป็น '{lane.spawner.laneName}' ไม่ตรงกัน"); problems++;
+                Debug.LogError($"[IntersectionConfig] the CarSpawner on lane {lane.laneName} has laneName '{lane.spawner.laneName}', which does not match"); problems++;
             }
         }
 
-        // เช็คชื่อซ้ำ
+        // Check for duplicate names
         HashSet<string> seen = new HashSet<string>();
         foreach (ApproachLane lane in lanes)
         {
             if (lane == null) continue;
             if (!seen.Add(lane.laneName))
             {
-                Debug.LogError($"[IntersectionConfig] ชื่อเลน '{lane.laneName}' ซ้ำกัน"); problems++;
+                Debug.LogError($"[IntersectionConfig] duplicate lane name '{lane.laneName}'"); problems++;
             }
         }
 
         if (problems == 0)
-            Debug.Log($"[IntersectionConfig] ✓ ผ่านทั้งหมด — {lanes.Count} เลน ({SignalCount} เลนมีไฟ), {conflicts.Count} conflict pairs");
+            Debug.Log($"[IntersectionConfig] all checks passed - {lanes.Count} lanes ({SignalCount} signalised), {conflicts.Count} conflict pairs");
         else
-            Debug.LogError($"[IntersectionConfig] พบปัญหา {problems} จุด แก้ก่อนกด Play");
+            Debug.LogError($"[IntersectionConfig] found {problems} problem(s) - fix them before pressing Play");
     }
 
     /// <summary>
-    /// เติมโครงสร้างเลน + conflict pair ของแยก ABAC ให้อัตโนมัติ
-    /// (ยังต้องลาก TrafficLight / ROIZone / CarSpawner ใส่เองใน Inspector)
+    /// Fills in the ABAC lane structure and conflict pairs automatically.
+    /// (TrafficLight / ROIZone / CarSpawner still have to be assigned in the Inspector.)
     /// </summary>
-    [ContextMenu("Load ABAC T-Junction Preset (โครงสร้างเปล่า)")]
+    [ContextMenu("Load ABAC T-Junction Preset (empty structure)")]
     public void LoadABACPreset()
     {
         lanes = new List<ApproachLane>
         {
-            new ApproachLane { laneName = "A",  isSignalized = true,  movementDescription = "ถนนบางนา-ตราด ทิศทางไปตะวันออก (+X) วิ่งตรงผ่านแยก — เลนใน" },
-            new ApproachLane { laneName = "A2", isSignalized = true,  movementDescription = "รถตรงที่ใช้เลนนอกร่วมกับ Ax (shared lane) — ใช้ไฟดวงเดียวกับ A เป๊ะ ๆ และ ROI ตัวเดียวกับ Ax เป๊ะ ๆ (อ้างถึง component เดียวกันทั้งคู่ ไม่ใช่แค่ตั้งค่าให้เหมือนกัน) จึงเขียว/แดงพร้อม A เสมอ และถูกนับรวมกับ Ax เหมือนที่ detector จริงเห็น — สัดส่วนรถตรงเข้าเลนนอก 5.4% จากการนับตรง (SP1_HANDOFF_v2 §5 — แทนที่ค่า back-calculate 18% เดิมแล้ว)" },
-            new ApproachLane { laneName = "Ax", isSignalized = false, movementDescription = "แยกจาก A เลี้ยวซ้ายเข้า ABAC (ABAC อยู่ทางซ้ายของ A) — ไม่มีเฟส/เวลาเขียวของตัวเอง แต่ไม่ใช่เลนฟรี 100%: (1) วิ่งเลนเดียวกับ A2 จึงถูก A2 ที่จอดรอไฟแดงบล็อก (2) เลี้ยวเข้ามอไม่ได้ตอน Bx เขียว เพราะ Bx ก็เลี้ยวเข้ามอเหมือนกัน — ทำผ่าน CarSpawner.lightIsInverted ผูกกับไฟ Bx แบบกลับด้าน ไม่ได้อยู่ใน conflict matrix เพราะไม่ใช่เลนที่มีไฟ" },
-            new ApproachLane { laneName = "B",  isSignalized = true,  movementDescription = "ถนนบางนา-ตราด ทิศทางไปตะวันตก (-X) วิ่งตรงผ่านแยก" },
-            new ApproachLane { laneName = "Bx", isSignalized = true,  movementDescription = "แยกจาก B เลี้ยวขวาเข้า ABAC — ตัดกระแส A (ABAC อยู่ทางขวาของ B)" },
-            new ApproachLane { laneName = "CB", isSignalized = true,  movementDescription = "ออกจาก ABAC เลี้ยวขวาไปทางตะวันตก merge เข้าเลน B — ต้องข้ามเลน A ก่อน" },
-            new ApproachLane { laneName = "CA", isSignalized = false, movementDescription = "ออกจาก ABAC เลี้ยวซ้ายไปทางตะวันออก merge เข้าเลน A — ฟรี ไม่ต้องข้ามเลนใคร" },
+            new ApproachLane { laneName = "A",  isSignalized = true,  movementDescription = "Bangna-Trad Road eastbound (+X), straight through the junction - inner lane" },
+            new ApproachLane { laneName = "A2", isSignalized = true,  movementDescription = "Through traffic using the outer lane shared with Ax. Uses exactly the same signal head as A and exactly the same ROI as Ax - the same components, not merely identical settings - so it is always green and red with A, and is counted together with Ax just as a real detector would. 5.4% of through traffic uses the outer lane, from a direct count (SP1_HANDOFF_v2 section 5, replacing the earlier back-calculated 18%)." },
+            new ApproachLane { laneName = "Ax", isSignalized = false, movementDescription = "Splits from A and turns left into ABAC (ABAC is on A's left). It has no phase or green time of its own, but it is not fully free either: (1) it shares a lane with A2 and is blocked by A2 waiting at the red, (2) it cannot turn in while Bx is green, because Bx turns into the campus as well. Handled through CarSpawner.lightIsInverted tied to the Bx signal, not through the conflict matrix, since it is not a signalised lane." },
+            new ApproachLane { laneName = "B",  isSignalized = true,  movementDescription = "Bangna-Trad Road westbound (-X), straight through the junction" },
+            new ApproachLane { laneName = "Bx", isSignalized = true,  movementDescription = "Splits from B and turns right into ABAC - crosses the A stream (ABAC is on B's right)" },
+            new ApproachLane { laneName = "CB", isSignalized = true,  movementDescription = "Leaves ABAC turning right to the west, merging into lane B - must cross lane A first" },
+            new ApproachLane { laneName = "CA", isSignalized = false, movementDescription = "Leaves ABAC turning left to the east, merging into lane A - free, crosses no one" },
         };
 
         conflicts = new List<ConflictPair>
         {
-            new ConflictPair { laneA = "A",  laneB = "Bx", reason = "Bx เลี้ยวขวาเข้า ABAC ต้องตัดผ่านกระแสรถตรงของเลน A" },
-            new ConflictPair { laneA = "A",  laneB = "CB", reason = "CB ต้องข้ามช่องจราจรของเลน A ก่อนไป merge เลน B" },
-            new ConflictPair { laneA = "A2", laneB = "Bx", reason = "A2 ใช้ไฟเดียวกับ A — เลนนอกก็ถูก Bx ตัดผ่านเหมือนกับเลนใน" },
-            new ConflictPair { laneA = "A2", laneB = "CB", reason = "A2 ใช้ไฟเดียวกับ A — CB ต้องข้ามเลนนอกก่อนไป merge เลน B เหมือนกับที่ต้องข้ามเลนใน" },
-            new ConflictPair { laneA = "B",  laneB = "CB", reason = "CB merge เข้าช่องจราจรที่ B กำลังวิ่งผ่านพอดี" },
-            new ConflictPair { laneA = "Bx", laneB = "CB", reason = "เส้นทางตัดกันกลางแยก (ตามที่ระบุใน scope)" },
+            new ConflictPair { laneA = "A",  laneB = "Bx", reason = "Bx turns right into ABAC across the A through movement" },
+            new ConflictPair { laneA = "A",  laneB = "CB", reason = "CB has to cross lane A before merging into B" },
+            new ConflictPair { laneA = "A2", laneB = "Bx", reason = "A2 shares A's signal - the outer lane is cut by Bx just as the inner one is" },
+            new ConflictPair { laneA = "A2", laneB = "CB", reason = "A2 shares A's signal - CB crosses the outer lane as well as the inner one" },
+            new ConflictPair { laneA = "B",  laneB = "CB", reason = "CB merges into the very lane B is running through" },
+            new ConflictPair { laneA = "Bx", laneB = "CB", reason = "their paths cross in the middle of the junction (as stated in the scope)" },
         };
 
-        // หมายเหตุ: A กับ B ไม่ conflict (กระแสตรงสวนทางกัน) -> เขียวพร้อมกันได้
-        //          B กับ Bx ไม่ conflict (มาจากขาเดียวกัน)   -> เขียวพร้อมกันได้
-        //          A กับ A2 ไม่ conflict โดยตั้งใจ (ไม่มี ConflictPair) -> ต้องเขียวพร้อมกันได้เสมอ
-        //          เพราะจริง ๆ แล้วมันคือไฟดวงเดียวกัน ถ้าใครไป conflict กับ A ก็ต้อง conflict กับ A2 ด้วยเสมอ
+        // Note: A and B do not conflict (opposing through movements) -> they can be green together.
+        //       B and Bx do not conflict (same approach)            -> they can be green together.
+        //       A and A2 deliberately have no ConflictPair          -> they must always be green together,
+        //       because they are physically the same signal head. Anything conflicting with A must conflict with A2.
 
         Build();
-        Debug.Log("[IntersectionConfig] โหลด preset แยก ABAC แล้ว — เหลือลาก TrafficLight / ROIZone / CarSpawner ใส่แต่ละเลน");
+        Debug.Log("[IntersectionConfig] loaded the ABAC preset - now assign TrafficLight / ROIZone / CarSpawner on each lane");
     }
 }

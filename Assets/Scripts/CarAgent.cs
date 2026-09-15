@@ -15,122 +15,122 @@ public class CarAgent : MonoBehaviour
     private float reactionDelay;
     private float acceleration;
     private float decelRate;
-    private float emergencyDecelMultiplier;  // ← เบรกฉุกเฉินแรงกว่าปกติกี่เท่า
-    private float dilemmaZoneFactor;         // ← ยิ่งสูง ยิ่งฝ่าไฟเหลืองง่าย
+    private float emergencyDecelMultiplier;  // how much harder an emergency stop is than a normal one
+    private float dilemmaZoneFactor;         // higher = more willing to run an amber
 
-    [Header("Body Paint (ชิ้นที่จะถูกทาสีตามเลน)")]
-    [Tooltip("Renderer ของตัวถังรถ — ตั้งให้อัตโนมัติตอนสร้าง prefab โดย ABAC ▸ Rebuild Car Prefab\n" +
-             "⚠️ ห้ามทาสีทุก Renderer ในรถ ไม่งั้นล้อ กระจก และไฟหน้า/ท้าย จะโดนทาสีเลนไปด้วยหมดคัน")]
+    [Header("Body Paint (the part that gets the lane colour)")]
+    [Tooltip("Renderer for the car body - set automatically when the prefab is built by ABAC > Rebuild Car Prefab.\n" +
+             "Never paint every Renderer in the car, or the wheels, glass and lights get the lane colour too.")]
     public Renderer bodyRenderer;
 
-    [Tooltip("ช่องวัสดุ (material slot) ของตัวถังใน bodyRenderer — โมเดลรถมีหลายช่อง " +
-             "(สีตัวถัง / กระจก / ยาง / ไฟหน้า / ไฟท้าย) ต้องทาแค่ช่องสีตัวถังช่องเดียว")]
+    [Tooltip("Material slot of the body within bodyRenderer. The model has several slots " +
+             "(body / glass / tyres / headlights / tail lights); only the body slot may be painted.")]
     public int bodyMaterialIndex = 0;
 
     [Header("Lane Identity")]
-    public string assignedLane = "";   // ตั้งค่าโดย CarSpawner ตอน spawn
+    public string assignedLane = "";   // set by CarSpawner at spawn
     [Header("Runtime State")]
     public float currentSpeed = 0f;
     public bool isStopped = false;
 
-    // ===== วางคิวเริ่มต้น (standing queue) =====
-    // ปกติรถเกิดที่ต้นเลนแล้ววิ่งเข้ามา SetProfileParameters จึงตั้ง currentSpeed = approachSpeed
-    // แต่รถที่ CarSpawner.PlaceStandingQueue วางไว้ "จอดติดไฟแดงอยู่แล้ว" ตั้งแต่วินาทีที่ 0
-    // ถ้าปล่อยให้เกิดมาด้วยความเร็ววิ่ง มันจะไถลเลยเส้นหยุดไปทั้งแถวทั้งที่ไฟยังแดง
-    // (Cautious decel 3 m/s^2 ที่ 13.89 m/s = ไถลไป 32 ม.) ธงนี้ให้ SetProfileParameters
-    // เริ่มที่ความเร็ว 0 และถือว่าหยุดอยู่แล้ว เพื่อให้ reactionDelay ตอนไฟเขียวทำงานตามปกติ
+    // ===== Standing queue placement =====
+    // Normally a car spawns at the top of the lane and drives in, so SetProfileParameters sets
+    // currentSpeed = approachSpeed. Cars placed by CarSpawner.PlaceStandingQueue are already stopped
+    // at a red from second 0; spawning them at cruising speed makes the whole row skid across the stop
+    // line on a red (a Cautious driver at 13.89 m/s with 3 m/s^2 slides 32 m). This flag makes
+    // SetProfileParameters start at zero and treat the car as stopped, so reactionDelay still applies.
     [HideInInspector] public bool startAtRest = false;
 
-    /// <summary>ระยะที่ "หน้ารถ" คันแรกของคิวต้องอยู่ก่อนเส้นหยุด (เมตร)
-    /// ต้องมากกว่า |stopOvershoot| ที่ติดลบมากที่สุด (Cautious = -1 ม.) บวกเกณฑ์ -0.3 ใน
-    /// ComputeDesiredSpeed ไม่งั้นรถ Cautious จะถูกนับว่า hasCleared ตั้งแต่เฟรมแรกแล้วฝ่าไฟแดงออกไป</summary>
+    /// <summary>How far before the stop line the nose of the first queued car must sit, in metres.
+    /// Must exceed the most negative stopOvershoot (Cautious = -1 m) plus the -0.3 threshold in
+    /// ComputeDesiredSpeed, or a Cautious car counts as hasCleared on frame one and runs the red.</summary>
     public const float REST_FRONT_MARGIN = 1f;
     private bool hasCleared = false;
-    private bool committedThrough = false;   // true = ตัดสินใจฝ่าไฟเหลืองไปแล้ว ไม่หันกลับมาเบรก
+    private bool committedThrough = false;   // true = already decided to run the amber; will not brake now
 
-    [Header("Car Following (กันรถซ้อนกัน)")]
+    [Header("Car Following (keeps cars from overlapping)")]
     public float minGap = 2f;
-    [Tooltip("ระยะห่างด้านข้างสูงสุดที่ยังนับว่า 'อยู่เลนเดียวกัน' (เมตร) — ระยะห่างระหว่างเลนในซีนคือ 3.5 ม. " +
-             "ค่านี้จึงต้องน้อยกว่าครึ่งหนึ่งของ 3.5 เพื่อไม่ให้รถคนละเลนเบรกให้กันโดยไม่จำเป็น")]
+    [Tooltip("Maximum lateral distance still counted as the same lane, in metres. Lanes in the scene are " +
+             "3.5 m apart, so this must be under half of 3.5 or cars in different lanes brake for each other.")]
     public float lookAheadAngle = 1.5f;
-    [Tooltip("ระยะห่างเชิงเวลาที่คนขับพยายามรักษาไว้จากท้ายรถคันหน้า (วินาที)\n" +
-             "ระยะห่างจริง = minGap + desiredTimeHeadway x ความเร็ว — ของเดิมเว้นแค่ minGap คงที่ " +
-             "ไม่ว่าจะวิ่งเร็วแค่ไหน รถจึงวิ่งชิดกัน 2 ม. ที่ 15 m/s ได้ = headway 0.4 วิ/คัน\n\n" +
-             "⭐ ค่านี้คือสิ่งที่กำหนด saturation headway ของทั้งแยก ตั้งให้ผลลัพธ์ตรงกับ 2.31 วิ/คัน " +
-             "ที่วัดจากคลิปจริง (§2.4) — HeadwayTest บังคับไว้ ห้ามแก้โดยไม่รันเทสใหม่")]
+    [Tooltip("Time gap a driver tries to keep from the car ahead, in seconds.\n" +
+             "Actual gap = minGap + desiredTimeHeadway x speed. The old model kept only a constant minGap " +
+             "at any speed, so cars could travel 2 m apart at 15 m/s = 0.4 s headway.\n\n" +
+             "This sets the saturation headway of the whole junction, tuned so the result matches the " +
+             "2.31 s/veh measured from the clip (section 2.4). HeadwayTest enforces it - re-run the tests if you change it.")]
     public float desiredTimeHeadway = MEASURED_TIME_HEADWAY;
 
-    /// <summary>ค่าที่ทำให้ saturation headway ของคิวออกมาเท่ากับ 2.31 s/คัน ที่วัดจากคลิป (HeadwayTest บังคับ)</summary>
+    /// <summary>Value that makes queue discharge come out at the measured 2.31 s/veh (enforced by HeadwayTest)</summary>
     public const float MEASURED_TIME_HEADWAY = 1.9f;
 
-    [Tooltip("มองหารถคันหน้าไกลสุดกี่เมตร — ⚠️ ห้ามตั้งต่ำกว่าระยะเบรกของคนขับแบบ Cautious (~33 ม.) " +
-             "ไม่งั้นรถจะเห็นคิวช้าเกินจนเบรกไม่ทัน")]
+    [Tooltip("How far ahead to look for another car, in metres. Never set this below the braking " +
+             "distance of a Cautious driver (~33 m), or a car sees the queue too late to stop.")]
     public float lookAheadDistance = 50f;
 
-    [Header("Shared Lane Bypass (เฉพาะเลนที่แชร์ทางกายภาพ เช่น Ax/A2)")]
-    [Tooltip("true = คันนี้ใช้ 'ไหล่ทาง/เลนฉุกเฉิน' แซงคิวที่จอดขวางในเลนแชร์ได้ — สุ่มครั้งเดียวตอน spawn โดย " +
-             "CarSpawner ตาม laneBypassChance จำลองพฤติกรรมจริงที่ Itim สังเกต (รถขยับขวา/มอไซค์แทรก/รปภ.โบก) " +
-             "ที่ทำให้การบล็อกไม่ใช่ 100%\n\n" +
-             "⚠️ เดิมทำโดย 'ข้ามไม่นับรถคนละเลนเป็นตัวบล็อก' ใน GetCarAhead() ซึ่งผิด — รถวิ่งทะลุผ่านคันที่จอดอยู่ " +
-             "ตรง ๆ (เห็นเป็นรถซ้อนกันในซีน) ตอนนี้เปลี่ยนเป็นการ 'เยื้องออกไหล่ทางจริง ๆ' ตาม bypassLateralOffset " +
-             "แล้วปล่อยให้ car-following ตามระยะห่างจริงจัดการเอง จึงไม่มีทางซ้อนทับกันอีก")]
+    [Header("Shared Lane Bypass (only for lanes physically shared, e.g. Ax/A2)")]
+    [Tooltip("true = this car may use the shoulder to pass a blocking car in the shared lane. Drawn once " +
+             "at spawn by CarSpawner from laneBypassChance, modelling what Itim observed in reality " +
+             "(cars edging right, motorcycles filtering, security waving people through).\n\n" +
+             "The old implementation simply ignored cars from other lanes in GetCarAhead(), which was wrong: " +
+             "cars drove straight through stopped ones and visibly overlapped. It now offsets the car onto " +
+             "the shoulder by bypassLateralOffset and lets ordinary car-following handle the real distances.")]
     public bool canBypassCrossLaneBlocker = false;
 
-    [Tooltip("ระยะเยื้องออกไหล่ทาง (world space) ตอนแซงคิวในเลนแชร์ — ตั้งโดย CarSpawner " +
-             "ใช้เฉพาะช่วงวิ่งเข้าหา waypoint แรก (ก่อนเริ่มหักเลี้ยว) จากนั้นกลับเข้าเลนปกติเอง")]
+    [Tooltip("Lateral offset onto the shoulder, in world space, while passing a queue in a shared lane. Set " +
+             "by CarSpawner. Applies only before the turn begins; after that the car returns to its normal path.")]
     public Vector3 bypassLateralOffset = Vector3.zero;
 
     private static System.Collections.Generic.List<CarAgent> allCars
         = new System.Collections.Generic.List<CarAgent>();
 
-    [Header("Stop Line (ตั้งค่าตอน Spawn)")]
+    [Header("Stop Line (set at spawn)")]
     public Transform stopLineTarget;
     private float signedDistToStopPoint;
 
-    [Header("Turning Path (ตั้งค่าตอน Spawn — เว้นว่าง = วิ่งตรงเหมือนเดิม)")]
-    [Tooltip("จุดนำทางหลังผ่านเส้นหยุด ใช้กับเลนเลี้ยว Ax / Bx / CB / CA")]
+    [Header("Turning Path (set at spawn - empty = drive straight, as before)")]
+    [Tooltip("Guide points past the stop line, used by the turning lanes Ax / Bx / CB / CA")]
     public Transform[] pathWaypoints;
-    [Tooltip("อัตราการหมุนพวงมาลัย องศา/วินาที")]
+    [Tooltip("Steering rate in degrees per second")]
     public float steerRate = 55f;
-    [Tooltip("รัศมีวงเลี้ยวเป้าหมาย (เมตร) — ยิ่งเล็กวงยิ่งแคบ แต่รถต้องชะลอมากขึ้น")]
+    [Tooltip("Target turning radius in metres - smaller is tighter, but the car has to slow more")]
     public float turnRadius = 7f;
-    [Tooltip("เลี้ยวเกินกี่องศาถึงจะเริ่มชะลอ")]
+    [Tooltip("How many degrees of turn before the car starts slowing")]
     public float turnSlowAngle = 12f;
-    [Tooltip("ช้าสุดตอนเลี้ยว (เมตร/วินาที) กันรถคลานจนแทบไม่ขยับ")]
+    [Tooltip("Slowest speed while turning, in m/s, so cars do not crawl to a standstill")]
     public float minTurnSpeed = 3f;
-    [Tooltip("ระยะเผื่อเพิ่มจากระยะเบรกจริง (เมตร) ก่อนถึงจุดหักเลี้ยว")]
+    [Tooltip("Extra margin beyond the real braking distance, in metres, before the turn point")]
     public float turnBrakeMargin = 4f;
-    [Tooltip("เข้าใกล้ waypoint เท่านี้ถือว่าถึงแล้ว")]
+    [Tooltip("Coming this close to a waypoint counts as having reached it")]
     public float waypointReachRadius = 2f;
 
-    [Header("Late Merge (เปลี่ยนเลนก่อนถึงเส้นหยุด — ใช้กับ A2)")]
-    [Tooltip("true = เลี้ยว/เปลี่ยนเลนได้ทั้งที่ยังไม่ผ่านเส้นหยุด\n" +
-             "ปกติรถที่มีเส้นหยุดจะวิ่งตรงจนผ่านเส้นก่อนถึงเริ่มเลี้ยว (กันค่า signedDistToStopPoint เพี้ยน)\n" +
-             "แต่ A2 ต้อง 'เปลี่ยนเลน' เข้าเลนแชร์ก่อนถึงเส้นหยุด — การเยื้องด้านข้างไม่กระทบระยะเบรก " +
-             "เพราะรถวิ่งขนานแกน X ล้วน signedDistToStopPoint คิดจากผลต่าง X อย่างเดียว")]
+    [Header("Late Merge (lane change before the stop line - used by A2)")]
+    [Tooltip("true = may turn or change lane before passing the stop line.\n" +
+             "Normally a car with a stop line drives straight until past it, so signedDistToStopPoint stays valid.\n" +
+             "A2 has to merge into the shared lane before the stop line. The lateral offset does not affect " +
+             "braking distance, because the cars run parallel to X and signedDistToStopPoint uses only the X difference.")]
     public bool steerBeforeStopLine = false;
 
-    [Tooltip("ยังไม่เริ่มเปลี่ยนเลนจนกว่าจะเหลือระยะถึง waypoint แรกน้อยกว่านี้ (เมตร) — 0 = เปลี่ยนตั้งแต่ spawn\n\n" +
-             "⭐ นี่คือหัวใจของ 'late merge': Itim นับจากคลิปว่ารถตรงที่เข้าเลนแชร์ทั้ง 3 คัน เปลี่ยนเลนเข้ามา" +
-             "ตอนเหลือระยะแค่ ~5 ช่วงรถก่อนถึงจุดเลี้ยว = แทรกเข้า 'หัวคิว' พอดี\n" +
-             "ถ้าปล่อยให้เปลี่ยนเลนตั้งแต่ไกล รถจะกระจายอยู่กลางคิว เกิดเป็น 'หน่วงนิดเดียวแต่บ่อย' " +
-             "ซึ่งค่าเฉลี่ยเท่ากันแต่ queue dynamics ผิดไปคนละเรื่องกับของจริงที่ 'นาน ๆ ครั้งแต่รุนแรงเกือบสูงสุด'")]
+    [Tooltip("Do not start the lane change until the first waypoint is closer than this, in metres. 0 = from spawn.\n\n" +
+             "This is the heart of the late merge: Itim counted from the clip that all 3 through vehicles " +
+             "entering the shared lane changed with only about five car lengths left before the turn, " +
+             "inserting right at the head of the queue. Merging from further back would spread them through " +
+             "the queue: the same mean, but quite different dynamics from the real rare-but-severe pattern.")]
     public float steerStartDistance = 0f;
 
     private int waypointIndex = 0;
-    /// <summary>true = วิ่งจนสุดเส้นทางที่กำหนดแล้ว (CarSpawner ใช้ตัดสินใจลบรถทิ้ง)</summary>
+    /// <summary>true = finished the assigned path (CarSpawner uses this to decide when to remove the car)</summary>
     public bool reachedEndOfPath { get; private set; }
 
-    [Header("Traffic Light (ตั้งค่าตอน Spawn — เว้นว่างถ้าเป็นเลนไหลอิสระ)")]
-    [Tooltip("รถอ่านสถานะไฟจากตัวนี้เองทุกเฟรม เป็นตัวสำรองกรณีทะเบียนใน TrafficLight หลุด")]
+    [Header("Traffic Light (set at spawn - leave empty for a free-flow lane)")]
+    [Tooltip("The car reads the signal state from this every frame, as a fallback if its registration is lost")]
     public TrafficLight assignedLight;
 
-    [Tooltip("true = เลน 'ให้ทาง' (yield) — ไฟที่อ้างถึงเป็นไฟของ*อีกกระแสหนึ่ง* ไม่ใช่ไฟของเราเอง\n" +
-             "อีกฝ่ายเขียว/เหลือง = เราต้องหยุด, อีกฝ่ายแดง = เราไปได้\n\n" +
-             "ใช้กับเลน Ax: ปกติเป็นเลนฟรีไม่ต้องรอไฟ แต่หน้างานจริงเลี้ยวเข้ามอไม่ได้ตอน Bx เขียว " +
-             "(Bx เลี้ยวขวาเข้ามอเหมือนกัน กวาดผ่านปากทางเข้า) จึงผูก Ax ไว้กับไฟ Bx แบบกลับด้าน\n" +
-             "⚠️ Ax ยังคง isSignalized = false ใน IntersectionConfig เพราะมันไม่มีเฟสของตัวเอง " +
-             "ไม่ได้รับการจัดสรรเวลาเขียว และไม่เข้าไปอยู่ใน conflict matrix — เป็นแค่การให้ทางเท่านั้น")]
+    [Tooltip("true = a yielding lane. The referenced signal belongs to the *other* stream, not to us.\n" +
+             "Their green or yellow means we must stop; their red means we may go.\n\n" +
+             "Used by lane Ax: normally free-flowing, but in reality it cannot turn into the campus while " +
+             "Bx is green, because Bx turns in as well and sweeps across the entrance, so Ax is tied to the " +
+             "Bx signal, inverted. Ax still has isSignalized = false in IntersectionConfig, because it has " +
+             "no phase of its own, no allocated green time, and no place in the conflict matrix.")]
     public bool lightIsInverted = false;
 
     private bool lightIsGreen = false;
@@ -138,11 +138,11 @@ public class CarAgent : MonoBehaviour
     private TrafficLight.LightState lastSeenLight = TrafficLight.LightState.Red;
     private bool lightInitialized = false;
 
-    // ===== คลื่นออกตัว (startup wave) =====
+    // ===== Startup wave =====
     private float startupTimer = 0f;
-    /// <summary>ช้ากว่านี้ถือว่า "จอดอยู่ในคิว" (เมตร/วินาที)</summary>
+    /// <summary>Slower than this counts as standing in the queue, in m/s</summary>
     public const float QUEUE_SPEED_EPS = 0.1f;
-    /// <summary>คันหน้าต้องเร็วกว่านี้ถึงจะนับว่า "เริ่มเคลื่อนแล้ว" คันหลังจึงเริ่มจับเวลาตอบสนอง</summary>
+    /// <summary>The car ahead must exceed this before a follower starts its reaction timer</summary>
     public const float LEADER_MOVING_SPEED = 0.5f;
 
     void OnEnable()  { allCars.Add(this); }
@@ -161,8 +161,8 @@ public class CarAgent : MonoBehaviour
                 approachSpeed = 16.67f;
                 stopOvershoot = 0.5f; reactionDelay = 0.2f; acceleration = 5f;
                 decelRate = 22f;
-                emergencyDecelMultiplier = 1.3f;  // เบรกแรงอยู่แล้ว เพิ่มไม่มาก
-                dilemmaZoneFactor = 1.6f;         // ฝ่าไฟเหลืองง่าย
+                emergencyDecelMultiplier = 1.3f;  // already brakes hard, so not much more
+                dilemmaZoneFactor = 1.6f;         // readily runs an amber
                 break;
             case DriverType.Normal:
                 approachSpeed = 15.28f;
@@ -175,8 +175,8 @@ public class CarAgent : MonoBehaviour
                 approachSpeed = 13.89f;
                 stopOvershoot = -1f; reactionDelay = 1.5f; acceleration = 2.5f;
                 decelRate = 3f;
-                emergencyDecelMultiplier = 1.8f;  // ปกติเบรกเบา ตกใจแล้วเบรกแรงขึ้นเยอะ
-                dilemmaZoneFactor = 0.7f;         // ฝ่าเฉพาะหยุดไม่ทันจริง ๆ
+                emergencyDecelMultiplier = 1.8f;  // normally gentle, but brakes much harder when startled
+                dilemmaZoneFactor = 0.7f;         // only runs an amber when genuinely unable to stop
                 break;
         }
         currentSpeed = startAtRest ? 0f : approachSpeed;
@@ -198,14 +198,14 @@ public class CarAgent : MonoBehaviour
         return (approachSpeed * approachSpeed) / (2f * decelRate);
     }
 
-    // ===== sub-stepping: ความละเอียดของการเคลื่อนที่ต้องไม่ขึ้นกับ timeScale =====
-    // เดิม integrate ครั้งเดียวต่อเฟรมด้วย Time.deltaTime ซึ่ง = เวลาจริงต่อเฟรม x timeScale
-    // ที่ 10x / 60 fps หนึ่งเฟรม = 0.167 วิ -> รถ 14 m/s ขยับทีละ 2.3 ม. การตัดสินใจเบรก/เส้นหยุด
-    // ถูกประเมินแค่ทุก 2.3 ม. จึงเลยเลน เลยเส้นหยุด (สังเกตได้จริงที่ 10x, 2x แทบไม่เป็น)
-    // ตอนนี้ซอยเวลาของแต่ละเฟรมเป็นก้าวละไม่เกิน MAX_STEP (= Unity fixed timestep) เสมอ
-    // -> ที่ 1x หรือ 10x รถตัดสินใจทุก 0.02 วิจำลองเท่ากัน ผลจึงไม่ขึ้นกับความเร็วที่รัน
+    // ===== Sub-stepping: motion resolution must not depend on timeScale =====
+    // It used to integrate once per frame with Time.deltaTime, which is real frame time x timeScale.
+    // At 10x and 60 fps one frame is 0.167 s, so a car at 14 m/s moves 2.3 m per step and braking and
+    // stop-line decisions were evaluated only every 2.3 m, overshooting lanes and stop lines (clearly
+    // visible at 10x, barely at 2x). Each frame is now split into steps of at most MAX_STEP (= the Unity
+    // fixed timestep), so at 1x or 10x cars decide every 0.02 simulated seconds alike.
     public const float MAX_STEP = 0.02f;
-    const int MAX_SUBSTEPS = 50;            // กัน spiral of death ถ้าเฟรมช้าผิดปกติ (Unity cap deltaTime ที่ 0.333 s อยู่แล้ว)
+    const int MAX_SUBSTEPS = 50;            // guards against a spiral of death on a very slow frame (Unity caps deltaTime at 0.333 s)
     private float stepDt = 0f;
 
     void Update()
@@ -221,7 +221,7 @@ public class CarAgent : MonoBehaviour
         }
     }
 
-    /// <summary>หนึ่งก้าวของการจำลอง ยาว stepDt วินาที</summary>
+    /// <summary>One simulation step, stepDt seconds long</summary>
     void Step()
     {
         SyncLightState();
@@ -238,7 +238,7 @@ public class CarAgent : MonoBehaviour
         MoveForward();
     }
 
-    /// <summary>จำนวนก้าวที่หนึ่งเฟรมจะถูกซอย — public static เพื่อให้เทสตรวจได้โดยไม่ต้องมี Unity</summary>
+    /// <summary>How many steps one frame is split into - public static so tests can check it without Unity</summary>
     public static int SubStepsFor(float frameDt, float maxStep = MAX_STEP)
     {
         if (frameDt <= 0f) return 0;
@@ -246,10 +246,10 @@ public class CarAgent : MonoBehaviour
         return Mathf.Min(n, MAX_SUBSTEPS);
     }
 
-    // ===== อ่านสถานะไฟเองทุกเฟรม =====
-    // เดิมพึ่ง TrafficLight.NotifyCars() อย่างเดียว ถ้าทะเบียนหลุด (เช่นโดน ClearRegistrations
-    // หลัง spawn) รถจะไม่มีทางรู้ว่าไฟเขียวแล้ว จอดแช่ตลอดกาล
-    // ตอนนี้ push กับ poll ทำงานคู่กัน อันไหนมาก่อนก็ได้ ผลเหมือนกัน
+    // ===== Read the signal state every frame =====
+    // This used to rely on TrafficLight.NotifyCars() alone. If a registration was lost (for instance to
+    // ClearRegistrations after spawn) the car never learned the light had gone green and sat forever.
+    // Push and poll now work together; whichever arrives first gives the same result.
     void SyncLightState()
     {
         if (assignedLight == null) return;
@@ -261,15 +261,15 @@ public class CarAgent : MonoBehaviour
         }
     }
 
-    // ===== เลี้ยวตาม waypoint หลังผ่านเส้นหยุดแล้ว =====
-    // ก่อนถึงเส้นหยุดยังวิ่งตรงเสมอ เพื่อให้ signedDistToStopPoint และ ROI ทำงานเหมือนเดิม
+    // ===== Follow the waypoints once past the stop line =====
+    // Before the stop line the car always drives straight, so signedDistToStopPoint and the ROI behave as before.
     void Steer()
     {
         if (pathWaypoints == null || pathWaypoints.Length == 0) return;
         if (stopLineTarget != null && !hasCleared && !steerBeforeStopLine) return;
         if (reachedEndOfPath) return;
 
-        // ข้าม waypoint ที่เป็น null หรือถูกลบไปแล้ว
+        // skip waypoints that are null or have been destroyed
         while (waypointIndex < pathWaypoints.Length && pathWaypoints[waypointIndex] == null)
             waypointIndex++;
 
@@ -282,12 +282,12 @@ public class CarAgent : MonoBehaviour
         Vector3 toTarget = CurrentWaypointTarget() - transform.position;
         toTarget.y = 0f;
 
-        // ===== late merge: ยังไกลอยู่ก็วิ่งตรงในเลนเดิมไปก่อน ยังไม่ต้องเบียดเข้าเลนใหม่ =====
+        // ===== Late merge: while still far away, stay in the current lane rather than edging across =====
         if (steerStartDistance > 0f && waypointIndex == 0
             && Vector3.Dot(toTarget, transform.forward) > steerStartDistance) return;
 
-        // ผ่านไปแล้ว (อยู่ข้างหลังรถ) ก็นับว่าถึงเหมือนกัน
-        // กันเคสรถเลี้ยวกว้างเกินจนไม่เคยเข้าใกล้ waypoint ในรัศมี แล้ววนเป็นวงกลมไม่จบ
+        // A waypoint already behind the car counts as reached.
+        // Guards against a car turning so wide it never enters the radius and circles forever.
         bool reached = toTarget.magnitude <= waypointReachRadius
                        || Vector3.Dot(toTarget, transform.forward) < 0f;
 
@@ -322,7 +322,7 @@ public class CarAgent : MonoBehaviour
         {
             if (!lightIsGreen)
             {
-                // ===== ไม่มี snap เป็น 0 อีกแล้ว → ปล่อยไล่ตาม decelRate ต่อเนื่อง = เกิดไถลธรรมชาติ =====
+                // ===== No snapping to 0 any more: follow decelRate continuously, which gives a natural slide =====
                 float speed = currentSpeed - decelRate * stepDt;
                 speed = Mathf.Max(0f, speed);
                 if (speed <= 0.05f) isStopped = true;
@@ -353,15 +353,15 @@ public class CarAgent : MonoBehaviour
         }
     }
 
-    // ===== ความเร็วสูงสุดที่ยังเลี้ยวอยู่ในวงที่กำหนดได้ =====
-    // รัศมีวงเลี้ยว R = v / ω  (ω = อัตราหมุนพวงมาลัย)
-    // ถ้าอยากได้วงแคบ R ตามที่ตั้งไว้ ก็ต้องจำกัด v ≤ ω × R
-    // ไม่มีข้อนี้ รถวิ่ง 15 m/s จะกวาดวงเลี้ยวกว้างเกิน 25 เมตร → หลุดออกนอกเลนไปทับเลนอื่น
+    // ===== Fastest speed that still keeps the car inside the intended turning circle =====
+    // Turning radius R = v / omega, where omega is the steering rate.
+    // To hold the configured R, v must be capped at omega x R.
+    // Without this a car at 15 m/s sweeps a turn wider than 25 m and leaves its lane.
     float TurnSpeedLimit()
     {
         if (pathWaypoints == null || pathWaypoints.Length == 0) return Mathf.Infinity;
         if (reachedEndOfPath) return Mathf.Infinity;
-        if (stopLineTarget != null && !hasCleared) return Mathf.Infinity;  // ยังไม่ถึงเส้นหยุด วิ่งปกติ
+        if (stopLineTarget != null && !hasCleared) return Mathf.Infinity;  // before the stop line, drive normally
         if (waypointIndex >= pathWaypoints.Length) return Mathf.Infinity;
 
         Transform wp = pathWaypoints[waypointIndex];
@@ -372,20 +372,20 @@ public class CarAgent : MonoBehaviour
         toTarget.y = 0f;
         if (toTarget.magnitude < 0.5f) return Mathf.Infinity;
 
-        float omega = steerRate * Mathf.Deg2Rad;            // เรเดียน/วินาที
+        float omega = steerRate * Mathf.Deg2Rad;            // radians per second
         if (omega <= 0.001f) return Mathf.Infinity;
         float cornerSpeed = Mathf.Max(minTurnSpeed, omega * turnRadius);
 
-        // 1) กำลังหักเลี้ยวอยู่ตอนนี้
+        // 1) currently turning
         float angle = Vector3.Angle(transform.forward, toTarget);
         if (angle >= turnSlowAngle) return cornerSpeed;
 
-        // 2) มองล่วงหน้าไป waypoint ถัดไป — ถ้าช่วงหน้าหักแรงและใกล้จะถึงแล้ว ให้เริ่มชะลอตั้งแต่ตอนนี้
-        //    ⚠️ ขาดข้อนี้ไม่ได้: รถจะพุ่งเข้าโค้งด้วยความเร็วเต็ม 15 m/s แล้วกวาดวงกว้าง
-        //    ออกไปทับเลนข้าง ๆ ก่อนที่จะทันชะลอ
-        // ระยะที่ต้องใช้เบรกจาก v ปัจจุบัน ลงมาเหลือ cornerSpeed ตาม decelRate ของ profile นี้
-        // ⚠️ ใช้ค่าคงที่ไม่ได้ เพราะคนขับแบบ Cautious เบรกช้ากว่า Aggressive ถึง 7 เท่า
-        //    (decelRate 3 vs 22) ถ้าตั้งตายตัวคนขับระวังจะเข้าโค้งเร็วเกินแล้วกวาดออกนอกเลน
+        // 2) look ahead to the next waypoint - if the next section turns sharply and is close, slow now.
+        //    This is essential: without it a car enters the curve at the full 15 m/s and sweeps wide
+        //    into the neighbouring lane before it can slow down.
+        // Distance needed to brake from the current v down to cornerSpeed at this profile's decelRate.
+        // A constant will not do, because a Cautious driver brakes seven times more gently than an
+        //    Aggressive one (decelRate 3 vs 22); a fixed value would send careful drivers in too fast.
         float brakeDist = currentSpeed > cornerSpeed
             ? (currentSpeed * currentSpeed - cornerSpeed * cornerSpeed) / (2f * Mathf.Max(0.1f, decelRate))
             : 0f;
@@ -400,18 +400,18 @@ public class CarAgent : MonoBehaviour
                 return cornerSpeed;
         }
 
-        return Mathf.Infinity;   // ทางตรง วิ่งเต็มสปีดได้
+        return Mathf.Infinity;   // straight ahead, full speed is fine
     }
 
     void DecideSpeed()
     {
         float desiredSpeed = ComputeDesiredSpeed();
 
-        // ---- ชะลอก่อนเข้าโค้ง ----
+        // ---- slow down before the curve ----
         float turnCap = TurnSpeedLimit();
         if (desiredSpeed > turnCap)
         {
-            // ค่อย ๆ ลดตาม decelRate ไม่ใช่ตัดความเร็วทันที จะได้ดูเป็นธรรมชาติ
+        // Ease down at decelRate rather than cutting speed instantly, so it looks natural
             float eased = Mathf.Max(turnCap, currentSpeed - decelRate * stepDt);
             desiredSpeed = Mathf.Min(desiredSpeed, eased);
         }
@@ -419,19 +419,19 @@ public class CarAgent : MonoBehaviour
         float gapAhead;
         CarAgent carAhead = GetCarAhead(out gapAhead);
 
-        // ===== คลื่นออกตัว: คันหลังรอ "เห็นคันหน้าขยับ" ก่อน ไม่ใช่รอไฟเขียว =====
-        // ของจริงคิวไม่ได้พุ่งออกพร้อมกันทั้งแถว คนขับคันที่ 3 ไม่ได้ออกตัวตอนไฟเขียว
-        // แต่ออกตอนเห็นคันที่ 2 เคลื่อน คลื่นการออกตัวจึงไหลถอยหลังไปทีละคัน
+        // ===== Startup wave: a follower waits to see the car ahead move, not for the light =====
+        // In reality a queue does not launch as one block. The third driver does not move on green,
+        // but when the second car moves, so the launch wave travels backwards car by car.
         //
-        // ของเดิมจับ reactionDelay จากจังหวะ "ไฟเขียว" ซึ่งเป็นสัญญาณที่ทุกคันได้พร้อมกัน
-        // ซ้ำร้ายคันที่อยู่ห่างเส้นเกิน brakeDistance ไม่เข้าเงื่อนไขนั้นด้วยซ้ำ
-        // (ComputeDesiredSpeed สาขา else ตั้ง isStopped = false แล้วขอ approachSpeed เลย)
-        // จึงเหลือแค่ car-following กั้นไว้ คิวเลยระบายออกเป็นก้อนเดียว
-        // วัดด้วย HeadwayTest ได้ 0.72 s/คัน เทียบกับที่วัดจากคลิปจริง 2.31 s/คัน
+        // This used to time reactionDelay from the green signal, which every driver receives at once.
+        // Worse, a car further from the line than its braking distance never entered that branch at all
+        // (ComputeDesiredSpeed's else branch sets isStopped = false and asks for approachSpeed),
+        // leaving only car-following to hold it, so the queue discharged as a single block.
+        // HeadwayTest measured 0.72 s/veh against the 2.31 s/veh measured from the real clip.
         if (carAhead != null && currentSpeed <= QUEUE_SPEED_EPS)
         {
             if (carAhead.currentSpeed > LEADER_MOVING_SPEED) startupTimer += stepDt;
-            else startupTimer = 0f;                      // คันหน้ายังไม่ขยับ ยังไม่เริ่มนับ
+            else startupTimer = 0f;                      // the car ahead has not moved; do not start counting
 
             if (startupTimer < reactionDelay)
             {
@@ -442,7 +442,7 @@ public class CarAgent : MonoBehaviour
         }
         else if (currentSpeed > QUEUE_SPEED_EPS)
         {
-            startupTimer = 0f;                            // วิ่งอยู่แล้ว ไม่ต้องรอใคร
+            startupTimer = 0f;                            // already moving; nothing to wait for
         }
 
         if (carAhead != null)
@@ -452,7 +452,7 @@ public class CarAgent : MonoBehaviour
 
             if (cushion <= 0f)
             {
-                // ===== เบรกฉุกเฉิน: แรงกว่าปกติแต่ยังไม่ใช่ snap ทันที → ไถลนิดหน่อยตามนิสัย =====
+                // ===== Emergency braking: harder than normal but not an instant snap, so it slides a little =====
                 float emergencySpeed = currentSpeed - (decelRate * emergencyDecelMultiplier) * stepDt;
                 emergencySpeed = Mathf.Max(0f, emergencySpeed);
                 desiredSpeed = Mathf.Min(desiredSpeed, emergencySpeed);
@@ -463,11 +463,11 @@ public class CarAgent : MonoBehaviour
                 float maxSafeSpeed = Mathf.Sqrt(Mathf.Max(0f, leadSpeed * leadSpeed + 2f * decelRate * cushion));
                 desiredSpeed = Mathf.Min(desiredSpeed, maxSafeSpeed);
 
-                // ===== ระยะห่างต้องโตตามความเร็ว ไม่ใช่ 2 เมตรคงที่ =====
-                // maxSafeSpeed ข้างบนคิดแค่ "เบรกทันไหมถ้าคันหน้าหยุดกึก" ซึ่งด้วย decelRate 9-22 m/s^2
-                // มันยอมให้วิ่งชิดกัน 2 ม. ที่ 15 m/s ได้สบาย ๆ = headway 0.4 วิ/คัน ซึ่งเป็นไปไม่ได้จริง
-                // คนขับจริงเว้นระยะ "เชิงเวลา" คือ gap = minGap + T x v
-                // พลิกกลับเป็นเพดานความเร็ว: v <= (gap - minGap) / T
+                // ===== The gap has to grow with speed, not stay at a constant 2 m =====
+                // maxSafeSpeed above only asks "could I stop if the car ahead stopped dead", and with
+                // decelRate of 9-22 m/s^2 that happily allows 2 m at 15 m/s = 0.4 s headway, which is impossible.
+                // Real drivers keep a time gap: gap = minGap + T x v.
+                // Inverted into a speed cap: v <= (gap - minGap) / T.
                 if (desiredTimeHeadway > 0.01f)
                     desiredSpeed = Mathf.Min(desiredSpeed, cushion / desiredTimeHeadway);
             }
@@ -482,9 +482,9 @@ public class CarAgent : MonoBehaviour
         float closestGap = Mathf.Infinity;
         Vector3 frontPos = GetFrontPosition();
 
-        // ⚠️ ไม่มีการ "ข้ามรถคนละเลน" อีกแล้ว (ของเดิมทำให้รถที่สุ่มได้แซงวิ่งทะลุผ่านรถที่จอดอยู่จริง ๆ
-        //    = เห็นเป็นรถซ้อนทับกันในซีน) การแซงไหล่ทางตอนนี้ทำด้วยการเยื้องตำแหน่งจริงแทน (bypassLateralOffset)
-        //    แล้วปล่อยให้เงื่อนไข lateralDist ข้างล่างคัดออกเองตามระยะห่างจริง — ฟิสิกส์เดียว ไม่มีข้อยกเว้น
+        // Cars in other lanes are never skipped any more. The old version let a car drawn to pass drive
+        //    straight through a stopped one (visibly overlapping). Passing is now done by genuinely
+        //    offsetting the position and letting the lateralDist test below filter on real distance.
         float maxLook = LookAheadLimit();
 
         foreach (CarAgent other in allCars)
@@ -511,10 +511,10 @@ public class CarAgent : MonoBehaviour
     }
 
     /// <summary>
-    /// จุดหมายของ waypoint ปัจจุบัน — ปกติคือตัว waypoint เอง
-    /// ยกเว้นรถที่ "ใช้ไหล่ทางแซงคิว" ในช่วงวิ่งเข้าหา waypoint แรก (ยังไม่เริ่มหักเลี้ยว)
-    /// จะเล็งไปยังจุดที่เยื้องออกไปตาม bypassLateralOffset เพื่อให้วิ่งอยู่บนไหล่ทางจริง ๆ ตลอดช่วงที่แซง
-    /// พอเข้า waypoint ถัดไป (เริ่มเลี้ยว) ก็กลับมาใช้เส้นทางปกติ = merge กลับเข้าเลนเองโดยอัตโนมัติ
+    /// Target for the current waypoint - normally the waypoint itself. The exception is a car using the
+    /// shoulder to pass a queue, while approaching the first waypoint and before the turn begins: it aims
+    /// at a point offset by bypassLateralOffset so it really does travel on the shoulder. At the next
+    /// waypoint the turn starts and the normal path resumes, merging it back into the lane automatically.
     /// </summary>
     Vector3 CurrentWaypointTarget()
     {
@@ -524,17 +524,17 @@ public class CarAgent : MonoBehaviour
     }
 
     /// <summary>
-    /// มองหารถคันหน้าได้ไกลสุดกี่เมตร
+    /// How far ahead the car may look for another vehicle.
     ///
-    /// ⚠️ จุดนี้เคยเป็นบั๊กใหญ่: ของเดิมมองไกล "ไม่จำกัด" ตามแนวเส้นตรงหน้ารถ
-    /// แต่เลนเลี้ยว (Ax) จะหักออกไปทางอื่นก่อนถึงรถที่มองเห็น เช่น Ax วิ่งอยู่ z=6.5 มุ่ง +X
-    /// แนวเส้นตรงของมันพุ่งทะลุสี่แยกไปเจอรถ CA ที่ merge เข้าเลน z=6.5 ฝั่งตะวันออก (ห่าง 40-90 ม.)
-    /// ทั้งที่ตัวเองจะเลี้ยวซ้ายออกไปตั้งแต่ x=-11 ไม่มีทางไปชนกันเลย
-    /// ผลคือรถ Ax เบรกและ "จอดไกล" จากสี่แยกโดยไม่มีเหตุผล
+    /// This was once a serious bug: the old version looked infinitely far along the straight ahead of
+    /// the car. But a turning lane (Ax) veers away before reaching the car it can see. Ax runs at z=6.5
+    /// heading +X, and its straight line shot across the junction to a CA vehicle merging into z=6.5 on
+    /// the east side, 40-90 m away, even though Ax turns left at x=-11 and could never reach it.
+    /// The result was Ax braking and stopping far short of the junction for no reason.
     ///
-    /// ตอนนี้จำกัด 2 ชั้น: (1) เพดานระยะมองปกติ (2) ถ้าเลย waypoint ปัจจุบันไปแล้วเส้นทางหักเลี้ยว
-    /// ก็มองได้แค่ถึง waypoint นั้น — รถที่อยู่เลยจุดหักไปไม่เกี่ยวกับเราแล้ว
-    /// (คิวที่บล็อกจริงอยู่ "ก่อน" จุดหักเสมอ จึงยังตรวจเจอครบเหมือนเดิม)
+    /// There are now two limits: (1) the normal look-ahead cap, and (2) if the path turns past the current
+    /// waypoint, the car can only see as far as that waypoint - anything beyond the turn is irrelevant.
+    /// (A genuinely blocking queue is always before the turn, so nothing is missed.)
     /// </summary>
     float LookAheadLimit()
     {
@@ -542,8 +542,8 @@ public class CarAgent : MonoBehaviour
 
         if (pathWaypoints == null || pathWaypoints.Length == 0) return limit;
         if (reachedEndOfPath) return limit;
-        // ⚠️ ไม่มี guard "ยังไม่ถึงเส้นหยุด" ตรงนี้โดยตั้งใจ — ต่อให้ยังไม่ถึงเส้นหยุด รถเลนเลี้ยวก็รู้อยู่แล้วว่า
-        //    ตัวเองจะหักออกที่ waypoint แรก จึงไม่ควรเบรกให้รถที่อยู่เลยจุดนั้นไป (นี่คือบั๊ก "Ax จอดไกล")
+        // There is deliberately no "not yet at the stop line" guard here. Even before the stop line, a car in
+        //    a turning lane knows it veers off at the first waypoint - this was the "Ax stops far short" bug.
         if (waypointIndex >= pathWaypoints.Length) return limit;
         if (pathWaypoints[waypointIndex] == null) return limit;
         if (waypointIndex + 1 >= pathWaypoints.Length) return limit;
@@ -556,9 +556,9 @@ public class CarAgent : MonoBehaviour
         float along = Vector3.Dot(toWp, transform.forward);
         if (along <= 0f) return limit;
 
-        // ⚠️ ตัดระยะมองแค่ "เลนที่หักออกไปจริง ๆ" เท่านั้น (Ax/Bx/CB/CA) ห้ามตัดให้เลนเปลี่ยนเลน (A2)
-        //    A2 เปลี่ยนเลนแล้ววิ่งตรงต่อ ถ้าไปตัดระยะมองที่จุดเปลี่ยนเลน มันจะมองไม่เห็นคิวที่รออยู่
-        //    เลยจุดนั้นแล้วพุ่งชนท้าย — เช็คด้วย "ปลายทางของเส้นทางเบนจากหัวรถไปกี่องศา"
+        // Only clip the view for lanes that genuinely turn away (Ax/Bx/CB/CA), never for one that merely
+        //    changes lane (A2), which continues straight - clipping there would hide the queue beyond and
+        //    cause a rear-end collision. Decided by how far the end of the path deviates from the heading.
         if (!PathTurnsAway()) return limit;
 
         Vector3 nextSeg = pathWaypoints[waypointIndex + 1].position - wpPos;
@@ -572,11 +572,11 @@ public class CarAgent : MonoBehaviour
     }
 
     /// <summary>
-    /// เส้นทางข้างหน้า "หักออกไปคนละทาง" หรือแค่ "เปลี่ยนเลนแล้ววิ่งตรงต่อ"
+    /// Does the path ahead genuinely turn away, or does it merely change lane and continue straight?
     ///
-    /// ดูจากทิศของช่วงสุดท้ายของเส้นทางเทียบกับหัวรถตอนนี้:
-    ///   Ax เลี้ยวซ้ายเข้ามอ  -> ปลายทางมุ่ง +Z ต่างจากหัวรถ (+X) ~90°  = หักออก
-    ///   A2 เปลี่ยนเลนแล้วตรง -> ปลายทางมุ่ง +X เท่าหัวรถ ~0°           = ไม่ได้หักออก
+    /// Judged by the direction of the last section of the path against the car's current heading:
+    ///   Ax turning left into the campus -> the end heads +Z, about 90 degrees from the car's +X = turns away
+    ///   A2 changing lane then going on  -> the end heads +X, the same as the car, about 0 degrees = does not
     /// </summary>
     bool PathTurnsAway()
     {
@@ -591,12 +591,12 @@ public class CarAgent : MonoBehaviour
     }
 
     /// <summary>
-    /// มีรถคันไหนอยู่ในรัศมีนี้ไหม — CarSpawner เรียกก่อนปล่อยรถ กันปล่อยทับคันที่จอดค้างอยู่ตรงจุด spawn
-    /// (เกิดจริงเมื่อคิวยาวถอยมาถึงจุด spawn หรือเมื่อสอง spawner ใช้เลนกายภาพเดียวกัน เช่น A2 กับ Ax)
+    /// Is any car within this radius? CarSpawner calls this before releasing a car, to avoid dropping one on
+    /// top of a car stopped at the spawn point (a queue backed up that far, or two spawners sharing a lane).
     /// </summary>
     /// <summary>
-    /// รถของเลนนี้ที่อยู่ใกล้จุดอ้างอิงที่สุด — CameraDirector ใช้เลือกคันที่จะเกาะ
-    /// (ส่งตำแหน่งกล้องนิ่งของมุมนั้นมาเป็นจุดอ้างอิง จะได้เกาะคันที่อยู่ในกรอบภาพอยู่แล้ว)
+    /// The car in this lane nearest a reference point - CameraDirector uses it to choose which car to follow
+    /// (it passes the static camera position for that shot, so the chosen car is already in frame).
     /// </summary>
     public static CarAgent NearestInLane(string lane, Vector3 point)
     {
@@ -626,19 +626,19 @@ public class CarAgent : MonoBehaviour
         transform.Translate(Vector3.forward * currentSpeed * stepDt);
     }
 
-    // ===== เรียกจาก TrafficLight ตอนไฟเปลี่ยนสถานะ =====
+    // ===== Called by TrafficLight when the signal changes =====
     public void OnLightStateChanged(TrafficLight.LightState state)
     {
         lastSeenLight = state;
         lightInitialized = true;
 
-        if (hasCleared) return; // ผ่านไปแล้ว ไม่สนไฟอีก
+        if (hasCleared) return; // already past; the light no longer matters
 
-        // ===== เลนให้ทาง (yield): อ่านไฟของอีกกระแสแบบกลับด้าน =====
-        // เหลืองของอีกฝ่ายก็ยังถือว่าเราไปไม่ได้ เพราะรถเขายังเคลียร์ปากทางไม่หมด
-        // ไม่ใช้ dilemma zone ที่นี่ — คนที่ให้ทางไม่ได้ "เร่งฝ่า" เหมือนคนเจอไฟเหลืองของตัวเอง
-        // ถ้าใกล้เส้นเกินกว่าจะหยุดทัน ComputeDesiredSpeed จะไถเลยเส้นแล้วนับเป็น hasCleared ไปเอง
-        // (พฤติกรรมนี้สมจริง = หยุดไม่ทันก็ต้องไปต่อ) ไม่ต้องเขียนเพิ่ม
+        // ===== Yielding lane: read the other stream's signal inverted =====
+        // Their yellow still means we cannot go, because their traffic has not cleared the entrance.
+        // No dilemma zone here: a driver giving way does not accelerate to beat the light the way one
+        // facing their own amber does. If the car is too close to stop, ComputeDesiredSpeed lets it slide
+        // past and counts it as hasCleared on its own - realistic, and nothing extra to write.
         if (lightIsInverted)
         {
             lightIsGreen = (state == TrafficLight.LightState.Red);
@@ -651,7 +651,7 @@ public class CarAgent : MonoBehaviour
         }
         else if (state == TrafficLight.LightState.Yellow)
         {
-            // ===== Dilemma Zone: ตัดสินใจฝ่าหรือหยุด ตอนไฟเพิ่งเปลี่ยนเป็นเหลือง =====
+            // ===== Dilemma zone: go or stop, decided the moment the light turns amber =====
             if (!committedThrough && stopLineTarget != null)
             {
                 float requiredStop = GetRequiredBrakeDistance();
@@ -659,7 +659,7 @@ public class CarAgent : MonoBehaviour
 
                 if (signedDistToStopPoint <= dilemmaThreshold)
                 {
-                    committedThrough = true;  // ใกล้เกินจะหยุดปลอดภัย (ตามนิสัย) → ฝ่าไปเลย
+                    committedThrough = true;  // too close to stop safely for this profile, so carry on through
                 }
             }
             lightIsGreen = committedThrough;
@@ -670,7 +670,7 @@ public class CarAgent : MonoBehaviour
             {
                 lightIsGreen = false;
             }
-            // ถ้า committedThrough แล้ว ไฟแดงก็ไม่สนใจอีก เพราะฝ่าไปตั้งแต่ไฟเหลืองแล้ว
+            // Once committedThrough is set, a red is ignored too, because the car committed at amber
         }
     }
 }

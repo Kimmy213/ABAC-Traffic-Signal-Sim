@@ -3,15 +3,15 @@ using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
-/// หน้าจอควบคุมการจำลองตอน runtime
+/// Runtime control panel for the simulation.
 ///
-///   • เล่น / หยุดชั่วคราว / หยุด / เริ่มใหม่
-///   • เลือกชุดทดสอบ (test case) — มีทั้งแบบกำหนดเองที่ผลนิ่งทุกครั้ง และแบบสุ่ม Poisson
-///   • สลับระบบสัญญาณไฟ Fixed ↔ Adaptive ได้ทันที
-///   • ปรับความเร็วจำลอง, ดูสถิติสด, export CSV
+///   - play / pause / stop / restart
+///   - pick a test case: deterministic scripted cases and random Poisson ones
+///   - switch the signal system between Fixed and Adaptive on the spot
+///   - adjust simulation speed, watch live statistics, export CSV
 ///
-/// วิธีติดตั้ง: แปะสคริปต์นี้ลงบน GameController (หรือ object ไหนก็ได้) แล้วลาก reference ให้ครบ
-/// หรือกด ABAC ▸ Build 4-Phase Scene ให้ builder ต่อให้อัตโนมัติ
+/// Setup: attach this to GameController (or any object) and wire up the references,
+/// or run ABAC > Build 4-Phase Scene and let the builder wire them for you.
 /// </summary>
 public class SimulationControlPanel : MonoBehaviour
 {
@@ -48,7 +48,7 @@ public class SimulationControlPanel : MonoBehaviour
     private RunState state = RunState.Idle;
     private ControllerKind activeController;
     private float runElapsed = 0f;
-    private float runLimit = 0f;          // 0 = ไม่จำกัด
+    private float runLimit = 0f;          // 0 = unlimited
     private float speedBeforePause = 1f;
     private float simSpeed = 1f;
     private string toast = "";
@@ -59,8 +59,8 @@ public class SimulationControlPanel : MonoBehaviour
     private Vector2 mainScroll;
     private Vector2 laneScroll;
 
-    // ===== เวลาระบายรถทั้งหมด (โหมด Scripted) =====
-    private float clearanceTime = -1f;              // -1 = ยังไม่จบ
+    // ===== Time to clear every vehicle (Scripted mode) =====
+    private float clearanceTime = -1f;              // -1 = not finished yet
     private string clearanceLabel = "";
     private float lastFixedClearance = -1f;
     private float lastAdaptiveClearance = -1f;
@@ -68,7 +68,7 @@ public class SimulationControlPanel : MonoBehaviour
     private bool showTestList = true;
     private bool showLaneTable = true;
 
-    // styles (สร้างครั้งเดียวตอน OnGUI ครั้งแรก)
+    // styles (built once, on the first OnGUI)
     private bool stylesReady = false;
     private GUIStyle sTitle, sHeader, sSmall, sMono, sBtn, sBtnOn, sDesc;
 
@@ -104,9 +104,9 @@ public class SimulationControlPanel : MonoBehaviour
 
         runElapsed += Time.deltaTime;
 
-        // ===== หยุดเวลาเมื่อรถหมดถนน =====
-        // เฉพาะโหมด Scripted ที่รู้จำนวนรถแน่นอน — ได้ตัวเลข "เวลาระบายรถทั้งหมด"
-        // ที่เอาไปเทียบ Fixed vs Adaptive ได้ตรง ๆ เพราะรถชุดเดียวกันเป๊ะ
+        // ===== Stop the clock once the road is empty =====
+        // Scripted mode only, where the vehicle count is known, giving a clearance time that
+        // compares Fixed against Adaptive directly because both saw exactly the same vehicles.
         if (config != null && clearanceTime < 0f
             && config.AllScheduledSpawned() && config.GetActiveCarCount() == 0)
         {
@@ -128,7 +128,7 @@ public class SimulationControlPanel : MonoBehaviour
 
     void OnDisable()
     {
-        // กัน timeScale ค้างเป็น 0 ตอนออกจาก Play mode
+        // Keep timeScale from being left at 0 when leaving Play mode
         Time.timeScale = 1f;
     }
 
@@ -144,7 +144,7 @@ public class SimulationControlPanel : MonoBehaviour
         }
     }
 
-    /// <summary>เริ่ม run ใหม่ด้วย test case + controller ที่เลือกอยู่</summary>
+    /// <summary>Starts a new run with the selected test case and controller</summary>
     public void StartRun()
     {
         if (config == null)
@@ -160,22 +160,22 @@ public class SimulationControlPanel : MonoBehaviour
 
         TestCase tc = CurrentTestCase;
 
-        // ---- ตั้งค่ารูปแบบการปล่อยรถ ----
+        // ---- configure the arrival pattern ----
         config.ApplyTestCase(tc);
 
-        // ---- ล้างถนน + ตั้ง seed ----
+        // ---- clear the road and set the seed ----
         int seed = (tc != null && tc.mode == ArrivalMode.Poisson) ? randomSeed : 20260820;
         Random.InitState(seed);
         config.ResetAllLanes(seed);
 
-        // ---- รีเซ็ตสถิติ ----
+        // ---- reset statistics ----
         if (dataLogger != null)
         {
             dataLogger.ResetRun();
             dataLogger.scenarioName = tc != null ? tc.name : "Manual";
         }
 
-        // ---- ตั้งระบบสัญญาณไฟ ----
+        // ---- set up the signal system ----
         ApplyController(startController, silent: true);
 
         runElapsed = 0f;
@@ -192,7 +192,7 @@ public class SimulationControlPanel : MonoBehaviour
         TestCase tc = CurrentTestCase;
         string tcName = tc != null ? tc.name : "-";
 
-        // เปลี่ยนชุดทดสอบเมื่อไหร่ ล้างผลเทียบเก่าทิ้ง จะได้ไม่เทียบข้ามชุด
+        // Changing test case discards the old comparison so results are never mixed across cases
         if (comparisonTestCase != tcName)
         {
             comparisonTestCase = tcName;
@@ -221,7 +221,7 @@ public class SimulationControlPanel : MonoBehaviour
         if (state != RunState.Paused && state != RunState.Finished) return;
         simSpeed = Mathf.Max(0.1f, speedBeforePause);
         Time.timeScale = simSpeed;
-        if (state == RunState.Finished) runLimit = 0f;   // เล่นต่อแบบไม่จำกัดเวลา
+        if (state == RunState.Finished) runLimit = 0f;   // carry on with no time limit
         state = RunState.Running;
         Toast("Resumed");
     }
@@ -233,7 +233,7 @@ public class SimulationControlPanel : MonoBehaviour
         else StartRun();
     }
 
-    /// <summary>หยุดสนิท ล้างรถออกจากถนน ไฟทุกดวงเป็นแดง</summary>
+    /// <summary>Full stop: clears the road and turns every signal red</summary>
     public void StopRun()
     {
         if (fixedController != null) fixedController.ForceStop();
@@ -274,12 +274,12 @@ public class SimulationControlPanel : MonoBehaviour
         Toast($"Running: {tc.name}");
     }
 
-    /// <summary>สลับระบบสัญญาณไฟกลางคัน โดยไม่ล้างรถบนถนน</summary>
+    /// <summary>Switches signal system mid-run without clearing the road</summary>
     public void ApplyController(ControllerKind kind, bool silent = false)
     {
         if (fixedController == null || adaptiveController == null) return;
 
-        // ต้องหยุด coroutine ทั้งคู่ก่อนเสมอ ไม่งั้นไฟเขียวอาจค้างพร้อมกัน 2 กลุ่ม
+        // Both coroutines must be stopped first, or two groups could hold green at once
         fixedController.ForceStop();
         adaptiveController.ForceStop();
 
@@ -357,8 +357,8 @@ public class SimulationControlPanel : MonoBehaviour
     {
         HandleHotkeys();
 
-        // ธีมกลาง: ครอบไว้ทั้งก้อน แล้ว GUI.Box/Label/Button ทุกบรรทัดในแผงนี้
-        // จะได้หน้าตาชุดเดียวกับแผงอื่นทันที โดยไม่ต้องแก้ทีละจุด (ดู UITheme.Begin)
+        // Shared theme: wrap the whole block so every GUI.Box/Label/Button line in this panel
+        // matches the other panels immediately, with no per-call changes (see UITheme.Begin)
         UITheme.Begin();
 
         if (!showPanel)
@@ -377,7 +377,7 @@ public class SimulationControlPanel : MonoBehaviour
         if (!Mathf.Approximately(uiScale, 1f))
             GUIUtility.ScaleAroundPivot(new Vector2(uiScale, uiScale), Vector2.zero);
 
-        // ไม่ให้หน้าต่างสูงเกินจอ (คิดรวม uiScale ด้วย)
+        // Keep the window from growing taller than the screen (uiScale included)
         float maxH = Screen.height / Mathf.Max(0.1f, uiScale) - 24f;
         windowRect.height = Mathf.Min(windowRect.height, maxH);
         if (windowRect.height < 260f) windowRect.height = Mathf.Min(260f, maxH);
@@ -390,7 +390,7 @@ public class SimulationControlPanel : MonoBehaviour
 
     void HandleHotkeys()
     {
-        // ใช้ Event ของ IMGUI แทน Input class เพราะทำงานได้ทั้ง Input System เก่าและใหม่
+        // Uses IMGUI Events rather than the Input class, so it works with both input systems
         Event e = Event.current;
         if (e == null || e.type != EventType.KeyDown) return;
 
@@ -413,7 +413,7 @@ public class SimulationControlPanel : MonoBehaviour
     {
         GUILayout.Space(2);
 
-        // ---------- header (อยู่นอก scroll ค้างไว้ด้านบนเสมอ) ----------
+        // ---------- header (outside the scroll view, always pinned to the top) ----------
         GUILayout.BeginHorizontal();
         GUILayout.Label("ABAC TRAFFIC SIM — CONTROL", sTitle);
         GUILayout.FlexibleSpace();
@@ -423,7 +423,7 @@ public class SimulationControlPanel : MonoBehaviour
         DrawStatusLine();
         Divider();
 
-        // ---------- เนื้อหาที่เหลือเลื่อนขึ้นลงได้ ----------
+        // ---------- everything else scrolls ----------
         mainScroll = GUILayout.BeginScrollView(mainScroll);
 
         // ---------- run control ----------
@@ -467,7 +467,7 @@ public class SimulationControlPanel : MonoBehaviour
             GUILayout.Label($"Demand-responsive \u00B7 green {adaptiveController.gMin:F0}-{adaptiveController.gMax:F0} s" +
                             (adaptiveController.enableConcurrentPhases ? " \u00B7 concurrent phases" : " \u00B7 one lane at a time"), sSmall);
 
-        // ปุ่มเปิด/ปิดแผงขั้นตอนการคิดของอัลกอริทึม (แผงแยกด้านขวา)
+        // Toggle for the algorithm decision-trace panel (separate panel on the right)
         if (adaptiveController != null)
         {
             GUILayout.BeginHorizontal();
@@ -481,21 +481,21 @@ public class SimulationControlPanel : MonoBehaviour
         Divider();
 
         // ---------- test case ----------
-        // ⚠️ ระหว่าง batch ไม่วาดบล็อกนี้เลย
-        //    Unity crash เมื่อ 10 ก.ย. 15:51 เกิดใน IMGUI layout ของหน้าต่างนี้ตอน Play:
+        // This block is not drawn at all during a batch.
+        //    Unity crashed on 10 Sep at 15:51 inside this window's IMGUI layout while in Play:
         //      GUI.CallWindowDelegate -> GUILayoutUtility.Layout -> GUIScrollGroup.CalcWidth
         //        -> GUIWordWrapSizer.CalcWidth -> GUIStyle.CalcMinMaxWidth  [native crash]
-        //    = scroll view ซ้อน scroll view ที่ข้างในมี label แบบ wordWrap (tc.description, sDesc)
-        //    ยังพิสูจน์ไม่ได้ว่านี่คือต้นเหตุแน่นอน แต่ batch รันยาว ~23 ชม.แบบไม่มีคนเฝ้า
-        //    จึงไม่ควรวาดโครงสร้างที่อยู่ใน stack ของ crash ทิ้งไว้ทั้งคืน
-        //    (ไม่กระทบผลการทดลอง — เป็น GUI ล้วน BatchRunPanel ยังโชว์ความคืบหน้าตามปกติ)
+        //    = a scroll view inside a scroll view containing word-wrapped labels (tc.description, sDesc).
+        //    That is not proven to be the cause, but a batch runs unattended for about 23 hours,
+        //    so leaving a structure that appears in the crash stack on screen all night is unwise.
+        //    (No effect on results - this is purely GUI; BatchRunPanel still shows progress.)
         bool batchRunning = scenarioManager != null && scenarioManager.IsBatchRunning;
 
         if (batchRunning)
         {
             GUILayout.Label($"BATCH RUNNING — {scenarioManager.CompletedRuns}/{scenarioManager.TotalRuns}", sHeader);
             GUILayout.Label("test-case list and lane table hidden while the batch runs", sMono);
-            GUILayout.EndScrollView();                       // ปิด mainScroll ให้ตรงกับทางออกปกติ
+            GUILayout.EndScrollView();                       // close mainScroll, matching the normal exit path
             GUI.DragWindow(new Rect(0, 0, 10000, 22));
             return;
         }
@@ -504,14 +504,14 @@ public class SimulationControlPanel : MonoBehaviour
         GUILayout.Label("TEST CASES", sHeader);
         GUILayout.FlexibleSpace();
 
-        // ⚠️ ลิสต์นี้ถูก serialize ไว้ในซีนด้วย และ Awake จะสร้างจากโค้ดก็ต่อเมื่อลิสต์ว่างเท่านั้น
-        //    เคสใหม่ที่เพิ่มใน TestCasePresets จึงไม่โผล่เองจนกว่าจะกดปุ่มนี้
-        //    (กับดักเดียวกับค่าพารามิเตอร์ที่ซีนทับซอร์ส — ดู ABAC ▸ Verify Scene Against Code)
+        // This list is also serialized in the scene, and Awake only builds from code when it is empty,
+        //    so a case newly added to TestCasePresets will not appear until this button is pressed.
+        //    (Same trap as scene values overriding the source - see ABAC > Verify Scene Against Code.)
         if (GUILayout.Button("Reload", sBtn, GUILayout.Width(58)))
         {
             LoadDefaultTestCases();
             selectedTestCase = 0;
-            Toast($"โหลดจากโค้ดใหม่ {testCases.Count} เคส");
+            Toast($"Reloaded {testCases.Count} cases from code");
         }
         if (GUILayout.Button(showTestList ? "Hide" : "Show", sBtn, GUILayout.Width(52)))
             showTestList = !showTestList;
@@ -534,7 +534,7 @@ public class SimulationControlPanel : MonoBehaviour
                 {
                     if (testCases[i] == null) continue;
 
-                    // เคสที่ผู้ใช้สร้างเองมีปุ่มลบ · T1-T13 ไม่มี เพราะรายงานกับเทสอ้างถึงมัน
+                    // User-created cases get a delete button; T1-T13 do not, as the report and tests cite them
                     bool own = testCases[i].userCreated;
                     if (own) GUILayout.BeginHorizontal();
 
@@ -557,7 +557,7 @@ public class SimulationControlPanel : MonoBehaviour
                     testCases.RemoveAt(deleteAt);
                     if (selectedTestCase >= testCases.Count) selectedTestCase = testCases.Count - 1;
                     if (selectedTestCase < 0) selectedTestCase = 0;
-                    Toast($"ลบ \"{gone}\" แล้ว");
+                    Toast($"Deleted \"{gone}\"");
                 }
                 GUILayout.EndScrollView();
             }
@@ -667,7 +667,7 @@ public class SimulationControlPanel : MonoBehaviour
         GUILayout.EndHorizontal();
     }
 
-    // ความกว้างคอลัมน์ของตารางเลน — หัวตารางกับแถวข้อมูลต้องใช้ชุดเดียวกัน
+    // Lane table column widths - the header row and the data rows must use the same set
     const float W_LANE = 32f, W_SIGNAL = 78f, W_QUEUE = 32f, W_OLDEST = 56f;
 
     void DrawLaneTable()
@@ -675,9 +675,9 @@ public class SimulationControlPanel : MonoBehaviour
         if (config == null) return;
 
         GUILayout.BeginHorizontal();
-        // ⚠️ ความกว้างสี่ค่านี้ต้องตรงกับแถวข้อมูลด้านล่างเป๊ะ ไม่งั้นคอลัมน์จะเลื่อนจากหัวตาราง
-        //    รวม 198 จากพื้นที่ใน scroll view ~318 (แผงกว้าง 350 หัก padding กับ scrollbar)
-        //    คอลัมน์สุดท้ายกินที่เหลือ ~120 พอสำหรับ "42.8s H_Bx" โดยไม่ตัดบรรทัด
+        // These four widths must match the data rows exactly, or the columns drift from the header.
+        //    They total 198 out of roughly 318 usable inside the scroll view (350 wide panel,
+        //    less padding and scrollbar). The last column takes the remaining ~120, enough for
         GUILayout.Label("Lane", sSmall, GUILayout.Width(W_LANE));
         GUILayout.Label("Signal", sSmall, GUILayout.Width(W_SIGNAL));
         GUILayout.Label("Queue", sSmall, GUILayout.Width(W_QUEUE));
@@ -685,10 +685,10 @@ public class SimulationControlPanel : MonoBehaviour
         GUILayout.Label("Queue clock", sSmall);
         GUILayout.EndHorizontal();
 
-        // SODA รันอยู่จริงไหม — ใช้ทั้งคอลัมน์นับถอยหลังและคอลัมน์นาฬิกาคิว
+        // Is SODA actually running? Used by both the countdown and the queue-clock column
         bool sodaLive = adaptiveController != null && adaptiveController.enabled;
 
-        // สูงพอสำหรับ 6 เลน ถ้าเพิ่มเลนทีหลังจะเลื่อนดูได้
+        // Tall enough for 6 lanes; adding more later just makes it scroll
         laneScroll = GUILayout.BeginScrollView(laneScroll, GUILayout.Height(112));
 
         foreach (ApproachLane lane in config.lanes)
@@ -715,9 +715,9 @@ public class SimulationControlPanel : MonoBehaviour
                           : st == TrafficLight.LightState.Yellow ? new Color(1f, .85f, .2f)
                           : new Color(.95f, .4f, .4f);
 
-                // นับถอยหลังของไฟเขียว — ใช้ GreenTimeRemaining ไม่ใช่ PhaseTimeRemaining
-                // เพราะตัวหลังถูกเขียนทับด้วยเวลาเหลือง/แดงของ clearance ทำให้หัวที่เขียวต่อเนื่อง
-                // ข้ามเฟสแสดงเวลา clearance ของหัวอื่นว่าเป็นเวลาเขียวของตัวเอง
+                // Green countdown - uses GreenTimeRemaining, not PhaseTimeRemaining, because the
+                // latter is overwritten with the yellow/all-red clearance time, which would make a
+                // head that stays green across phases show another head's clearance as its own green.
                 string left = "";
                 if (sodaLive && st == TrafficLight.LightState.Green)
                 {
@@ -730,19 +730,19 @@ public class SimulationControlPanel : MonoBehaviour
 
             GUILayout.Label(queue.ToString(), sMono, GUILayout.Width(W_QUEUE));
 
-            // ---- รถคันที่เก่าที่สุดในเลน (ground truth ของซิม) ----
-            // ⚠️ ไม่ใช่ตัวเลขที่ controller ใช้ตัดสินใจ ดูคอลัมน์ถัดไป
+            // ---- oldest car in the lane (sim ground truth) ----
+            // Not the number the controller decides on; see the next column.
             if (adaptiveController != null && wait > adaptiveController.maxWaitTime * 0.8f)
                 GUI.color = new Color(1f, .5f, .4f);
             GUILayout.Label($"{wait:F1} s", sMono, GUILayout.Width(W_OLDEST));
             GUI.color = oc;
 
-            // ---- นาฬิกาคิวของหัวไฟ = ตัวเลขจริงที่ Q1/Q2 ใช้ ----
-            // ต่างจากคอลัมน์ซ้ายเพราะเป็นของ "เลน" ไม่ใช่ของ "รถ" และรีเซ็ตทุกครั้งที่ได้เสิร์ฟ
-            // เลนที่ไม่เคยว่างจะสะสมนาฬิกาเก่าไว้ ทั้งที่รถในเลนอาจเพิ่งมาถึง (SODA_BASELINE §8.11 note)
-            // sodaLive: ถ้า SODA ไม่ได้รันอยู่ นาฬิกาจะค้างที่ค่าเดิม (ForceStop ฆ่า SnapshotLoop
-            // แต่ไม่ล้าง queueStart) แล้ว Time.time - queueStart จะไต่ขึ้นไม่หยุด จนขึ้นแดงว่าอดตาย
-            // ทั้งที่ตัวคุมไม่ได้ทำงาน — จึงต้องไม่แสดงเลย
+            // ---- signal head queue clock = the number Q1/Q2 actually use ----
+            // Differs from the column on the left because it belongs to the lane, not the car,
+            // and resets every time the lane is served. A lane that never empties accumulates an
+            // old clock even though its cars may have just arrived (SODA_BASELINE section 8.11).
+            // sodaLive: with SODA stopped the clock freezes (ForceStop kills SnapshotLoop but does
+            // not clear queueStart), so Time.time - queueStart would climb forever and show as
             AdaptiveController.SignalHead head = sodaLive ? HeadForLane(lane) : null;
             if (!lane.isSignalized || head == null)
             {
@@ -758,7 +758,7 @@ public class SimulationControlPanel : MonoBehaviour
             {
                 float cw = Time.time - head.queueStart;
                 if (cw >= adaptiveController.maxWaitTime * adaptiveController.starvationSelectThreshold)
-                    GUI.color = new Color(1f, .5f, .4f);       // เข้าเกณฑ์ Q1 แล้ว
+                    GUI.color = new Color(1f, .5f, .4f);       // has reached the Q1 threshold
                 GUILayout.Label($"{cw:F1}s {head.name}", sMono);
             }
             GUI.color = oc;
@@ -768,13 +768,13 @@ public class SimulationControlPanel : MonoBehaviour
 
         GUILayout.EndScrollView();
 
-        GUILayout.Label("Oldest car = รถคันเก่าสุดในเลน (ground truth)  ·  " +
-                        "Queue clock = นาฬิกาของหัวไฟที่ Q1/Q2 ใช้จริง", sSmall);
+        GUILayout.Label("Oldest car = oldest vehicle in the lane (ground truth)  \u00B7  " +
+                        "Queue clock = the signal head clock Q1/Q2 actually use", sSmall);
     }
 
     /// <summary>
-    /// หา SignalHead ที่คุมเลนนี้ โดยจับคู่จาก ROI
-    /// A2 กับ Ax ใช้ ROI ร่วมกัน จึงได้ H_A ทั้งคู่ — Ax ถูกกรองออกด้วย isSignalized ก่อนหน้าแล้ว
+    /// Finds the SignalHead controlling this lane by matching through the ROI.
+    /// A2 and Ax share an ROI so both resolve to H_A; Ax is filtered out earlier by isSignalized.
     /// </summary>
     AdaptiveController.SignalHead HeadForLane(ApproachLane lane)
     {
@@ -804,7 +804,7 @@ public class SimulationControlPanel : MonoBehaviour
             GUILayout.Label("Still releasing vehicles (Poisson mode never ends)", sSmall);
         }
 
-        // ---- ตารางเทียบ Fixed vs Adaptive ของชุดทดสอบเดียวกัน ----
+        // ---- Fixed vs Adaptive comparison table for the same test case ----
         if (lastFixedClearance >= 0f || lastAdaptiveClearance >= 0f)
         {
             GUILayout.Space(2);
