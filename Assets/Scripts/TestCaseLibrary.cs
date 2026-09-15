@@ -214,8 +214,7 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T1 \u00B7 Single lane, 10 cars",
-            description = "Release 10 cars on lane A only, 1.5 s apart.\n" +
-                          "Baseline check: cars queue in a neat line without overlapping, then discharge on green.",
+            description = "10 cars   A 10",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 120f,
             schedules = new List<LaneSchedule> {
@@ -227,10 +226,7 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T2 \u00B7 All lanes equal",
-            description = "All 7 lanes release 8 cars at once, 2 s apart (including the A2 shared lane).\n" +
-                          "Fairness check: every signalised lane must get green; none may be starved.\n" +
-                          "Free lane CA should show a wait near zero. Ax will NOT be zero \u2014 by design \u2014 for two reasons:\n" +
-                          "(1) A2 stops at the red light in the same lane ahead of it, (2) Ax itself must yield while Bx is green.",
+            description = "56 cars   A 8 \u00B7 A2 8 \u00B7 Ax 8 \u00B7 B 8 \u00B7 Bx 8 \u00B7 CB 8 \u00B7 CA 8",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 180f,
             schedules = new List<LaneSchedule> {
@@ -248,9 +244,7 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T3 \u00B7 Bx vs CB conflict",
-            description = "Heavy load on Bx and CB at the same time, plus some traffic on A.\n" +
-                          "Key check: Bx and CB must never be green together. Easy to see during a demo \u2014\n" +
-                          "the controller alternates between them.",
+            description = "30 cars   A 6 \u00B7 Bx 12 \u00B7 CB 12",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 180f,
             schedules = new List<LaneSchedule> {
@@ -264,9 +258,7 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T4 \u00B7 Starvation test",
-            description = "A and B run continuously with 40 cars each, while CB gets a single car at t = 5 s.\n" +
-                          "Question: does that one CB car ever get green, and how long does it wait?\n" +
-                          "This is the test that proves anti-starvation works \u2014 examiners like to ask about it.",
+            description = "81 cars   A 40 \u00B7 B 40 \u00B7 CB 1",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 180f,
             schedules = new List<LaneSchedule> {
@@ -280,8 +272,7 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T5 \u00B7 Campus event in/out",
-            description = "Heavy inbound first (Ax, Bx), then at t = 90 s everyone leaves at once (CB, CA).\n" +
-                          "Models a graduation-day surge \u2014 checks that the controller adapts to a reversal in direction.",
+            description = "100 cars   A 10 \u00B7 Ax 20 \u00B7 B 10 \u00B7 Bx 20 \u00B7 CB 20 \u00B7 CA 20",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 300f,
             schedules = new List<LaneSchedule> {
@@ -298,12 +289,7 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T6 \u00B7 Unsignalised lanes (Ax, CA)",
-            description = "Only Ax and CA release vehicles. No A2 present to block anything.\n" +
-                          "CA is genuinely free \u2014 its wait must stay near zero, otherwise stopLineTarget is misconfigured.\n" +
-                          "Ax is no longer truly free (it yields while Bx is green), which makes this the sharpest\n" +
-                          "Fixed-vs-Adaptive comparison in the set:\n" +
-                          "   \u2022 Fixed \u2192 Bx gets green every cycle even with zero Bx traffic, so Ax stops for nothing.\n" +
-                          "   \u2022 Adaptive \u2192 no demand on Bx means no green, so Ax barely waits at all.",
+            description = "30 cars   Ax 15 \u00B7 CA 15",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 120f,
             schedules = new List<LaneSchedule> {
@@ -316,8 +302,7 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T7 \u00B7 Driver profiles",
-            description = "Lane A releases 6 aggressive drivers, then 6 cautious drivers at t = 40 s.\n" +
-                          "Compares braking distance, reaction time and amber-running between profiles.",
+            description = "18 cars   A 12 \u00B7 B 6",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 150f,
             schedules = new List<LaneSchedule> {
@@ -332,12 +317,7 @@ public static class TestCasePresets
         list.Add(new TestCase
         {
             name = "T13 · Shared Lane Blocking Demo",
-            description = "Direct demonstration of the shared-lane mechanism: A2 (straight, outer lane) and\n" +
-                          "Ax (turning into campus) occupy the same physical lane.\n" +
-                          "A2 waits at the red light like any straight vehicle \u2014 and every Ax car behind it is trapped,\n" +
-                          "even though no signal applies to Ax at all.\n" +
-                          "When Bx turns green, Ax must stop at its own line too, so the Ax queue blocks A2 in return.\n" +
-                          "Watch the Ax+A2 row in the HUD (one shared ROI = what a real detector sees).",
+            description = "85 cars   A2 30 \u00B7 Ax 40 \u00B7 B 15",
             mode = ArrivalMode.Scripted,
             suggestedDuration = 300f,
             schedules = new List<LaneSchedule> {
@@ -355,19 +335,15 @@ public static class TestCasePresets
         // The A parameter passed to Poisson() is the combined through-traffic rate before the lane
         // split; the function halves it between A and A2 below (standard thinning of a Poisson
         // process: half the vehicles means double the mean interval).
-        list.Add(Poisson("T8 · MorningPeak",  "Heavy inbound campus traffic. A/Ax/B/Bx measured by Itim (13 Jul, 08:40-09:05).\n" +
-            "CB/CA closed: the C exit shuts 08:30-09:00, which coincides with this peak.",
+        list.Add(Poisson("T8 · MorningPeak",
             18.8f, 5.1f, 9.0f, 9.6f, CLOSED, CLOSED));
-        list.Add(Poisson("T9 · EveningPeak",  "Heavy outbound campus traffic. CB/CA measured: CB 159 veh = 8.4 s/veh,\n" +
-            "CA 100 veh = 13.4 s/veh (CB:CA = 61:39). A/Ax/B/Bx are estimated buckets.",
+        list.Add(Poisson("T9 · EveningPeak",
             MEDIUM, LOW, HIGH, LOW, 8.4f, 13.4f));
-        list.Add(Poisson("T10 · MiddayNormal", "Ordinary traffic on every approach. A/Ax/B/Bx measured by Itim (22 Jul, 11:37-12:00);\n" +
-            "CB/CA still estimated. The real signal flashes amber 09:00-15:00, so comparing T10\n" +
-            "against Fixed is hypothetical - state that caveat in the report.",
+        list.Add(Poisson("T10 · MiddayNormal",
             29.0f, 9.7f, 20.5f, 21.4f, LOW, LOW));
-        list.Add(Poisson("T11 · ABACEvent",   "Large campus event, heavy in and out at once. Entirely assumed.",
+        list.Add(Poisson("T11 · ABACEvent",
             MEDIUM, VERY_HIGH, MEDIUM, VERY_HIGH, HIGH, HIGH));
-        list.Add(Poisson("T12 · Night",       "Light traffic on every approach. Entirely assumed.",
+        list.Add(Poisson("T12 · Night",
             VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW));
 
         // ---------- Compare-101 : one real cycle from the overhead clip ----------
@@ -475,7 +451,26 @@ public static class TestCasePresets
         return tc;
     }
 
-    static TestCase Poisson(string name, string desc,
+    /// <summary>Run length of the Poisson cases, in seconds - also what the expected counts are based on.</summary>
+    const float RUN_SECONDS = 300f;
+
+    /// <summary>One line of expected vehicle counts over the run, so a Poisson case reads like a scripted one.</summary>
+    static string RateSummary(float seconds, float a, float a2, float ax, float b, float bx, float cb, float ca)
+    {
+        string[] names = { "A", "A2", "Ax", "B", "Bx", "CB", "CA" };
+        float[] intervals = { a, a2, ax, b, bx, cb, ca };
+        var parts = new List<string>();
+        int total = 0;
+        for (int i = 0; i < names.Length; i++)
+        {
+            int n = intervals[i] > 0f ? Mathf.RoundToInt(seconds / intervals[i]) : 0;
+            total += n;
+            parts.Add($"{names[i]} {n}");
+        }
+        return $"~{total} cars in {seconds:0}s   " + string.Join(" \u00B7 ", parts);
+    }
+
+    static TestCase Poisson(string name,
                             float A, float Ax, float B, float Bx, float CB, float CA)
     {
         // The A argument is the combined through-traffic rate, before the shared lane splits it.
@@ -488,9 +483,9 @@ public static class TestCasePresets
         return new TestCase
         {
             name = name,
-            description = desc + "\n(Poisson arrivals - a different seed gives a different run; for statistics, not demos)",
+            description = RateSummary(RUN_SECONDS, aInner, aOuter, Ax, B, Bx, CB, CA),
             mode = ArrivalMode.Poisson,
-            suggestedDuration = 300f,
+            suggestedDuration = RUN_SECONDS,
             rates = new List<LaneArrivalRate> {
                 new LaneArrivalRate("A",  aInner),
                 new LaneArrivalRate("A2", aOuter),
