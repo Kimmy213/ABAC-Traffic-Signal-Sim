@@ -390,6 +390,20 @@ public static class TestCasePresets
     ///
     /// ⚠️ ยอดที่ยังกระทบไม่ลง (นับมือ vs รายการเวลาที่มาถึง) — ดูหมายเหตุใน description
     /// </summary>
+    /// <summary>เวลาที่รถใช้วิ่งจากจุดเกิดถึงเส้นหยุดเมื่อไม่มีอะไรขวาง (วินาที)
+    ///
+    /// ⭐ สำคัญ: เวลาที่นับจากคลิปคือ "หน้ารถข้ามเส้นหยุดตอนไหน" (กฎการนับข้อ 1 ใน HANDOFF_tally_overhead)
+    /// แต่ ScheduledBurst.atTime คือ "ปล่อยรถออกจากจุดเกิดตอนไหน" สองอย่างนี้ห่างกันทั้งความยาวเลน
+    /// ถ้าเอาเวลาจากคลิปมาใส่ตรง ๆ รถทุกคันจะมาถึงเส้นช้ากว่าของจริงเท่านี้
+    ///
+    /// ระยะ = SPAWN_FAR 200 m - |STOP_A_X| 10.5 m = 189.5 m  (ขา B/Bx และ CB/CA ต่างกันไม่เกิน 1 m)
+    /// ความเร็ววิ่งถ่วงน้ำหนักตามสัดส่วนคนขับ 25/60/15 = 0.25x16.67 + 0.60x15.28 + 0.15x13.89 = 15.42 m/s
+    /// 189.5 / 15.42 = 12.29 s   (GeometryTest ข้อ 13 ล็อกไว้กับพิกัดจริงในซีน)</summary>
+    public const float SPAWN_TO_STOPLINE_SEC = 12.29f;
+
+    /// <summary>แปลง "เวลาที่หน้ารถข้ามเส้นหยุดในคลิป" เป็น "เวลาที่ต้องปล่อยรถจากจุดเกิด"</summary>
+    static float Spawn(float stopLineTime) => Mathf.Max(0f, stopLineTime - SPAWN_TO_STOPLINE_SEC);
+
     static TestCase Compare101()
     {
         // เวลาในเคสนับจาก 1:02 ของคลิป -> t = (mm:ss ของคลิป) - 62 วินาที
@@ -402,8 +416,11 @@ public static class TestCasePresets
               "หนึ่งรอบสัญญาณจริง 1:02–2:49 ของ DJI_20260824154642_0021_D (24 ส.ค. 2026)\n" +
               "ใช้เทียบภาพจริงใต้ไฟจริง กับสิ่งที่ SODA จะทำ ณ วินาทีเดียวกัน\n\n" +
               "จอดรออยู่แล้วตอน t=0 (วางจ่อเส้นหยุดจริง ไม่ได้ปล่อยจากจุดเกิด):\n" +
-              "   A 9 · Ax 1 · B 4 · Bx 2 · CB 0 · CA 0   รวม 16 คัน\n\n" +
-              "ทยอยมาถึงเส้นหยุด (วินาทีในเคส · เวลาในคลิป):\n" +
+              "   A 4 · Ax 1 · B 4 · Bx 2 · CB 0 · CA 0   รวม 11 คัน\n" +
+              "   (A แก้จาก 9 เป็น 4 — เท่าที่กล้องเห็นจริงตอน 1:02 คิวยาวเลยขอบเฟรม)\n\n" +
+              "ทยอยมาถึงเส้นหยุด (วินาทีในเคส · เวลาในคลิป) — ตัวเลขนี้คือเวลา *ข้ามเส้นหยุด*\n" +
+              "จุดปล่อยรถจริงถอยไปก่อนหน้า 12.29 วิ ตามเวลาวิ่งจากจุดเกิดถึงเส้น 189.5 ม.:\n" +
+              "   A ใช้เวลาข้ามเส้นที่วัดเองจากคลิป: 17.4 20.0 23.2 26.1 29.7 39.1\n" +
               "   t16 1:18  CB1        t27 1:29  Ax1 CB1     t32 1:34  CB1\n" +
               "   t36 1:38  B1         t39 1:41  CA1 Ax1 A1  t43 1:45  CA1\n" +
               "   t49 1:51  CB1        t53 1:55  Bx1         t55 1:57  Bx1\n" +
@@ -413,40 +430,57 @@ public static class TestCasePresets
               "ไฟจริงในรอบนี้ (นับจาก t=0): A+A2+B 0.3-40.3 · B+Bx 45.3-65.3 · CB 70.3-101.3",
         };
 
-        // ---- A : จอดรอ 9 · มาเพิ่ม 1 คันที่ t=39 ----
+        // ---- A : จอดรอ 4 · ทยอยมาอีก 6 (รวม 10 คันเท่าที่นับได้) ----
+        //
+        // ⭐ แก้จาก "จอดรอ 9 + มาเพิ่ม 1" ตามที่วัดจากคลิปเมื่อ 15 ก.ย.
+        //
+        // ที่ 1:02 (หัว A เขียว) กล้องเห็นรถยนต์ยืนรออยู่ในเลน A แค่ 4 คัน คันท้ายสุดติดขอบซ้าย
+        // ของเฟรมพอดี คิวจึงยาวเลยออกไปนอกภาพ ยืนยันยอด 9 ไม่ได้ ส่วนอีก 6 คันใช้เวลาที่
+        // "หน้ารถข้ามเส้นหยุด" ที่วัดได้จริงจาก virtual detector ที่ x=587 px (นับเฉพาะรถยนต์
+        // คราบทับเส้น >= 0.30 s ตัดมอเตอร์ไซค์ทิ้ง)
+        //
+        // ทำไมต้องแก้: ถ้าจอดรอ 9 คันจริง ด้วย headway 2.31 s/คัน ที่ calibrate ไว้ คิวจะหมด
+        // ตั้งแต่วินาทีที่ 20 แต่คลิปใช้ถึง 29.7 แปลว่าไม่ได้ยืนรอครบ 9 ตั้งแต่แรก
+        // Compare101Test วัดให้: จอด 9 คลาดเฉลี่ย 5.75 s -> จอด 4 เหลือ 2.10 s
+        // (ถ้าจูนต่อ จอด 2 จะเหลือ 1.14 s แต่ขัดกับที่ตาเห็นว่ามี 4 คันยืนอยู่ จึงไม่เอา)
         tc.schedules.Add(new LaneSchedule("A",
-            new ScheduledBurst(39f, 1, 0f)) { initialQueue = 9 });
+            new ScheduledBurst(Spawn(17.40f), 1, 0f),
+            new ScheduledBurst(Spawn(20.00f), 1, 0f),
+            new ScheduledBurst(Spawn(23.20f), 1, 0f),
+            new ScheduledBurst(Spawn(26.13f), 1, 0f),
+            new ScheduledBurst(Spawn(29.70f), 1, 0f),
+            new ScheduledBurst(Spawn(39.10f), 1, 0f)) { initialQueue = 4 });
 
         // ---- Ax : จอดรอ 1 · มาเพิ่ม t27, t39 ----
         tc.schedules.Add(new LaneSchedule("Ax",
-            new ScheduledBurst(27f, 1, 0f),
-            new ScheduledBurst(39f, 1, 0f)) { initialQueue = 1 });
+            new ScheduledBurst(Spawn(27f), 1, 0f),
+            new ScheduledBurst(Spawn(39f), 1, 0f)) { initialQueue = 1 });
 
         // ---- B : จอดรอ 4 · มาเพิ่ม t36, t59, t60 ----
         tc.schedules.Add(new LaneSchedule("B",
-            new ScheduledBurst(36f, 1, 0f),
-            new ScheduledBurst(59f, 1, 0f),
-            new ScheduledBurst(60f, 1, 0f)) { initialQueue = 4 });
+            new ScheduledBurst(Spawn(36f), 1, 0f),
+            new ScheduledBurst(Spawn(59f), 1, 0f),
+            new ScheduledBurst(Spawn(60f), 1, 0f)) { initialQueue = 4 });
 
         // ---- Bx : จอดรอ 2 · มาเพิ่ม t53, t55 (ทั้งคู่มาถึงตอน Bx เขียวอยู่แล้ว 45.3-65.3) ----
         tc.schedules.Add(new LaneSchedule("Bx",
-            new ScheduledBurst(53f, 1, 0f),
-            new ScheduledBurst(55f, 1, 0f)) { initialQueue = 2 });
+            new ScheduledBurst(Spawn(53f), 1, 0f),
+            new ScheduledBurst(Spawn(55f), 1, 0f)) { initialQueue = 2 });
 
         // ---- CB : ไม่มีใครจอดรอ ทยอยมาทั้ง 9 คัน ----
         // 5 คันสุดท้ายมาถึงในวินาทีเดียวกัน (2:14) ต้องกางออก 0.8 วิ เพราะยัดจุดเดียวไม่ได้
         tc.schedules.Add(new LaneSchedule("CB",
-            new ScheduledBurst(16f, 1, 0f),
-            new ScheduledBurst(27f, 1, 0f),
-            new ScheduledBurst(32f, 1, 0f),
-            new ScheduledBurst(49f, 1, 0f),
-            new ScheduledBurst(72f, 5, 0.8f)));
+            new ScheduledBurst(Spawn(16f), 1, 0f),
+            new ScheduledBurst(Spawn(27f), 1, 0f),
+            new ScheduledBurst(Spawn(32f), 1, 0f),
+            new ScheduledBurst(Spawn(49f), 1, 0f),
+            new ScheduledBurst(Spawn(72f), 5, 0.8f)));
 
         // ---- CA : ไม่มีใครจอดรอ · t39, t43, t72 ----
         tc.schedules.Add(new LaneSchedule("CA",
-            new ScheduledBurst(39f, 1, 0f),
-            new ScheduledBurst(43f, 1, 0f),
-            new ScheduledBurst(72f, 1, 0f)));
+            new ScheduledBurst(Spawn(39f), 1, 0f),
+            new ScheduledBurst(Spawn(43f), 1, 0f),
+            new ScheduledBurst(Spawn(72f), 1, 0f)));
 
         return tc;
     }

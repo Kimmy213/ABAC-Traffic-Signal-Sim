@@ -446,6 +446,33 @@ public class GeometryTest
                   "รถที่เกิดตามปกติยังวิ่งเข้ามาด้วย approachSpeed เหมือนเดิม");
         }
 
+        // ===== 13) เวลาเดินทางจากจุดเกิดถึงเส้นหยุด — Compare-101 ใช้แปลงเวลาที่อ่านจากคลิป =====
+        //   เวลาในคลิปคือ "หน้ารถข้ามเส้นหยุด" แต่ ScheduledBurst คือ "ปล่อยรถจากจุดเกิด"
+        //   ถ้าค่านี้เพี้ยน เคสที่อิงคลิปทุกเคสจะคลาดกันทั้งชุด
+        {
+            Console.WriteLine("\n--- spawn -> stop line ---");
+            float distA  = ABACSceneBuilder.SPAWN_FAR - Math.Abs(ABACSceneBuilder.STOP_A_X);
+            float distB  = ABACSceneBuilder.SPAWN_FAR - Math.Abs(ABACSceneBuilder.STOP_B_X);
+            float distC  = ABACSceneBuilder.SPAWN_FAR - Math.Abs(ABACSceneBuilder.STOP_C_Z);
+
+            var sp = new CarSpawner();
+            float agg = sp.aggressivePercent / 100f, nor = sp.normalPercent / 100f;
+            float cau = 1f - agg - nor;
+            float vbar = agg * Profile(CarAgent.DriverType.Aggressive, "approachSpeed")
+                       + nor * Profile(CarAgent.DriverType.Normal,     "approachSpeed")
+                       + cau * Profile(CarAgent.DriverType.Cautious,   "approachSpeed");
+            float expect = distA / vbar;
+            Console.WriteLine($"    ระยะ A {distA:F1} m | B {distB:F1} | C {distC:F1} | v เฉลี่ย {vbar:F2} m/s"
+                            + $" -> {expect:F2} s   (ค่าที่ใช้ {TestCasePresets.SPAWN_TO_STOPLINE_SEC:F2})");
+
+            Check(Math.Abs(TestCasePresets.SPAWN_TO_STOPLINE_SEC - expect) < 0.15f,
+                  $"SPAWN_TO_STOPLINE_SEC ตรงกับพิกัดจริงในซีน ({expect:F2} s)");
+            Check(Math.Abs(distA - distB) < 1.5f && Math.Abs(distA - distC) < 1.5f,
+                  "ทุกขาเข้าห่างจากเส้นหยุดเท่ากันในระยะ 1.5 m จึงใช้ค่าเดียวได้");
+            Check(Math.Abs(agg + nor + cau - 1f) < 1e-5f && cau > 0f,
+                  "สัดส่วนคนขับรวมกันได้ 1 และ Cautious ไม่ติดลบ");
+        }
+
         Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
         return failures;
     }

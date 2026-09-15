@@ -56,6 +56,7 @@ run t4 EtaTest.cs             EtaTest        ""                     gamecode.dll
 run t5 SharedLaneTest.cs      SharedLaneTest ""                     gamecode.dll
 run t6 GeometryTest.cs        GeometryTest   "-define:UNITY_EDITOR" all_ed.dll
 run_nostub t10 HeadwayTest.cs HeadwayTest    gamecode.dll
+run_nostub t11 Compare101Test.cs Compare101Test gamecode.dll
 
 # เทียบ ".unity กับ .cs" ไม่ใช่ ".cs กับ .cs" — ตัวที่จับบั๊ก scene-serialization ได้จริง
 run t7 ../SceneAuditTest.cs   SceneAuditTest ""                     gamecode.dll "$SCENE"
