@@ -341,8 +341,11 @@ public static class TestCasePresets
             MEDIUM, LOW, HIGH, LOW, 8.4f, 13.4f));
         list.Add(Poisson("T10 · MiddayNormal",
             29.0f, 9.7f, 20.5f, 21.4f, LOW, LOW));
+        // ABACEvent rescaled 18 Sep 2026 - see the note in ScenarioManager.LoadABACScenarioPreset().
+        // The old VERY_HIGH rates put lane Bx at v/c 9.6 against the calibrated vehicle model and
+        // gridlocked the junction outright; these keep Bx the bottleneck at 1.80 without killing it.
         list.Add(Poisson("T11 · ABACEvent",
-            MEDIUM, VERY_HIGH, MEDIUM, VERY_HIGH, HIGH, HIGH));
+            6.5f, 3.2f, 4.0f, 8.0f, 8.0f, 2.5f));
         list.Add(Poisson("T12 · Night",
             VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW, VERY_LOW));
 

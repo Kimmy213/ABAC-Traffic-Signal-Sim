@@ -274,6 +274,7 @@ public class ScenarioManager : MonoBehaviour
         runDuration            = BATCH_RUN_DURATION;
         warmupDuration         = BATCH_WARMUP;
         a2Share                = MEASURED_A2_SHARE;
+        MarkDirty();
     }
 
     /// <summary>
@@ -539,8 +540,39 @@ public class ScenarioManager : MonoBehaviour
     //   coincides with the real peak (08:15-09:00, ending right after 09:00), so closed is still right here.
     // MiddayNormal CB/CA = 10.1 / 13.2 s measured by Itim (10 Sep) - previously left at low=7 despite having the figures.
     // The other scenarios (EveningPeak medium/low, ABACEvent, Night) are assumed levels, not measurements.
+    //
+    // ABACEvent was rescaled on 18 Sep 2026. Its rates were invented when the vehicle model had 3.2 times
+    // the real capacity (see SODA_BASELINE 8.15). Against the calibrated model they described a junction
+    // that cannot physically function: lane Bx clears 7.4 vehicles per 106 s cycle, a capacity of one
+    // vehicle every 14.4 s, while ABACEvent was feeding it one every 1.5 s - a v/c of 9.6. Ten of the 54
+    // ABACEvent runs in batch v3 gridlocked completely and stopped between 207 and 578 of their 1800
+    // simulated seconds, so they measured a dead junction rather than a control strategy.
+    // The rates below put every lane at v/c 0.92-1.09 except Bx, deliberately left the bottleneck at 1.80.
+    // For comparison: MorningPeak runs Bx at 1.50 and never gridlocks; EveningPeak runs it at 2.05 and
+    // gridlocked once in 54. These are still assumptions, as they always were - say so in the report.
     // Confirmed: 09:00-15:00 the signal really does flash amber rather than run fixed-time, and MiddayNormal
     //   (11:37-12:00) falls in that window, so its Fixed vs Adaptive result is hypothetical. State the caveat in the report.
+
+    /// <summary>
+    /// Marks this component and its scene as changed, so Ctrl+S actually writes the file.
+    ///
+    /// Without this a [ContextMenu] preset is a trap. It assigns the new values, the Inspector redraws
+    /// and everything looks applied - but Unity never learns the scene changed, so Save is a no-op and
+    /// the file on disk keeps the old values. On the next play the scene overrides the code again and
+    /// the preset appears not to have worked. This project lost time to that on 18 Sep 2026, and it is
+    /// the same trap recorded against snapshotInterval, the Junction camera, the baked test case list,
+    /// and the batch parameters. ABACSceneBuilder always called SetDirty; none of the context menus did.
+    /// </summary>
+    void MarkDirty()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorUtility.SetDirty(this);
+        if (!Application.isPlaying)
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
+                UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+#endif
+    }
+
     [ContextMenu("Load ABAC Scenario Preset (4 scenarios x 7 lanes)")]
     public void LoadABACScenarioPreset()
     {
@@ -549,14 +581,16 @@ public class ScenarioManager : MonoBehaviour
             MakeScenario("MorningPeak",  A: 18.8f, Ax: 5.1f,   B: 9.0f,  Bx: 9.6f,     CB: closed,  CA: closed),
             MakeScenario("EveningPeak",  A: medium,  Ax: low,      B: high,   Bx: low,      CB: 8.4f,    CA: 13.4f),
             MakeScenario("MiddayNormal", A: 29.0f, Ax: 9.7f,   B: 20.5f, Bx: 21.4f,    CB: 10.1f,   CA: 13.2f),
-            MakeScenario("ABACEvent",    A: medium,  Ax: veryHigh, B: medium, Bx: veryHigh, CB: high,    CA: high),
+            MakeScenario("ABACEvent",    A: 6.5f,  Ax: 3.2f,   B: 4.0f,  Bx: 8.0f,     CB: 8.0f,    CA: 2.5f),
             // Night dropped from the batch (10 Sep, Kimmy's decision): its rates are pure assumption and it
             // is out of scope (there is no night-time problem to solve). Still in T12 of TestCaseLibrary for manual runs.
         };
 
+        MarkDirty();
         Debug.Log($"[ScenarioManager] loaded a preset of {scenarios.Count} scenarios -> " +
                   $"{scenarios.Count * repetitionsPerScenario} scenarios, " +
-                  $"{scenarios.Count * repetitionsPerScenario * 2} runs");
+                  $"{scenarios.Count * repetitionsPerScenario * 2} runs. " +
+                  "The scene is marked as changed - save it (Ctrl+S) or the file keeps the old values.");
     }
 
     /// <summary>

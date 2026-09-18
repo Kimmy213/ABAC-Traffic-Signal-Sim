@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -148,6 +149,7 @@ public class SceneAuditTest
             var names = new List<string>();
             bool inSm = false, inList = false;
             string midCB = null, midCA = null, cur = null;
+            var evt = new Dictionary<string, string>();
             for (int i = 0; i < lines.Length; i++)
             {
                 string ln = lines[i];
@@ -158,12 +160,13 @@ public class SceneAuditTest
                 if (inList && Regex.IsMatch(ln, @"^  [A-Za-z]")) inList = false;
                 if (!inList) continue;
                 if (ln.StartsWith("  - name: ")) { cur = ln.Substring(10).Trim(); names.Add(cur); }
-                if (cur == "MiddayNormal" && ln.StartsWith("    - laneName: ") && i + 1 < lines.Length)
+                if (ln.StartsWith("    - laneName: ") && i + 1 < lines.Length)
                 {
                     string lane = ln.Substring(16).Trim();
                     string val = lines[i + 1].Trim().Replace("meanInterval:", "").Trim();
-                    if (lane == "CB") midCB = val;
-                    if (lane == "CA") midCA = val;
+                    if (cur == "MiddayNormal" && lane == "CB") midCB = val;
+                    if (cur == "MiddayNormal" && lane == "CA") midCA = val;
+                    if (cur == "ABACEvent") evt[lane] = val;
                 }
             }
             Console.WriteLine("    " + string.Join(", ", names.ToArray()));
@@ -173,6 +176,27 @@ public class SceneAuditTest
                && names.Contains("MiddayNormal") && names.Contains("ABACEvent"), "all 4 required scenarios present");
             Check(midCB == "10.1", $"MiddayNormal CB = 10.1 (measured by Itim), not 7 (read {midCB})");
             Check(midCA == "13.2", $"MiddayNormal CA = 13.2 (measured by Itim), not 7 (read {midCA})");
+
+            // ===== ABACEvent was rescaled on 18 Sep 2026 =====
+            // The old rates (Ax and Bx at 1.5 s) put lane Bx at v/c 9.6 against the calibrated vehicle
+            // model, and 10 of 54 runs in batch v3 gridlocked outright. The scene stores its own copy of
+            // this table and overrides the code, so editing ScenarioManager.cs alone changes nothing:
+            // press "Load ABAC Scenario Preset" in the Inspector, then save the scene.
+            // If this check fails, that is the step that has not been done.
+            var wantEvt = new Dictionary<string, string> {
+                { "A",  "6.871" },   // MakeScenario splits the 6.5 combined through rate by a2Share:
+                { "A2", "120.37" },  // inner = 6.5 / (1 - 0.054) = 6.871, outer = 6.5 / 0.054 = 120.37
+                { "Ax", "3.2" }, { "B", "4" }, { "Bx", "8" }, { "CB", "8" }, { "CA", "2.5" },
+            };
+            Console.WriteLine("    ABACEvent in the scene: " +
+                (evt.Count == 0 ? "(not found)" : string.Join(", ", evt.Select(kv => kv.Key + "=" + kv.Value).ToArray())));
+            foreach (var kv in wantEvt)
+            {
+                string got = evt.ContainsKey(kv.Key) ? evt[kv.Key] : "(missing)";
+                bool ok = got != "(missing)" && Math.Abs(double.Parse(got) - double.Parse(kv.Value)) < 0.05;
+                Check(ok, $"ABACEvent {kv.Key} = {kv.Value} in the scene (read {got})"
+                        + (ok ? "" : "  -> press Load ABAC Scenario Preset in the Inspector, then save the scene"));
+            }
         }
 
         Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");

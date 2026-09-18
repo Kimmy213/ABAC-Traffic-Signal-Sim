@@ -8213,17 +8213,17 @@ MonoBehaviour:
   - name: ABACEvent
     laneRates:
     - laneName: A
-      meanInterval: 4.2283297
+      meanInterval: 6.871036
     - laneName: A2
-      meanInterval: 74.07407
+      meanInterval: 120.37037
     - laneName: Ax
-      meanInterval: 1.5
+      meanInterval: 3.2
     - laneName: B
       meanInterval: 4
     - laneName: Bx
-      meanInterval: 1.5
+      meanInterval: 8
     - laneName: CB
-      meanInterval: 2.5
+      meanInterval: 8
     - laneName: CA
       meanInterval: 2.5
 --- !u!114 &1501129896
