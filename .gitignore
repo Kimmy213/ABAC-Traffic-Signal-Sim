@@ -48,3 +48,7 @@ Tests/harness/_build/
 
 # Zips made to send to teammates - duplicates of files already tracked, keep them out of git
 SimulationResults/*.zip
+
+# Python bytecode (created when the Python tests or tools/demo_soda.py import soda.py)
+__pycache__/
+*.pyc

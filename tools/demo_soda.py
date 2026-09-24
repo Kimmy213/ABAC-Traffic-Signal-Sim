@@ -6,9 +6,9 @@ controller from Tests/soda.py and prints what it is thinking at every decision:
 the four questions it asks, why each lane joins or does not, and how the green
 time is worked out.
 
-    python3 demo_soda.py                     # type arrivals, or Enter for an example
-    python3 demo_soda.py Bx 2 A 8 B 4 CB 5   # arrivals straight from the command line
-    python3 demo_soda.py --slow              # pause between steps, for a live audience
+    python3 tools/demo_soda.py                     # type arrivals, or Enter for an example
+    python3 tools/demo_soda.py Bx 2 A 8 B 4 CB 5   # arrivals straight from the command line
+    python3 tools/demo_soda.py --slow              # pause between steps, for a live audience
 
 Each arrival is "<lane> <cars>". Arrivals come one second apart in the order
 given. Add "@<second>" to set the time yourself, e.g. "A 5@10".
@@ -21,7 +21,7 @@ import sys
 import time
 from collections import deque
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "Tests"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Tests"))
 import soda  # noqa: E402  - the reference controller; every decision below comes from it
 
 soda.SAMPLE_SEC = 1.0          # the simulation reads the camera once a second
