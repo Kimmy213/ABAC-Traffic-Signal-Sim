@@ -221,7 +221,13 @@ def ttest_block(m, col, label, out, higher_is_better=False):
     out.append(f"\n{'-'*66}\n{label}   (n = {n} pairs)\n{'-'*66}")
     out.append(f"  Fixed     : mean = {fx.mean():8.3f}   sd = {fx.std(ddof=1):7.3f}")
     out.append(f"  Adaptive  : mean = {ad.mean():8.3f}   sd = {ad.std(ddof=1):7.3f}")
-    out.append(f"  difference (Fixed - Adaptive) = {diff.mean():+.3f}  ({pct:+.1f}%)")
+    # The percentage always reads in the "is Adaptive better" direction. For waiting time, lower is
+    # better and a positive difference already means Adaptive won. For throughput it is the reverse:
+    # Fixed - Adaptive is negative when Adaptive clears more, so the sign has to be flipped or the
+    # line reads as a 7.7% loss when it is a 7.7% gain.
+    better_pct = -pct if higher_is_better else pct
+    out.append(f"  difference (Fixed - Adaptive) = {diff.mean():+.3f}  "
+               f"({better_pct:+.1f}% for Adaptive)")
     out.append(f"  95% CI of the difference     = [{ci[0]:.3f}, {ci[1]:.3f}]")
     out.append(f"  paired t-test            : t({n-1}) = {t:.4f},  p = {p:.6g}")
     out.append(f"  Wilcoxon signed-rank     : W = {w:.1f},  p = {pw:.6g}")
