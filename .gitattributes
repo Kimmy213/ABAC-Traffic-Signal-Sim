@@ -1,9 +1,9 @@
-# ===== ค่าเริ่มต้น =====
-# ให้ git จัดการ line ending อัตโนมัติ: เก็บใน repo เป็น LF
-# แล้วแปลงเป็น CRLF ตอน checkout บน Windows
+# ===== Defaults =====
+# Let git normalise line endings: store LF in the repo,
+# convert to CRLF on checkout under Windows.
 * text=auto
 
-# ===== ไฟล์ข้อความทั่วไป =====
+# ===== Ordinary text files =====
 *.cs   text diff=csharp
 *.md   text
 *.py   text
@@ -12,14 +12,14 @@
 *.txt  text
 *.shader text
 
-# ===== ไฟล์ Unity serialized (YAML) =====
-# -text        = ห้าม git แปลง line ending  (Unity เขียน LF เสมอ ทั้ง Windows และ Mac)
-# merge=binary = ห้าม git auto-merge เด็ดขาด
+# ===== Unity serialized files (YAML) =====
+# -text        = never let git convert line endings (Unity always writes LF, on Windows and Mac)
+# merge=binary = never let git auto-merge these
 #
-# ⚠️ ข้อ merge=binary สำคัญที่สุด
-# ไฟล์ .unity เป็น YAML ที่อ้าง fileID กันไปมา ถ้า git ลอง merge เอง
-# จะได้ไฟล์ที่ "ไม่ error แต่พัง" — เปิดใน Unity แล้ว object หาย หรือ reference หลุด
-# ตั้งเป็น binary แล้ว git จะบังคับให้เลือกว่าจะเอาฝั่งไหน แก้ง่ายกว่ามาก
+# The merge=binary rule matters most.
+# A .unity file is YAML full of cross-referenced fileIDs. If git merges it itself
+# the result can be broken without being invalid - objects vanish or references dangle
+# when Unity opens it. Marked binary, git forces you to pick a side, which is far easier to fix.
 *.unity          -text merge=binary
 *.prefab         -text merge=binary
 *.asset          -text merge=binary
@@ -45,7 +45,7 @@
 *.uxml           -text merge=binary
 *.inputactions   -text merge=binary
 
-# ===== ไฟล์ binary จริง ๆ =====
+# ===== Genuine binary files =====
 *.png  binary
 *.jpg  binary
 *.jpeg binary

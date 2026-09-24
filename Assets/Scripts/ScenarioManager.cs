@@ -3,9 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
-/// รัน batch experiment: 4 scenario x 27 repetition x 2 controller = 216 runs (Night ตัดออก 10 ก.ย.)
-/// ใช้ seed เดียวกันคู่ Fixed/Adaptive เพื่อให้ paired t-test valid
-/// อ่านรายชื่อเลนจาก IntersectionConfig จึงรองรับทั้ง 3 เลนเดิมและ 7 เลนเต็มระบบ (รวม A2 shared lane)
+/// Runs the batch experiment: 4 scenarios x 27 repetitions x 2 controllers = 216 runs (Night dropped 10 Sep).
+/// Fixed and Adaptive share a seed so the paired t-test is valid.
+/// Lane names come from IntersectionConfig, so it works with the original 3 lanes and the full 7 (A2 included).
 /// </summary>
 public class ScenarioManager : MonoBehaviour
 {
@@ -25,7 +25,7 @@ public class ScenarioManager : MonoBehaviour
         }
     }
 
-    /// <summary>ผลสะสมของ scenario หนึ่ง แยก Fixed / Adaptive</summary>
+    /// <summary>Accumulated results for one scenario, split by Fixed / Adaptive</summary>
     [System.Serializable]
     public class ScenarioAggregate
     {
@@ -57,7 +57,7 @@ public class ScenarioManager : MonoBehaviour
         public float FixedThroughput    => MeanI(fixedCleared);
         public float AdaptiveThroughput => MeanI(adaptiveCleared);
 
-        /// <summary>เปอร์เซ็นต์ที่ Adaptive ลดเวลารอได้ (บวก = Adaptive ดีกว่า)</summary>
+        /// <summary>Percentage by which Adaptive cut the wait (positive = Adaptive better)</summary>
         public float ImprovementPercent
         {
             get
@@ -79,61 +79,61 @@ public class ScenarioManager : MonoBehaviour
     public DataLogger dataLogger;
 
     [Header("Run Settings")]
-    [Tooltip("ความยาวของแต่ละ run เป็นวินาทีจำลอง (1800 = 30 นาที)")]
+    [Tooltip("Length of each run in simulated seconds (1800 = 30 minutes)")]
     public float runDuration = BATCH_RUN_DURATION;
-    [Tooltip("จำนวนรอบต่อ scenario (27 x 4 scenario = 108 scenarios = 216 runs)")]
+    [Tooltip("Repetitions per scenario (27 x 4 scenarios = 108 scenarios = 216 runs)")]
     public int repetitionsPerScenario = BATCH_REPETITIONS;
-    [Tooltip("เร่งความเร็ว simulation ระหว่าง batch run (1 = ปกติ, 10 = เร็ว 10 เท่า)")]
+    [Tooltip("Simulation speed-up during a batch run (1 = real time, 10 = ten times faster)")]
     public float simulationSpeed = BATCH_SIM_SPEED;
 
-    // ===== ค่ามาตรฐานของ batch — แหล่งความจริงแหล่งเดียว =====
-    // ⚠️ Unity serialize ค่าของ component ที่วางในซีนลง SampleScene.unity แล้วทับค่า default ในสคริปต์เสมอ
-    //    ซีนเคยค้างอยู่ที่ repetitionsPerScenario = 1 (= 8 runs ไม่ใช่ 216) และ simulationSpeed = 2
-    //    แก้ .cs อย่างเดียวไม่พอ ต้องให้ ABACSceneBuilder เรียก LoadBatchPreset() ด้วย
+    // ===== Batch defaults - the single source of truth =====
+    // Unity serialises a scene component's values into SampleScene.unity and always overrides the
+    //    script defaults. The scene was once stuck at repetitionsPerScenario = 1 (8 runs, not 216) and
+    //    simulationSpeed = 2. Editing the .cs is not enough; ABACSceneBuilder must call LoadBatchPreset().
     public const int   BATCH_REPETITIONS  = 27;
-    // 10x ได้เพราะ CarAgent sub-step ที่ ≤ 0.02 วิแล้ว (ก่อนหน้านั้นรถเลยเลนที่ 10x เพราะก้าวละ 2.3 ม.)
-    // สิ่งเดียวที่ยังขึ้นกับ timeScale คือจังหวะ trigger เข้า/ออก ROI ซึ่งละเอียดระดับเฟรม (~0.17 วิ ที่ 10x/60fps)
-    // -> error ของ WaitTime รายคัน ±0.17 วิ ไม่มีทิศทาง เทียบกับ snapshot 2 วิ ถือว่าเล็กน้อย
-    // Kimmy เลือก 10x วันที่ 10 ก.ย. หลัง sub-stepping (batch 216 runs ≈ 11.5 ชม. แทน 23)
-    // validation 1x/5x/10x ด้วย seed เดียวกัน (SODA_BASELINE §8.6) ยังแนะนำให้ทำและบันทึกผลไว้ในรายงาน
+    // 10x is safe now that CarAgent sub-steps at <= 0.02 s (before that cars overshot lanes at 10x,
+    // stepping 2.3 m at a time). The only thing still tied to timeScale is ROI trigger timing, which is
+    // frame-grained (~0.17 s at 10x/60fps), an undirected +/-0.17 s error per vehicle WaitTime - small
+    // against a 2 s snapshot. Kimmy chose 10x on 10 Sep after sub-stepping landed (216 runs in about
+    // 11.5 h instead of 23). The 1x/5x/10x validation on one seed (SODA_BASELINE 8.6) is still worth recording.
     public const float BATCH_SIM_SPEED    = 10f;
     public const float BATCH_RUN_DURATION = 1800f;
     public const float BATCH_WARMUP       = 120f;
-    [Tooltip("เวลาอุ่นเครื่องก่อนเริ่มเก็บข้อมูล (วินาทีจำลอง) — กันช่วงถนนว่างตอนเริ่ม run ทำให้ค่าเพี้ยน")]
+    [Tooltip("Warm-up before data collection starts, in simulated seconds - stops the empty road at the start skewing results")]
     public float warmupDuration = BATCH_WARMUP;
 
-    [Header("Performance (ปิด GUI ระหว่าง batch เพื่อความเร็ว)")]
+    [Header("Performance (GUI is disabled during a batch for speed)")]
     public bool disableGUIDuringBatch = true;
 
-    [Header("Arrival Interval Mapping (วินาทีเฉลี่ยระหว่างรถ)")]
+    [Header("Arrival Interval Mapping (mean seconds between cars)")]
     public float veryHigh = 1.5f;
     public float high = 2.5f;
     public float medium = 4f;
     public float low = 7f;
     public float veryLow = 15f;
-    [Tooltip("เลน 'ปิด' จริง (ยืนยันจาก รปภ.) — mean interval ใหญ่มาก ๆ แทนศูนย์ (Poisson หาร rate จาก interval)")]
+    [Tooltip("A genuinely closed lane (confirmed by security) - a very large mean interval instead of zero, since Poisson divides by the interval")]
     public float closed = 999999f;
 
-    [Tooltip("สัดส่วนรถตรงที่เข้าเลนนอก A2 (เลนแชร์กับ Ax) เทียบกับรถตรงทั้งหมด\n" +
-             "5.4% = ค่านับตรงจากคลิป A_morning (รถตรง 56 คัน เข้าเลนใน 53 เข้าเลนแชร์ 3) ตาม SP1_HANDOFF_v2\n" +
-             "แทนค่าเดิม 18% ที่ได้จากการอนุมานย้อนจากอัตราการบล็อก")]
+    [Tooltip("Share of through traffic using the outer lane A2 (shared with Ax).\n" +
+             "5.4% is a direct count from clip A_morning (56 through vehicles: 53 inner, 3 shared), per SP1_HANDOFF_v2.\n" +
+             "It replaces the earlier 18%, which was inferred backwards from a blocking rate.")]
     [Range(0.01f, 0.99f)] public float a2Share = MEASURED_A2_SHARE;
 
     /// <summary>
-    /// สัดส่วนรถตรงที่ไปใช้เลนนอก (เลนแชร์กับ Ax)
-    /// ประวัติค่า: เดา 50/50 -> back-calculate ได้ 18% -> **ตอนนี้ 5.4% จากการนับตรง** (SP1_HANDOFF_v2 §5)
-    /// ต้องตรงกับ TestCasePresets.A2_SHARE เสมอ ไม่งั้น batch กับ test case T1-T13 จะใช้คนละค่า
+    /// Share of through traffic using the outer lane (shared with Ax).
+    /// History: guessed 50/50 -> back-calculated 18% -> now 5.4% from a direct count (SP1_HANDOFF_v2 section 5).
+    /// Must always equal TestCasePresets.A2_SHARE, or the batch and cases T1-T13 use different splits.
     /// </summary>
     public const float MEASURED_A2_SHARE = 0.054f;
 
-    [Header("Scenario Table (กด Load ABAC Scenario Preset ถ้ายังว่าง)")]
+    [Header("Scenario Table (press Load ABAC Scenario Preset if empty)")]
     public List<ScenarioDef> scenarios = new List<ScenarioDef>();
 
     private bool isRunning = false;
-    /// <summary>true = batch run กำลังทำงานอยู่ (Control Panel ใช้เช็คก่อนแตะ timeScale)</summary>
+    /// <summary>true = a batch run is in progress (the Control Panel checks this before touching timeScale)</summary>
     public bool IsBatchRunning => isRunning;
-    // ⚠️ ต้องแยก 2 ตัว: startedRuns นับตอน "เริ่ม" run, finishedRuns นับตอน "จบ" run
-    // ถ้าใช้ตัวเดียวแล้วเอาไปหาร ETA จะได้ค่าเพี้ยน (ดูคอมเมนต์ที่ MeasuredRealPerRun)
+    // These must stay two separate counters: startedRuns counts when a run begins, finishedRuns when
+    // it ends. Using one for the ETA division gives a wrong figure (see the comment on MeasuredRealPerRun).
     private int startedRuns = 0;
     private int finishedRuns = 0;
     private int totalRuns;
@@ -141,7 +141,7 @@ public class ScenarioManager : MonoBehaviour
     private float currentRunStartRealtime = 0f;
     private float elapsedAtLastFinish = 0f;
 
-    // ===================== ข้อมูลให้ BatchRunPanel อ่าน =====================
+    // ===================== Data for BatchRunPanel to read =====================
     private List<ScenarioAggregate> results = new List<ScenarioAggregate>();
     private float batchStartRealtime = 0f;
     private float batchEndRealtime = 0f;
@@ -151,9 +151,9 @@ public class ScenarioManager : MonoBehaviour
     private DataLogger.ControllerType currentController = DataLogger.ControllerType.Fixed;
 
     public List<ScenarioAggregate> Results => results;
-    /// <summary>จำนวน run ที่ "จบแล้วจริง ๆ"</summary>
+    /// <summary>Runs that have actually finished</summary>
     public int CompletedRuns => finishedRuns;
-    /// <summary>จำนวน run ที่เริ่มไปแล้ว (รวมตัวที่กำลังรันอยู่)</summary>
+    /// <summary>Runs started, including the one in progress</summary>
     public int StartedRuns => startedRuns;
     public int TotalRuns => totalRuns;
     public string CurrentScenarioName => currentScenarioName;
@@ -162,14 +162,14 @@ public class ScenarioManager : MonoBehaviour
     public bool BatchFinished => batchFinished;
 
     /// <summary>
-    /// เวลาจริงที่ใช้ต่อ 1 run
+    /// Real time spent per run.
     ///
-    /// ถ้ามี run จบแล้ว → เฉลี่ยจากของจริง (แม่นสุด)
-    /// ถ้ายังไม่มี → ใช้ค่าทางทฤษฎี: เวลาจำลองต่อ run ÷ timeScale
+    /// Once a run has finished, average the real measurements (most accurate).
+    /// Before that, use the theoretical figure: simulated seconds per run divided by timeScale.
     ///
-    /// ห้ามเอาเวลาที่ใช้ไปกับ run ปัจจุบันมาเป็นตัวประมาณ เพราะมันโตขึ้นเรื่อย ๆ
-    /// จะทำให้ ETA เพิ่มแทนที่จะลด — ปล่อยให้ CurrentRunFraction01 ตันที่ 1 แทน
-    /// ตัวเลขจะ "ค้าง" ไว้จนกว่า run แรกจบ แล้วค่อยประเมินใหม่จากของจริง
+    /// Never estimate from the time spent on the current run: that grows continuously, so the ETA
+    /// would rise instead of fall. CurrentRunFraction01 is capped at 1 instead.
+    /// The figure holds still until the first run finishes, then is re-estimated from measurement.
     /// </summary>
     float MeasuredRealPerRun
     {
@@ -180,7 +180,7 @@ public class ScenarioManager : MonoBehaviour
         }
     }
 
-    /// <summary>ความคืบหน้าของ run ที่กำลังรันอยู่ (0-1)</summary>
+    /// <summary>Progress of the run currently in flight (0-1)</summary>
     public float CurrentRunFraction01
     {
         get
@@ -192,24 +192,24 @@ public class ScenarioManager : MonoBehaviour
         }
     }
 
-    // นับ run ที่จบแล้ว + เศษของ run ปัจจุบัน → หลอดเดินนุ่ม ไม่กระตุกทีละก้อน
+    // Finished runs plus the fraction of the current one, so the bar moves smoothly rather than in jumps
     public float Progress01 =>
         totalRuns > 0 ? Mathf.Clamp01((finishedRuns + CurrentRunFraction01) / totalRuns) : 0f;
 
-    /// <summary>เวลาจริงที่ใช้ไปแล้ว (วินาที)</summary>
+    /// <summary>Real time elapsed so far, in seconds</summary>
     public float ElapsedRealtime =>
         isRunning ? Time.realtimeSinceStartup - batchStartRealtime
                   : (batchFinished ? batchEndRealtime - batchStartRealtime : 0f);
 
     /// <summary>
-    /// ประมาณเวลาที่เหลือ (วินาที)
+    /// Estimated time remaining, in seconds.
     ///
-    /// สูตรเดิมคือ elapsed / completedRuns × runs ที่เหลือ ซึ่งผิด
-    /// เพราะ completedRuns นับตอน "เริ่ม" run ไม่ใช่ตอนจบ
-    /// ระหว่างที่ run แรกยังรันอยู่ ตัวหารค้างที่ 1 แต่ตัวตั้ง (elapsed) โตขึ้นเรื่อย ๆ
-    /// → เวลาที่เหลือเลยเพิ่มขึ้นแทนที่จะลดลง
+    /// The old formula was elapsed / completedRuns x runs remaining, which was wrong because
+    /// completedRuns counted runs *started*, not finished. While the first run was still going the
+    /// divisor stayed at 1 while elapsed kept growing, so the estimate rose instead of falling.
+    /// It now divides by runs actually finished and subtracts the current run fraction.
     ///
-    /// ตอนนี้หารด้วย run ที่จบจริง แล้วลบเศษของ run ปัจจุบันออก → ค่าลดลงตลอด
+    /// The number therefore only ever decreases.
     /// </summary>
     public float EstimatedRemaining
     {
@@ -222,7 +222,7 @@ public class ScenarioManager : MonoBehaviour
         }
     }
 
-    /// <summary>ค่าเฉลี่ยรวมทุก scenario (ถ่วงน้ำหนักเท่ากันทุก scenario)</summary>
+    /// <summary>Mean across all scenarios (each scenario weighted equally)</summary>
     public void GetOverall(out float fixedWait, out float adaptiveWait, out float improvePct)
     {
         float fs = 0f, as_ = 0f; int n = 0;
@@ -265,7 +265,7 @@ public class ScenarioManager : MonoBehaviour
         }
     }
 
-    /// <summary>ตั้งค่าพารามิเตอร์ batch กลับไปเป็นชุดมาตรฐาน (ABACSceneBuilder เรียกทุกครั้งที่ build ซีน)</summary>
+    /// <summary>Resets the batch parameters to the standard set (ABACSceneBuilder calls this on every scene build)</summary>
     [ContextMenu("Load Batch Preset (27 reps / 10x / 1800s / 5.4%)")]
     public void LoadBatchPreset()
     {
@@ -274,12 +274,13 @@ public class ScenarioManager : MonoBehaviour
         runDuration            = BATCH_RUN_DURATION;
         warmupDuration         = BATCH_WARMUP;
         a2Share                = MEASURED_A2_SHARE;
+        MarkDirty();
     }
 
     /// <summary>
-    /// a2Share ที่เพี้ยนทำให้ batch กับ test case T1-T13 ใช้คนละสัดส่วน เทียบผลกันไม่ได้
-    /// จึงบังคับแก้พร้อมขึ้น error (ไม่เหมือน repetitions ที่ลดลงชั่วคราวเพื่อทดสอบได้)
-    /// คืนค่า true ถ้ามีการแก้ = ซีนเพี้ยนอยู่ ต้อง save ซีนใหม่
+    /// A wrong a2Share makes the batch and cases T1-T13 use different splits, so results cannot be compared.
+    /// It is therefore corrected and reported as an error, unlike repetitions, which may legitimately be
+    /// lowered for a quick test. Returns true if it had to change anything, meaning the scene needs saving.
     /// </summary>
     public bool EnforceMeasuredShare()
     {
@@ -288,10 +289,10 @@ public class ScenarioManager : MonoBehaviour
         float old = a2Share;
         a2Share = MEASURED_A2_SHARE;
         Debug.LogError(
-            $"[ScenarioManager] a2Share ที่ซีนเก็บไว้ ({old:F3}) ไม่ตรงกับค่าที่นับได้จริง " +
-            $"({MEASURED_A2_SHARE:F3}) — แก้ให้อัตโนมัติแล้ว\n" +
-            $"  0.18 คือค่า back-calculate เก่าที่ SP1_HANDOFF_v2 §5 แทนที่ไปแล้วด้วยการนับตรง\n" +
-            $"  ⚠️ แก้แค่ในหน่วยความจำ ให้กด Load Batch Preset ใน Inspector แล้ว Save Scene");
+            $"[ScenarioManager] the a2Share stored in the scene ({old:F3}) does not match the counted value " +
+            $"({MEASURED_A2_SHARE:F3}) - corrected automatically.\n" +
+            $"  0.18 is the old back-calculated value that SP1_HANDOFF_v2 section 5 replaced with a direct count.\n" +
+            $"  Corrected in memory only: press Load Batch Preset in the Inspector, then Save Scene.");
         return true;
     }
 
@@ -313,10 +314,10 @@ public class ScenarioManager : MonoBehaviour
         {
             Debug.LogWarning(
                 $"[ScenarioManager] repetitionsPerScenario = {repetitionsPerScenario} " +
-                $"(ค่ามาตรฐานคือ {BATCH_REPETITIONS}) → จะได้ " +
-                $"{scenarios.Count * repetitionsPerScenario * 2} runs ไม่ใช่ " +
+                $"(the standard value is {BATCH_REPETITIONS}), which gives " +
+                $"{scenarios.Count * repetitionsPerScenario * 2} runs rather than " +
                 $"{scenarios.Count * BATCH_REPETITIONS * 2} runs — " +
-                $"ตั้งใจหรือเปล่า? ถ้าไม่ กด Load Batch Preset ใน Inspector ก่อน");
+                $"Is that intentional? If not, press Load Batch Preset in the Inspector first.");
         }
 
         if (isRunning)
@@ -326,12 +327,12 @@ public class ScenarioManager : MonoBehaviour
         }
         if (config == null)
         {
-            Debug.LogError("[ScenarioManager] ยังไม่ได้ลาก IntersectionConfig");
+            Debug.LogError("[ScenarioManager] IntersectionConfig has not been assigned");
             return;
         }
         if (scenarios.Count == 0)
         {
-            Debug.LogError("[ScenarioManager] ยังไม่ได้ตั้ง scenario — กด 'Load ABAC Scenario Preset' ก่อน");
+            Debug.LogError("[ScenarioManager] no scenarios set - press 'Load ABAC Scenario Preset' first");
             return;
         }
         StartCoroutine(RunAllExperiments());
@@ -344,12 +345,12 @@ public class ScenarioManager : MonoBehaviour
         Time.timeScale = 1f;
         isRunning = false;
         batchEndRealtime = Time.realtimeSinceStartup;
-        // ผลที่รันไปแล้วยังใช้ดูได้ ถือว่า "จบแบบไม่ครบ"
+        // Results so far are still usable; treat it as finished but incomplete
         batchFinished = results.Count > 0;
         Debug.Log("[ScenarioManager] Batch run stopped manually.");
     }
 
-    /// <summary>ปิดหน้าสรุป (BatchRunPanel เรียก)</summary>
+    /// <summary>Closes the summary screen (called by BatchRunPanel)</summary>
     public void DismissSummary()
     {
         batchFinished = false;
@@ -360,14 +361,14 @@ public class ScenarioManager : MonoBehaviour
         float f, a, pct;
         GetOverall(out f, out a, out pct);
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("═══════ สรุปผล Batch Run ═══════");
-        sb.AppendLine($"{"Scenario",-16}{"Fixed",10}{"Adaptive",11}{"ลด%",9}");
+        sb.AppendLine("======= Batch Run Summary =======");
+        sb.AppendLine($"{"Scenario",-16}{"Fixed",10}{"Adaptive",11}{"Cut %",9}");
         foreach (var r in results)
         {
             if (!r.HasBoth) continue;
             sb.AppendLine($"{r.name,-16}{r.FixedAvgWait,10:F2}{r.AdaptiveAvgWait,11:F2}{r.ImprovementPercent,8:F1}%");
         }
-        sb.AppendLine($"{"รวมทุก scenario",-16}{f,10:F2}{a,11:F2}{pct,8:F1}%");
+        sb.AppendLine($"{"All scenarios",-16}{f,10:F2}{a,11:F2}{pct,8:F1}%");
         Debug.Log(sb.ToString());
     }
 
@@ -378,8 +379,8 @@ public class ScenarioManager : MonoBehaviour
         float simSeconds = runs * (runDuration + warmupDuration);
         float realSeconds = simSeconds / Mathf.Max(0.01f, simulationSpeed);
         Debug.Log($"[ScenarioManager] {runs} runs x {runDuration + warmupDuration:F0}s = " +
-                  $"{simSeconds / 3600f:F1} ชม.จำลอง → ที่ {simulationSpeed}x ใช้เวลาจริงราว " +
-                  $"{realSeconds / 3600f:F1} ชม. (ถ้าเครื่องตามทัน)");
+                  $"{simSeconds / 3600f:F1} simulated hours -> at {simulationSpeed}x that is roughly " +
+                  $"{realSeconds / 3600f:F1} real hours (if the machine keeps up)");
     }
 
     IEnumerator RunAllExperiments()
@@ -423,7 +424,7 @@ public class ScenarioManager : MonoBehaviour
 
     IEnumerator RunSingleExperiment(ScenarioDef scenario, int repetition, DataLogger.ControllerType ctype)
     {
-        // ===== seed เดียวกันสำหรับคู่ Fixed/Adaptive → เจอ traffic ชุดเดียวกัน paired t-test จึง valid =====
+        // ===== Same seed for the Fixed/Adaptive pair, so both see the same traffic and the t-test is valid =====
         int seed = IntersectionConfig.StableHash(scenario.name) + repetition * 31;
         Random.InitState(seed);
 
@@ -431,7 +432,7 @@ public class ScenarioManager : MonoBehaviour
         config.ResetAllLanes(seed);
         dataLogger.ResetRun();
 
-        // ===== หยุด coroutine ของทั้ง 2 controller ก่อนเสมอ กันไฟเขียวพร้อมกันแบบผิดกฎ =====
+        // ===== Always stop both controllers' coroutines first, or two groups could hold green at once =====
         fixedController.ForceStop();
         adaptiveController.ForceStop();
 
@@ -453,7 +454,7 @@ public class ScenarioManager : MonoBehaviour
         currentRunStartRealtime = Time.realtimeSinceStartup;
         Debug.Log($"[ScenarioManager] ({startedRuns}/{totalRuns}) Running {currentLabel}...");
 
-        // ===== Warm-up: ปล่อยรถวิ่งให้ระบบเข้าสู่สภาวะปกติก่อน แล้วค่อยล้างข้อมูลเริ่มนับจริง =====
+        // ===== Warm-up: let traffic reach a normal state, then clear the data and start measuring =====
         if (warmupDuration > 0f)
         {
             yield return new WaitForSeconds(warmupDuration);
@@ -477,7 +478,7 @@ public class ScenarioManager : MonoBehaviour
                   $"Starvation={dataLogger.GetStarvationCount()}");
     }
 
-    // ===================== Lane helpers (generic ตาม IntersectionConfig) =====================
+    // ===================== Lane helpers (generic, driven by IntersectionConfig) =====================
 
     void ApplyArrivalRates(ScenarioDef scenario)
     {
@@ -485,7 +486,7 @@ public class ScenarioManager : MonoBehaviour
         {
             if (lane == null || lane.spawner == null) continue;
             float interval = scenario.GetInterval(lane.laneName, low);
-            lane.spawner.UsePoisson(interval);   // batch run ใช้ Poisson เสมอ
+            lane.spawner.UsePoisson(interval);   // a batch run always uses Poisson
         }
     }
 
@@ -496,7 +497,7 @@ public class ScenarioManager : MonoBehaviour
         dataLogger.showDebugGUI = false;
         adaptiveController.showDebugGUI = false;
         fixedController.showDebugGUI = false;
-        // แผงขั้นตอนการคิดต้องปิดตอน batch ด้วย — สร้าง string ทุกเฟส 216 รอบโดยไม่มีใครดู
+        // The decision-trace panel must be off during a batch too - it builds a string every phase, 216 times over, with nobody watching
         adaptiveController.showDecisionPanel = false;
 
         foreach (ApproachLane lane in config.lanes)
@@ -526,21 +527,52 @@ public class ScenarioManager : MonoBehaviour
     // ===================== Preset =====================
 
     /// <summary>
-    /// 5 scenario ครอบคลุมรูปแบบจราจรหน้า ABAC
-    ///   MorningPeak  — คนเข้ามหาลัยเยอะ (Ax, Bx หนัก / ขาออก CB, CA เบา)
-    ///   EveningPeak  — คนออกจากมหาลัยเยอะ (CB, CA หนัก / ขาเข้าเบา)
-    ///   MiddayNormal — จราจรปกติทุกทิศ
-    ///   ABACEvent    — งานรับปริญญา/กิจกรรมใหญ่ เข้าออกหนักพร้อมกัน
-    ///   Night        — เบาบางทุกทิศ
+    /// Five scenarios covering the traffic patterns outside ABAC:
+    ///   MorningPeak  - heavy inbound (Ax, Bx busy / outbound CB, CA light)
+    ///   EveningPeak  - heavy outbound (CB, CA busy / inbound light)
+    ///   MiddayNormal - ordinary traffic on every approach
+    ///   ABACEvent    - graduation or a large event, heavy in and out at once
+    ///   Night        - light on every approach
     /// </summary>
-    // ⚠️ ค่า MorningPeak / MiddayNormal ใช้ตัวเลขวัดจริงจาก Itim (detector ผ่านครบ 8 คลิป, ปรับแก้รอบ 24 ส.ค.)
-    // ที่เหลือ (EveningPeak, ABACEvent, Night) ยังเป็นสมมติฐานจาก bucket — ยังไม่มีข้อมูลวัด
-    // MorningPeak CB/CA = closed — แก้แล้ว: เลน C ปิดแค่ 08:30-09:00 (~15-30 นาที) ไม่ใช่ทั้งเช้า แต่ตรงกับ
-    //   ช่วง peak จริง (08:15-09:00, จบทันทีหลัง 09:00 ไม่ใช่ 07:00-08:30 ตามที่เดาไว้แต่แรก) จึงยังใช้ closed ได้
-    // MiddayNormal CB/CA = 10.1 / 13.2 s วัดจริงจาก Itim (10 ก.ย.) — เดิมใช้ low=7 ค้างไว้ทั้งที่ได้ตัวเลขมาแล้ว
-    // scenario อื่น ๆ (EveningPeak medium/low, ABACEvent, Night) ยังเป็นระดับสมมติ ไม่ใช่ค่าที่วัด
-    // ⚠️ ยืนยันแล้ว: 09:00-15:00 ไฟกระพริบเหลืองจริง (ไม่ใช่ fixed-time) — MiddayNormal (11:37-12:00) อยู่ในช่วงนี้
-    //   ผล Fixed vs Adaptive ของ MiddayNormal จึงเป็นการเทียบเชิงสมมติ ไม่ใช่สภาพจริงตอนเที่ยง ต้องระบุ caveat ในรายงาน
+    // MorningPeak and MiddayNormal use figures measured by Itim (detector run over all 8 clips, revised 24 Aug).
+    // The rest (EveningPeak, ABACEvent, Night) are still bucket assumptions with no measurement behind them.
+    // MorningPeak CB/CA = closed: lane C actually shuts only 08:30-09:00 (15-30 min), not all morning, but that
+    //   coincides with the real peak (08:15-09:00, ending right after 09:00), so closed is still right here.
+    // MiddayNormal CB/CA = 10.1 / 13.2 s measured by Itim (10 Sep) - previously left at low=7 despite having the figures.
+    // The other scenarios (EveningPeak medium/low, ABACEvent, Night) are assumed levels, not measurements.
+    //
+    // ABACEvent was rescaled on 18 Sep 2026. Its rates were invented when the vehicle model had 3.2 times
+    // the real capacity (see SODA_BASELINE 8.15). Against the calibrated model they described a junction
+    // that cannot physically function: lane Bx clears 7.4 vehicles per 106 s cycle, a capacity of one
+    // vehicle every 14.4 s, while ABACEvent was feeding it one every 1.5 s - a v/c of 9.6. Ten of the 54
+    // ABACEvent runs in batch v3 gridlocked completely and stopped between 207 and 578 of their 1800
+    // simulated seconds, so they measured a dead junction rather than a control strategy.
+    // The rates below put every lane at v/c 0.92-1.09 except Bx, deliberately left the bottleneck at 1.80.
+    // For comparison: MorningPeak runs Bx at 1.50 and never gridlocks; EveningPeak runs it at 2.05 and
+    // gridlocked once in 54. These are still assumptions, as they always were - say so in the report.
+    // Confirmed: 09:00-15:00 the signal really does flash amber rather than run fixed-time, and MiddayNormal
+    //   (11:37-12:00) falls in that window, so its Fixed vs Adaptive result is hypothetical. State the caveat in the report.
+
+    /// <summary>
+    /// Marks this component and its scene as changed, so Ctrl+S actually writes the file.
+    ///
+    /// Without this a [ContextMenu] preset is a trap. It assigns the new values, the Inspector redraws
+    /// and everything looks applied - but Unity never learns the scene changed, so Save is a no-op and
+    /// the file on disk keeps the old values. On the next play the scene overrides the code again and
+    /// the preset appears not to have worked. This project lost time to that on 18 Sep 2026, and it is
+    /// the same trap recorded against snapshotInterval, the Junction camera, the baked test case list,
+    /// and the batch parameters. ABACSceneBuilder always called SetDirty; none of the context menus did.
+    /// </summary>
+    void MarkDirty()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorUtility.SetDirty(this);
+        if (!Application.isPlaying)
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
+                UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+#endif
+    }
+
     [ContextMenu("Load ABAC Scenario Preset (4 scenarios x 7 lanes)")]
     public void LoadABACScenarioPreset()
     {
@@ -549,19 +581,21 @@ public class ScenarioManager : MonoBehaviour
             MakeScenario("MorningPeak",  A: 18.8f, Ax: 5.1f,   B: 9.0f,  Bx: 9.6f,     CB: closed,  CA: closed),
             MakeScenario("EveningPeak",  A: medium,  Ax: low,      B: high,   Bx: low,      CB: 8.4f,    CA: 13.4f),
             MakeScenario("MiddayNormal", A: 29.0f, Ax: 9.7f,   B: 20.5f, Bx: 21.4f,    CB: 10.1f,   CA: 13.2f),
-            MakeScenario("ABACEvent",    A: medium,  Ax: veryHigh, B: medium, Bx: veryHigh, CB: high,    CA: high),
-            // Night ตัดออกจาก batch (10 ก.ย. — ตัดสินใจโดย Kimmy): อัตรารถเป็นระดับสมมติล้วน
-            // และอยู่นอก scope ของงาน (ไม่มีปัญหาให้แก้ตอนกลางคืน) ยังมีใน T12 ของ TestCaseLibrary ไว้ทดลองมือ
+            MakeScenario("ABACEvent",    A: 6.5f,  Ax: 3.2f,   B: 4.0f,  Bx: 8.0f,     CB: 8.0f,    CA: 2.5f),
+            // Night dropped from the batch (10 Sep, Kimmy's decision): its rates are pure assumption and it
+            // is out of scope (there is no night-time problem to solve). Still in T12 of TestCaseLibrary for manual runs.
         };
 
-        Debug.Log($"[ScenarioManager] โหลด preset {scenarios.Count} scenarios แล้ว → " +
-                  $"{scenarios.Count * repetitionsPerScenario} scenarios รวม " +
-                  $"{scenarios.Count * repetitionsPerScenario * 2} runs");
+        MarkDirty();
+        Debug.Log($"[ScenarioManager] loaded a preset of {scenarios.Count} scenarios -> " +
+                  $"{scenarios.Count * repetitionsPerScenario} scenarios, " +
+                  $"{scenarios.Count * repetitionsPerScenario * 2} runs. " +
+                  "The scene is marked as changed - save it (Ctrl+S) or the file keeps the old values.");
     }
 
     /// <summary>
-    /// A ที่รับเข้ามาคือ "อัตรารถตรงรวม" (ก่อนมี shared lane) — แบ่งให้ A (เลนใน) กับ A2 (เลนนอก)
-    /// เหมือนกับ TestCaseLibrary.Poisson() เป๊ะ ๆ ตามสัดส่วน a2Share (ค่าเริ่มต้น 18% ไม่ใช่ 50/50 แล้ว)
+    /// The A argument is the combined through-traffic rate, before the shared lane splits it, divided
+    /// between A (inner) and A2 (outer) exactly as TestCaseLibrary.Poisson() does, by a2Share.
     /// </summary>
     ScenarioDef MakeScenario(string name, float A, float Ax, float B, float Bx, float CB, float CA)
     {

@@ -2,13 +2,13 @@ using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
-/// ชุดมุมกล้องสำเร็จรูปของแยก ABAC + แถบปุ่มสลับมุมตอนรัน
+/// Preset camera shots for the ABAC intersection, plus a runtime button bar to switch between them.
 ///
-/// มุมกล้องทั้งหมดถูกคำนวณจากพิกัดจริงในซีนโดย ABACSceneBuilder (ไม่ได้พิมพ์ค่ามือ)
-/// ถ้าขยับเลนหรือเส้นหยุด แล้วกด Build ใหม่ มุมกล้องจะขยับตามเอง
+/// Every shot is computed from the real scene coordinates by ABACSceneBuilder, not typed in by hand,
+/// so moving a lane or a stop line and pressing Build moves the cameras with it.
 ///
-/// ปุ่มลัด:  [ ]  = เลื่อนมุมก่อนหน้า/ถัดไป,  V = สลับโหมดตามรถ,  C = กลับมุมภาพรวม
-/// (เลี่ยงปุ่มที่ SimulationControlPanel ใช้อยู่แล้ว: Space R H F G 1-5)
+/// Shortcuts:  [ ]  = previous/next shot,  V = toggle follow mode,  C = back to the overview
+/// (avoids the keys SimulationControlPanel already uses: Space R H F G 1-5)
 /// </summary>
 public class CameraDirector : MonoBehaviour
 {
@@ -16,31 +16,31 @@ public class CameraDirector : MonoBehaviour
     public class Shot
     {
         public string label = "Shot";
-        [Tooltip("ชื่อเลนที่มุมนี้เล็งอยู่ — ใช้ทำสีปุ่มและใช้ตอนเปิดโหมดตามรถ (เว้นว่าง = ไม่ผูกเลน)")]
+        [Tooltip("Lane this shot is aimed at - drives the button colour and follow mode (blank = not tied to a lane)")]
         public string lane = "";
         public Vector3 position;
         public Vector3 euler;
         public float fov = 60f;
 
-        [Tooltip("ระยะกล้องเวลาตามรถ: ถอยหลังเท่าไร / สูงเท่าไร")]
+        [Tooltip("Follow-mode camera offset: how far back and how high")]
         public float followBack = 9f;
         public float followUp = 4.5f;
-        [Tooltip("false = มุมนี้ตามรถไม่ได้ (เช่น มุมภาพรวม)")]
+        [Tooltip("false = this shot cannot follow a car (an overview, for example)")]
         public bool canFollow = true;
     }
 
     [Header("Camera")]
     public Camera targetCamera;
 
-    [Header("Shots (ABACSceneBuilder เติมให้อัตโนมัติ)")]
+    [Header("Shots (filled in automatically by ABACSceneBuilder)")]
     public List<Shot> shots = new List<Shot>();
 
     [Header("Behaviour")]
-    [Tooltip("เวลาที่ใช้เคลื่อนกล้องไปมุมใหม่ (วินาที) — 0 = ตัดภาพทันที")]
+    [Tooltip("Seconds taken to move to a new shot - 0 = cut immediately")]
     public float moveTime = 0.55f;
-    [Tooltip("โหมดตามรถ: กล้องเกาะรถคันที่ใกล้เส้นหยุดที่สุดของเลนนั้น")]
+    [Tooltip("Follow mode: the camera tracks whichever car in that lane is nearest the stop line")]
     public bool followMode = false;
-    [Tooltip("หน่วงการเลือกรถใหม่ (วินาที) กันกล้องกระตุกสลับคันไปมาถี่ ๆ")]
+    [Tooltip("Delay before picking a new car, in seconds, so the camera does not jump between cars")]
     public float reacquireInterval = 0.4f;
 
     [Header("UI")]
@@ -69,7 +69,7 @@ public class CameraDirector : MonoBehaviour
 
     void Start()
     {
-        snapNext = true;   // เข้ามุมแรกทันที ไม่ต้องไถลมาจากตำแหน่งเดิมของกล้อง
+        snapNext = true;   // jump straight to the first shot instead of sliding in from wherever the camera was
     }
 
     public void Select(int i)
@@ -104,13 +104,13 @@ public class CameraDirector : MonoBehaviour
             if (followed != null)
             {
                 Transform t = followed.transform;
-                // ถอยหลังรถแล้วยกสูงขึ้น มองไปข้างหน้ารถเล็กน้อย = เห็นทั้งตัวรถและสิ่งที่ขวางอยู่
+                // Sit behind and above the car, looking slightly ahead of it, so both the car and whatever blocks it are visible
                 wantPos = t.position - t.forward * s.followBack + Vector3.up * s.followUp;
                 wantRot = Quaternion.LookRotation((t.position + t.forward * 6f) - wantPos, Vector3.up);
             }
             else
             {
-                // ไม่มีรถในเลนนั้นตอนนี้ — ค้างที่มุมนิ่งไปก่อน จะได้ไม่จอดำ
+                // No car in that lane right now - hold the static shot rather than show a black frame
                 wantPos = s.position;
                 wantRot = Quaternion.Euler(s.euler);
             }
@@ -121,8 +121,8 @@ public class CameraDirector : MonoBehaviour
             wantRot = Quaternion.Euler(s.euler);
         }
 
-        // ⚠️ ใช้ unscaledDeltaTime เพราะ batch run เร่ง timeScale ถึง 20x
-        //    ถ้าใช้ deltaTime ปกติ กล้องจะพุ่งเข้าที่ทันทีจนดูกระตุก
+        // Uses unscaledDeltaTime because a batch run pushes timeScale to 20x.
+        //    With ordinary deltaTime the camera would snap into place and look jerky.
         float k = (snapNext || moveTime <= 0.001f)
                   ? 1f
                   : 1f - Mathf.Exp(-Time.unscaledDeltaTime / Mathf.Max(0.01f, moveTime) * 3f);
@@ -155,7 +155,7 @@ public class CameraDirector : MonoBehaviour
 
         UITheme.Begin();
 
-        // ---- แถบปุ่มมุมกล้อง วางกลางล่าง ----
+        // ---- Shot button bar, centred along the bottom ----
         const float BW = 108f, BH = 26f, GAP = 4f;
         const float ROI_BTN_W = 116f;
         float barW = shots.Count * BW + (shots.Count - 1) * GAP + 24f + ROI_BTN_W + GAP;

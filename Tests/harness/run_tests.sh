@@ -1,42 +1,54 @@
 #!/bin/bash
 # ============================================================================
-#  ชุด regression ของ ABAC TrafficSim — รันนอก Unity ด้วย mcs/mono
+#  ABAC TrafficSim regression suites - run outside Unity with mcs/mono
 #
-#  วิธีรัน:   bash Tests/harness/run_tests.sh        (จาก root ของ repo หรือที่ไหนก็ได้)
-#  ต้องมี:    mono + mcs     macOS: brew install mono     Ubuntu: apt install mono-devel
+#  Run with:  bash Tests/harness/run_tests.sh        (from the repo root or anywhere)
+#  Requires:  mono + mcs     macOS: brew install mono     Ubuntu: apt install mono-devel
 #
-#  ทำไมต้องมี stub: โค้ดใน Assets/Scripts อ้าง UnityEngine ซึ่งคอมไพล์นอก Unity ไม่ได้
-#  UnityStub.cs และเพื่อนจึงจำลอง type ที่จำเป็นให้พอคอมไพล์และรันตรรกะล้วน ๆ ได้
+#  Why the stubs: code in Assets/Scripts refers to UnityEngine, which will not compile outside
+#  Unity. UnityStub.cs and friends fake just enough of those types to compile and run pure logic.
 #
-#  ⚠️ ต้องมี -define:UNITY_EDITOR ตอนคอมไพล์ Assets/Editor ไม่งั้นไฟล์ทั้งไฟล์ถูก #if
-#     ตัดทิ้ง แล้ว "คอมไพล์ผ่าน" จะกลายเป็นผลลวง
+#  -define:UNITY_EDITOR is required when compiling Assets/Editor. Without it the whole file is
+#     cut away by #if and "it compiles" becomes a false pass.
 #
-#  ⚠️ QueueClockTest ห้ามใส่ไฟล์ stub ซ้ำตอนคอมไพล์ ไม่งั้น UnityEngine.Time
-#     จะกลายเป็นคนละ static กับตัวใน gamecode.dll แล้วเทสจะอ่านเวลาผิด
+#  QueueClockTest must not be compiled with a second copy of the stubs, or UnityEngine.Time
+#     becomes a different static from the one inside gamecode.dll and the test reads the wrong clock.
 # ============================================================================
 set -e
 cd "$(dirname "$0")"                  # Tests/harness
-ROOT="../.."                          # root ของ repo
+ROOT="../.."                          # repo root
 OUT="$(pwd)/_build"
 mkdir -p "$OUT"
 STUBS="UnityStub.cs UnityGuiStub.cs UnityEditorStub.cs UnityThemeStub.cs"
 SCRIPTS="$ROOT/Assets/Scripts/*.cs"
 EDITOR="$ROOT/Assets/Editor/*.cs"
-SCENE="Assets/Scenes/SampleScene.unity"   # relative to ROOT, เทสถูกรันจากที่นั่น
+SCENE="Assets/Scenes/SampleScene.unity"   # relative to ROOT, where the tests are run from
 FAIL=0
 
-echo "=== compile: Assets/Scripts เท่านั้น ==="
+echo "=== compile: Assets/Scripts only ==="
 mcs -target:library -out:"$OUT/gamecode.dll" $SCRIPTS $STUBS 2>&1 | grep -E ": error" && FAIL=1
-echo "=== compile: Scripts + Editor (UNITY_EDITOR จริง) ==="
+echo "=== compile: Scripts + Editor (real UNITY_EDITOR) ==="
 mcs -define:UNITY_EDITOR -target:library -out:"$OUT/all_ed.dll" $SCRIPTS $EDITOR $STUBS 2>&1 | grep -E ": error" && FAIL=1
 
-# เทสทุกตัวถูกรันจาก root ของ repo เพราะบางตัวอ่านซอร์สเองด้วย path แบบ Assets/Scripts/...
-run () {  # run <exe> <src> <ชื่อชุด> <flags> <dll> [args]
+# Every test runs from the repo root because some of them read source files by Assets/Scripts/... paths.
+run () {  # run <exe> <src> <suite name> <flags> <dll> [args]
   mcs $4 -target:exe -out:"$OUT/$1.exe" $2 $STUBS -r:"$OUT/$5" 2>&1 | grep -E ": error" \
     && { echo "COMPILE FAIL $3"; FAIL=1; return; }
   echo "=== $3 ==="
   ( cd "$ROOT" && mono "$OUT/$1.exe" $6 2>&1 | grep -E "FAIL|PASSED" ) || true
   ( cd "$ROOT" && mono "$OUT/$1.exe" $6 > /dev/null 2>&1 ) || FAIL=1
+}
+
+# Tests that construct UnityEngine objects themselves (Transform/GameObject) must be compiled
+# Tests that construct UnityEngine objects themselves (Transform/GameObject) must be compiled
+# *without* a second copy of the stubs, or the types come from two assemblies and cannot be
+# assigned across (same reason as QueueClockTest).
+run_nostub () {  # run_nostub <exe> <src> <suite name> <dll>
+  mcs -target:exe -out:"$OUT/$1.exe" $2 -r:"$OUT/$4" 2>&1 | grep -E ": error" \
+    && { echo "COMPILE FAIL $3"; FAIL=1; return; }
+  echo "=== $3 ==="
+  ( cd "$ROOT" && mono "$OUT/$1.exe" 2>&1 | grep -E "FAIL|PASSED" ) || true
+  ( cd "$ROOT" && mono "$OUT/$1.exe" > /dev/null 2>&1 ) || FAIL=1
 }
 
 run t1 ConflictTest.cs        ConflictTest   ""                     gamecode.dll
@@ -45,15 +57,17 @@ run t3 BatchMathTest.cs       BatchMathTest  ""                     gamecode.dll
 run t4 EtaTest.cs             EtaTest        ""                     gamecode.dll
 run t5 SharedLaneTest.cs      SharedLaneTest ""                     gamecode.dll
 run t6 GeometryTest.cs        GeometryTest   "-define:UNITY_EDITOR" all_ed.dll
+run_nostub t10 HeadwayTest.cs HeadwayTest    gamecode.dll
+run_nostub t11 Compare101Test.cs Compare101Test gamecode.dll
 
-# เทียบ ".unity กับ .cs" ไม่ใช่ ".cs กับ .cs" — ตัวที่จับบั๊ก scene-serialization ได้จริง
+# Compares ".unity against .cs", not ".cs against .cs" - the one that actually catches scene-serialization bugs
 run t7 ../SceneAuditTest.cs   SceneAuditTest ""                     gamecode.dll "$SCENE"
 
-# SODA: queueStart reset / gap-out 2 snapshots / ไม่มี tracker หลงเหลือ / tie-break / single clock
+# SODA: queueStart reset / gap-out 2 snapshots / no tracker left behind / tie-break / single clock
 run t8 ../SodaTest.cs         SodaTest       ""                     gamecode.dll
 
-# นาฬิกาคิวของหัวที่เขียวต่อเนื่อง (บั๊ก C1, 11 ก.ย. 2026)
-# ไม่ใส่ $STUBS เพราะ Time ต้องเป็นตัวเดียวกับใน gamecode.dll
+# Queue clock of a head that stays green across phases (bug C1, 11 Sep 2026)
+# No $STUBS here: Time must be the same static as the one inside gamecode.dll
 mcs -target:exe -out:"$OUT/t9.exe" ../QueueClockTest.cs -r:"$OUT/gamecode.dll" 2>&1 | grep -E ": error" \
   && { echo "COMPILE FAIL QueueClockTest"; FAIL=1; }
 echo "=== QueueClockTest ==="

@@ -1,4 +1,4 @@
-// stub เพิ่มเติมสำหรับ UITheme.cs — ใช้ตอน compile-check นอก Unity เท่านั้น
+// Extra stubs for UITheme.cs - only used when compile-checking outside Unity.
 using System;
 namespace UnityEngine
 {

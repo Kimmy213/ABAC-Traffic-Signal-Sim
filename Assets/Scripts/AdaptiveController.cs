@@ -5,23 +5,23 @@ using System.Collections.Generic;
 /// <summary>
 /// SODA (patched) — Sampled-Observation Demand-Adaptive signal control
 ///
-/// ===== ทำไมต้องเขียนใหม่ =====
-/// controller เดิมพึ่งสองอย่างที่ "ติดตั้งจริงไม่ได้":
-///   1) ติดตามรถรายคันต่อเนื่อง (ต้องมี ByteTrack/DeepSORT ต่อท้าย YOLO) — hardware ไม่ไหว
-///   2) rest in green (ปล่อยไฟเขียวค้างตอนว่าง) — ไฟจริงปล่อยแดงทุกเลนตอนว่าง
-/// ถ้ารัน batch ด้วยของเดิม = ได้ผลของ controller ที่ deploy ไม่ได้
+/// ===== Why this was rewritten =====
+/// The previous controller relied on two things that cannot actually be deployed:
+///   1) continuous per-vehicle tracking (needs ByteTrack/DeepSORT behind YOLO) - hardware we cannot afford
+///   2) rest-in-green (holding green while idle) - the real signal goes all-red when idle
+/// Running a batch on that would measure a controller that cannot be installed.
 ///
-/// ===== แก้ 3 จุด (ที่เหลือไม่แตะ) =====
-///   การมองเห็น : ROI ติดตามต่อเนื่องมี ID รายคัน -> snapshot ทุก 2 วิ "นับอย่างเดียว ไม่มี ID"
-///   ตอนว่าง    : rest in green                  -> ALL-RED ทุกเลน + Eyes
-///   เลือก leader: argmin เวลารถคันแรกสุดมาถึง    -> argmin queueStart[h] (timestamp ระดับเลน)
+/// ===== Three things changed, nothing else =====
+///   Perception : continuously tracked ROI with per-vehicle IDs -> a snapshot every 2 s, count only, no IDs
+///   When idle  : rest-in-green                                 -> ALL-RED on every head, plus Eyes
+///   Leader     : argmin arrival time of the first vehicle       -> argmin queueStart[h], a lane-level timestamp
 ///
-/// ไม่แตะ: conflict matrix / concurrent grouping / A+A2 forced pairing / สูตร G /
-///         clearance ที่ไม่ตัดเลนที่ยังต้องเขียว / anti-starvation / max continuous green
+/// Untouched: conflict matrix / concurrent grouping / A+A2 forced pairing / the G formula /
+///            clearance that spares lanes still needing green / anti-starvation / max continuous green
 ///
-/// ===== state ทั้งหมดมีแค่ 8 ตัวเลข =====
-/// หัวไฟ 4 ดวง x { queueStart, lastCount } — ไม่มี ID รถ ไม่มีการจับคู่ข้ามเฟรม
-/// ไม่มี list ที่ยาวตามจำนวนรถ นี่คือจุดที่ tracker ถูกตัดออกจริง ๆ
+/// ===== The entire state is eight numbers =====
+/// Four signal heads x { queueStart, lastCount }. No vehicle IDs, no frame-to-frame matching,
+/// no list that grows with the number of vehicles. That is where the tracker genuinely disappears.
 /// </summary>
 public class AdaptiveController : MonoBehaviour
 {
@@ -31,13 +31,17 @@ public class AdaptiveController : MonoBehaviour
     // ===================== Eyes (sampled observation) =====================
 
     [Header("Eyes — Sampled Observation")]
-    [Tooltip("ถ่าย snapshot ทุกกี่วินาที — นับรถอย่างเดียว ไม่ต้องมี tracker")]
-    public float snapshotInterval = 2f;
-    [Tooltip("เพดานของหน้าต่างเก็บข้อมูล ไม่ใช่ค่าคงที่ — ออกก่อนได้ด้วย early exit")]
+    [Tooltip("Seconds between snapshots - counting only, no tracker required")]
+    // 14 Sep 2026: 2 -> 1 s (Itim), which tracks vehicles more accurately and fires gap-out sooner.
+    // Side effect: gapOutSnapshots stays at 2, so the confirmation window shrinks from 4 s to 2 s.
+    //    That was Itim's decision made knowingly, not something that slipped through.
+    // This value is also serialized in the scene; changing it here alone has no effect - edit SampleScene.unity too.
+    public float snapshotInterval = 1f;
+    [Tooltip("Ceiling on the collection window, not a fixed length - an early exit can end it sooner")]
     public float collectWindow = 7f;
-    [Tooltip("Early exit (ก): พบรถกี่หัวไฟจึงเลิกรอ")]
+    [Tooltip("Early exit (a): stop waiting once this many heads have vehicles")]
     public int earlyExitHeadCount = 2;
-    [Tooltip("Early exit (ข): หัวไฟใดมีรถถึงจำนวนนี้จึงเลิกรอ")]
+    [Tooltip("Early exit (b): stop waiting once any head has this many vehicles")]
     public int earlyExitDemand = 3;
 
     // ===================== Green time (carried over unchanged) =====================
@@ -50,44 +54,44 @@ public class AdaptiveController : MonoBehaviour
     public float startupLostTime = MEASURED_STARTUP_LOST_TIME;
     public float saturationHeadway = MEASURED_SATURATION_HEADWAY;
 
-    // ===== ค่าอ้างอิงที่วัดได้จริง — แหล่งความจริงแหล่งเดียวของทั้งโปรเจกต์ =====
-    // ⚠️ Unity เก็บค่าของ component ที่วางไว้ในซีนลง SampleScene.unity (serialize)
-    //    แล้ว "ทับ" ค่า default ในสคริปต์เสมอตอนโหลดซีน
-    //    => แก้ค่า default ในไฟล์ .cs เพียงอย่างเดียว ไม่มีผลกับซีนที่มี component อยู่แล้ว
-    //    ป้องกันด้วย 3 ชั้น: (1) const ตรงนี้ (2) EnforceMeasuredParameters() ตอน Awake
-    //    (3) ABACSceneBuilder เรียก LoadMeasuredPreset() ทุกครั้งที่ build ซีน
-    public const float MEASURED_STARTUP_LOST_TIME  = 2.95f;   // วัดจริง 39 ตัวอย่าง (HCM default = 2.0)
-    public const float MEASURED_SATURATION_HEADWAY = 2.31f;   // วัดจริง sd 0.81 (HCM default = 2.0)
-    // ⛔ เลิกใช้ counting window แล้ว (เคยเป็น 4 วิ)
-    //    มันถามคำถามเดียวกับ COLLECT ด้วยเกณฑ์ตัวเดียวกัน (< 3 คัน) แล้วรอซ้ำอีกรอบ
-    //    รายละเอียดอยู่ที่ Q2 ด้านล่าง
+    // ===== Measured reference values - the single source of truth for the whole project =====
+    // Unity serialises the values of a scene component into SampleScene.unity and always overrides
+    //    the script defaults on load, so editing the default in the .cs alone has no effect on a
+    //    component already in the scene. Three layers guard against that: (1) the consts here,
+    //    (2) EnforceMeasuredParameters() in Awake, and (3) ABACSceneBuilder calling
+    //    LoadMeasuredPreset() on every scene build.
+    public const float MEASURED_STARTUP_LOST_TIME  = 2.95f;   // measured over 39 samples (HCM default = 2.0)
+    public const float MEASURED_SATURATION_HEADWAY = 2.31f;   // measured, sd 0.81 (HCM default = 2.0)
+    // The counting window (once 4 s) is gone. It asked the same question as COLLECT using the same
+    //    threshold (< 3 vehicles) and then waited all over again.
+    //    Full reasoning at Q2 below.
 
-    [Tooltip("true = บังคับใช้ค่าที่วัดจริงเสมอ ถ้าค่าในซีนเพี้ยนจะแก้ให้อัตโนมัติพร้อมขึ้น error\n" +
-             "ปิดเฉพาะตอนตั้งใจทำ sensitivity analysis (เช่นเทียบ HCM 2.0 กับค่าที่วัดได้)")]
+    [Tooltip("true = always enforce the measured values; a drifted scene value is corrected automatically with an error.\n" +
+             "Turn off only for a deliberate sensitivity analysis, such as comparing HCM 2.0 against the measured value.")]
     public bool useMeasuredParameters = true;
 
-    [Tooltip("เขียวต่อเนื่องกลุ่มเดิมได้นานสุดกี่วินาที ก่อนบังคับปล่อยเฟส (max green ตามมาตรฐาน)")]
+    [Tooltip("Longest a single group may hold green before the phase is forced to end (standard max green)")]
     public float maxContinuousGreen = 90f;
 
     [Header("Concurrent Phase")]
-    [Tooltip("true = รวมเลนที่ไม่ conflict ให้เขียวพร้อมกัน (แนะนำ) / false = ปล่อยทีละเลน")]
+    [Tooltip("true = combine non-conflicting lanes into one green (recommended) / false = one lane at a time")]
     public bool enableConcurrentPhases = true;
-    [Tooltip("หัวไฟที่จะถูกรวมเข้ากลุ่มต้องมีรถอย่างน้อยกี่คัน")]
+    [Tooltip("Minimum vehicles a head needs before it can join the group")]
     public int minDemandToJoinGroup = 1;
 
     [Header("Gap-out")]
     public bool enableGapOut = true;
-    [Tooltip("ต้องเห็น count = 0 ติดกันกี่ snapshot จึงตัดเฟส\n" +
-             "2 snapshot = 4 วิ — ยืนยันครั้งเดียวไม่พอ ถ้า detect พลาดรอบเดียวจะตัดเฟสทั้งที่ยังมีรถ")]
+    [Tooltip("How many consecutive snapshots must read count = 0 before the phase ends.\n" +
+             "2 snapshots = 4 s. One is not enough: a single missed detection would end a phase with vehicles still waiting.")]
     public int gapOutSnapshots = 2;
 
-    [Header("Anti-Starvation (รอได้ไม่เกินกี่วิ)")]
+    [Header("Anti-Starvation (longest acceptable wait)")]
     public float maxWaitTime = 45f;
-    [Tooltip("ต้องเขียวอย่างน้อยเท่านี้ก่อนจะโดนตัดสั้นได้ (กันไฟสั้นเกินระบายไม่ทัน)")]
+    [Tooltip("Minimum green before the phase may be cut short, so it is never too short to discharge")]
     public float minGreenBeforeInterrupt = 20f;
-    [Tooltip("สัดส่วนของ maxWaitTime ที่จะบังคับเลือกเป็นเฟสถัดไป (ทางออกฉุกเฉิน)")]
+    [Tooltip("Fraction of maxWaitTime at which a head is forced to be the next phase (the emergency exit)")]
     public float starvationSelectThreshold = 0.95f;
-    [Tooltip("สัดส่วนของ maxWaitTime ที่จะตัดจบเฟสปัจจุบันก่อนเวลา")]
+    [Tooltip("Fraction of maxWaitTime at which the current phase is ended early")]
     public float starvationInterruptThreshold = 0.90f;
 
     [Header("Debug Display")]
@@ -95,44 +99,44 @@ public class AdaptiveController : MonoBehaviour
     public bool verboseLog = false;
 
     [Header("Decision Inspector")]
-    [Tooltip("แผงแยกด้านขวา แสดงว่าอัลกอริทึมกำลังคิดขั้นไหน มีอะไรอยู่ในคิว และตัดสินใจจากตัวเลือกอะไรบ้าง")]
+    [Tooltip("Separate panel on the right showing which step the algorithm is on, what is queued, and which options it weighed")]
     public bool showDecisionPanel = true;
-    [Tooltip("ปุ่มสลับเปิด/ปิดแผงขั้นตอนการคิด")]
+    [Tooltip("Key that toggles the decision-trace panel")]
     public KeyCode decisionPanelKey = KeyCode.D;
 
     // ===================== Signal head =====================
 
     /// <summary>
-    /// หัวไฟหนึ่งดวง = สัญญาณไฟจริงหนึ่งดวง ไม่ใช่หนึ่งเลน
-    /// H_A คุมทั้ง A (เลนใน) และ A2 (เลนนอก) เพราะเป็นไฟดวงเดียวกันจริง ๆ
-    /// คิวบริการจึงมีสมาชิกได้มากสุด 4 ตัว ไม่ใช่ 7
+    /// One head = one physical signal lamp, not one lane.
+    /// H_A controls both A (inner) and A2 (outer), because they genuinely are the same lamp,
+    /// so the service queue holds at most 4 entries, not 7.
     /// </summary>
     public class SignalHead
     {
         public string name;
-        /// <summary>ตำแหน่งใน ORIGINAL_SEQUENCE — ใช้ตัดสินเมื่อ queueStart เท่ากันเป๊ะ</summary>
+        /// <summary>Position in ORIGINAL_SEQUENCE - decides ties when queueStart is exactly equal</summary>
         public int priority = int.MaxValue;
-        public List<int> signals = new List<int>();   // signal index ที่ใช้ TrafficLight ดวงเดียวกัน
+        public List<int> signals = new List<int>();   // signal indices sharing one TrafficLight
         public List<ROIZone> rois = new List<ROIZone>();
 
-        /// <summary>เวลาที่หัวไฟนี้เปลี่ยนจากว่าง -> มีรถ (Infinity = ว่าง)</summary>
+        /// <summary>When this head went from empty to occupied (Infinity = empty)</summary>
         public float queueStart = Mathf.Infinity;
-        /// <summary>จำนวนรถจาก snapshot ก่อนหน้า — ใช้ตรวจขอบขาขึ้นเท่านั้น</summary>
+        /// <summary>Count from the previous snapshot - used only to detect the rising edge</summary>
         public int lastCount = 0;
     }
 
     /// <summary>
-    /// ลำดับเฟสเดิมของแยก — ใช้เป็น tie-break เมื่อ queueStart เสมอกัน
+    /// The junction's original phase order, used to break ties when queueStart is equal.
     ///
-    /// ทำไมต้องมี: ทุกหัวไฟถูกอัปเดตใน Snapshot() ครั้งเดียวกัน สองหัวที่รถมาถึงในหน้าต่าง
-    /// 2 วิเดียวกันจึงได้ queueStart "เท่ากันระดับบิต" — เสมอกันเป็นเรื่องปกติ ไม่ใช่เรื่องหายาก
-    /// เดิมการเสมอถูกตัดสินด้วยลำดับที่บังเอิญประกาศตัวแปรไว้ (ไม่ได้เขียนไว้ที่ไหน) และ
-    /// List&lt;T&gt;.Sort ก็ไม่การันตี stable ทำให้ผลไม่แน่นอนตามสัญญาของภาษา
+    /// Why it is needed: every head is updated in the same Snapshot() call, so two heads whose vehicles
+    /// arrive in the same 2 s window get bit-identical queueStart values. Ties are routine, not rare.
+    /// They used to be settled by the incidental order the variables happened to be declared in, which
+    /// was written down nowhere, and List&lt;T&gt;.Sort is not guaranteed stable, so the result was undefined.
     ///
-    /// ⚠️ tie-break ตัวนี้ไม่ได้ตัดสินแค่ว่าใครนำ — มันตัดสินว่ากลุ่มประกอบด้วยใคร
-    ///    leader = B แล้ว A กับ Bx เสมอกัน: A เข้าก่อน -> {B,A,A2} · Bx เข้าก่อน -> {B,Bx}
-    ///    และเพราะ A ชนกับ Bx การเข้าข้าง A จึงตัด Bx ออกอย่างเป็นระบบ
-    ///    นับไว้ที่ TieBreaksApplied / TieBreaksExcludingBx เพื่อวัดขนาดของ bias นี้
+    /// This tie-break decides more than who leads - it decides who is in the group.
+    ///    With leader = B and A tied with Bx: A first gives {B,A,A2}, Bx first gives {B,Bx}.
+    ///    And because A conflicts with Bx, favouring A systematically excludes Bx.
+    ///    TieBreaksApplied / TieBreaksExcludingBx count this so the size of the bias can be measured.
     /// </summary>
     public static readonly string[] ORIGINAL_SEQUENCE = { "H_A", "H_B", "H_Bx", "H_CB" };
 
@@ -144,40 +148,40 @@ public class AdaptiveController : MonoBehaviour
     private List<int> activeGroup = new List<int>();
     private EyeState state = EyeState.AllRedIdle;
     private float phaseTimeRemaining = 0f;
-    /// <summary>เหลือกี่วินาทีของไฟเขียวเฟสปัจจุบัน — มีค่าเฉพาะใน GreenPhaseWithInterrupts</summary>
+    /// <summary>Seconds left in the current green - only set inside GreenPhaseWithInterrupts</summary>
     private float greenTimeRemaining = 0f;
     private float continuousGreenTimer = 0f;
     private bool forcePhaseChange = false;
     private string statusText = "Idle";
 
-    private int groupZeroStreak = 0;          // snapshot ติดกันที่กลุ่มปัจจุบันว่าง (gap-out)
+    private int groupZeroStreak = 0;          // consecutive snapshots with the current group empty (gap-out)
 
     /// <summary>
-    /// เดินขึ้นทีละ 1 ทุกครั้งที่ถ่าย snapshot — เป็น "นาฬิกาเดียว" ของอัลกอริทึมทั้งตัว
-    /// ทุกการตัดสินใจรอ index ตัวนี้ขยับ ไม่มีลูปไหนตั้งนาฬิกาของตัวเองแข่ง
-    /// (เดิม COLLECT เช็กทุก 1 วิ ทั้งที่ข้อมูลอัปเดตทุก 2 วิ = เช็กครึ่งนึงอ่านของเก่าซ้ำ
-    ///  แถมยังหน่วงสุ่ม 0-1 วิ ระหว่าง "ข้อมูลมา" กับ "อัลกอริทึมเห็น" โดยไม่ได้อะไรเลย)
+    /// Increments by one on every snapshot - the single clock for the entire algorithm.
+    /// Every decision waits on this index to move; no loop runs a competing clock of its own.
+    /// (COLLECT used to check every 1 s while the data updated every 2 s, so half its checks reread
+    ///  stale numbers and it added a random 0-1 s lag between data arriving and being seen, for nothing.)
     /// </summary>
     private int snapshotIndex = 0;
     public int SnapshotIndex => snapshotIndex;
 
-    // ===== วัด "เขียวเปล่า" ต่อเฟส (ยังไม่เปลี่ยนพฤติกรรม แค่เก็บหลักฐาน) =====
-    // gap-out ปัจจุบันยิงเมื่อ "ทุกเลนในกลุ่มว่าง" เลนที่ว่างก่อนจึงติดเขียวรอเลนอื่นอยู่เฉย ๆ
-    // ความละเอียดเท่ากับ snapshotInterval (2 วิ) ตามที่ detector จริงมองเห็น ไม่ใช่ ground truth
+    // ===== Measuring idle green per phase (no behaviour change yet, just evidence) =====
+    // Gap-out currently fires only when every lane in the group is empty, so a lane that empties first
+    // sits on green waiting for the others. Resolution equals snapshotInterval (1 s) - what a real detector sees.
     private Dictionary<int, float> laneEmptyAt = new Dictionary<int, float>();
     private float phaseStartTime = 0f;
     private string lastEndReason = "completed";
     private Coroutine snapshotLoop = null;
 
-    // ===== สถิติสำหรับ log =====
-    // ===== บันทึกขั้นตอนการคิด (สำหรับแผง Decision Inspector) =====
-    /// <summary>หนึ่งขั้นของการตัดสินใจ — เก็บทั้ง "ตัวเลือกที่พิจารณา" และ "ผลสรุป"</summary>
+    // ===== Statistics for the log =====
+    // ===== Decision trace (for the Decision Inspector panel) =====
+    /// <summary>One decision step - records both the options weighed and the verdict</summary>
     public class TraceStep
     {
         public string id;                                  // Q1..Q4
         public string title;
-        public List<string> options = new List<string>();  // ตัวเลือกที่เอามาชั่งน้ำหนัก
-        public string verdict = "";                        // ผลสรุปหนึ่งบรรทัด
+        public List<string> options = new List<string>();  // the options considered
+        public string verdict = "";                        // one-line outcome
         public bool resolved = false;
     }
 
@@ -198,21 +202,21 @@ public class AdaptiveController : MonoBehaviour
     public float CollectTotalTime   => collectTotalDuration;
     public int   SkippedHeadTotal   => skippedHeadTotal;
     public int   QueueStartResets   => queueStartResets;
-    /// <summary>เฟสที่มีหัวไฟตั้งแต่ 2 ดวงขึ้นไป queueStart เท่ากันเป๊ะ (tie-break ได้ทำงาน)</summary>
+    /// <summary>Phases where two or more heads had exactly equal queueStart (the tie-break ran)</summary>
     public int   TieBreaksApplied     => tieBreaksApplied;
-    /// <summary>ในจำนวนนั้น กี่เฟสที่ tie-break ตัด H_Bx ออกจากกลุ่ม แทนหัวไฟที่เสมอกับมัน</summary>
+    /// <summary>Of those, how many excluded H_Bx from the group in favour of a head tied with it</summary>
     public int   TieBreaksExcludingBx => tieBreaksExcludingBx;
     public EyeState CurrentState    => state;
     /// <summary>
-    /// วินาทีที่เหลือของ "ไฟเขียวเฟสนี้" — สำหรับแสดงผลเท่านั้น
-    /// ⚠️ ห้ามใช้ phaseTimeRemaining แทน เพราะตัวนั้นถูก CountdownPhase เขียนทับด้วยเวลาเหลือง/แดง
-    ///    หัวที่เขียวต่อเนื่องข้ามเฟสจะไปอ่านเวลา clearance ของหัวอื่นมาแสดงว่าเป็นเวลาเขียวของตัวเอง
-    /// เป็น 0 ตลอดช่วงตัดสินใจและ clearance เพราะตอนนั้น G ของเฟสใหม่ยังไม่ถูกคำนวณ
+    /// Seconds left in this phase's green - for display only.
+    /// Never use phaseTimeRemaining for this: CountdownPhase overwrites it with the yellow and
+    ///    all-red times, so a head green across phases would show another head's clearance as its own green.
+    /// It is 0 throughout the decision and clearance stages, because the new phase's G is not yet computed.
     /// </summary>
     public float GreenTimeRemaining => greenTimeRemaining;
-    /// <summary>หัวไฟทั้งหมด — เปิดให้เทสตรวจสถานะภายในได้</summary>
+    /// <summary>All signal heads - exposed so tests can inspect internal state</summary>
     public List<SignalHead> Heads   => heads;
-    /// <summary>นับรถของหัวไฟหนึ่งดวง (public เพื่อให้เทสเรียกได้)</summary>
+    /// <summary>Vehicle count for one head (public so tests can call it)</summary>
     public int CountOfHead(SignalHead h) => CountOf(h);
 
     // ===================== Lifecycle =====================
@@ -224,7 +228,7 @@ public class AdaptiveController : MonoBehaviour
         if (config == null) config = FindFirstObjectByType<IntersectionConfig>();
         if (config == null)
         {
-            Debug.LogError("[AdaptiveController] ไม่พบ IntersectionConfig ในซีน");
+            Debug.LogError("[AdaptiveController] no IntersectionConfig found in the scene");
             return;
         }
         config.EnsureBuilt();
@@ -232,10 +236,10 @@ public class AdaptiveController : MonoBehaviour
     }
 
     /// <summary>
-    /// จัดกลุ่ม signal index ที่ใช้ TrafficLight "object เดียวกัน" ให้เป็นหัวไฟดวงเดียว
-    /// (A กับ A2 ชี้ component ตัวเดียวกันโดยตั้งใจ จึงรวมกันอัตโนมัติ ไม่ต้อง hard-code)
+    /// Groups signal indices that share the same TrafficLight object into one head.
+    /// (A and A2 deliberately point at the same component, so they merge automatically with no hard-coding.)
     /// </summary>
-    /// <summary>public เพื่อให้เทสสร้าง head ได้โดยไม่ต้องพึ่ง Awake ของ Unity</summary>
+    /// <summary>public so tests can build heads without relying on Unity calling Awake</summary>
     public void BuildHeads()
     {
         heads.Clear();
@@ -260,14 +264,14 @@ public class AdaptiveController : MonoBehaviour
             if (roi != null && !found.rois.Contains(roi)) found.rois.Add(roi);
         }
 
-        // ลำดับ Original — ประกาศไว้ชัด ๆ ไม่ใช่ผลพลอยได้จากลำดับที่วนเจอ
+        // Original order, stated explicitly rather than falling out of iteration order
         foreach (SignalHead h in heads)
         {
             h.priority = System.Array.IndexOf(ORIGINAL_SEQUENCE, h.name);
             if (h.priority < 0)
             {
                 h.priority = ORIGINAL_SEQUENCE.Length + heads.IndexOf(h);
-                Debug.LogWarning($"[SODA] {h.name} ไม่อยู่ใน ORIGINAL_SEQUENCE — tie-break จะไม่แน่นอน");
+                Debug.LogWarning($"[SODA] {h.name} is not in ORIGINAL_SEQUENCE - tie-breaking will be undefined");
             }
         }
 
@@ -277,7 +281,7 @@ public class AdaptiveController : MonoBehaviour
             {
                 string lanes = "";
                 foreach (int s in h.signals) lanes += config.SignalName(s) + " ";
-                Debug.Log($"[SODA] {h.name} (priority {h.priority}) คุมเลน: {lanes}({h.rois.Count} ROI)");
+                Debug.Log($"[SODA] {h.name} (priority {h.priority}) controls lanes: {lanes}({h.rois.Count} ROI)");
             }
         }
     }
@@ -290,10 +294,10 @@ public class AdaptiveController : MonoBehaviour
         continuousGreenTimer = 0f;
         greenTimeRemaining = 0f;
 
-        // ⭐ 11 ก.ย. 2026 — ล้างตัวนับ SODA ด้วย
-        //    ScenarioManager เรียก ForceStop() ก่อนรันรอบ Fixed แต่เดิมไม่ได้ล้างตรงนี้
-        //    แถว Fixed ใน summary_all_runs.csv จึงแบกค่าของ Adaptive รอบก่อนหน้ามาทั้งดุ้น
-        //    (ตรวจ batch 216 รอบแล้วตรงกันเป๊ะ 107 จาก 108 แถว)
+        // 11 Sep 2026: clear the SODA counters here too.
+        //    ScenarioManager calls ForceStop() before each Fixed run, but this was not cleared,
+        //    so the Fixed rows in summary_all_runs.csv carried the previous Adaptive run's values
+        //    wholesale (checked against the 216-run batch: 107 of 108 rows matched exactly).
         collectCount = 0; collectTotalDuration = 0f;
         skippedHeadTotal = 0; queueStartResets = 0;
         tieBreaksApplied = 0; tieBreaksExcludingBx = 0;
@@ -335,8 +339,8 @@ public class AdaptiveController : MonoBehaviour
     }
 
     /// <summary>
-    /// ตรวจว่าค่าที่ซีน serialize ไว้ตรงกับค่าที่วัดจริงหรือไม่ ถ้าไม่ตรงจะแก้ให้แล้วขึ้น error ดัง ๆ
-    /// เพื่อไม่ให้ batch 216 รอบวิ่งจนจบด้วยค่าตำราโดยไม่มีใครรู้
+    /// Checks the values serialized in the scene against the measured ones, correcting them and
+    /// raising a loud error if they differ, so a 216-run batch cannot quietly finish on textbook values.
     /// </summary>
     public bool EnforceMeasuredParameters()
     {
@@ -351,19 +355,19 @@ public class AdaptiveController : MonoBehaviour
         saturationHeadway = MEASURED_SATURATION_HEADWAY;
 
         Debug.LogError(
-            $"[AdaptiveController] ค่าที่ซีนเก็บไว้ไม่ตรงกับค่าที่วัดจริง — แก้ให้อัตโนมัติแล้ว\n" +
+            $"[AdaptiveController] the values stored in the scene do not match the measured ones - corrected automatically\n" +
             $"  startupLostTime   {oldL} -> {MEASURED_STARTUP_LOST_TIME}\n" +
             $"  saturationHeadway {oldH} -> {MEASURED_SATURATION_HEADWAY}\n" +
-            $"  ⚠️ การแก้นี้อยู่แค่ในหน่วยความจำ ให้เปิด Inspector ของ AdaptiveController " +
-            $"กด Load Measured Parameters แล้ว Save Scene (Ctrl+S) ไม่งั้นรอบหน้าจะเพี้ยนอีก");
+            $"  This correction is in memory only. Open the AdaptiveController Inspector, press " +
+            $"Load Measured Parameters, then Save Scene (Ctrl+S), or the next run drifts again.");
         return true;
     }
 
     // ===================== Decision trace =====================
 
     /// <summary>
-    /// เก็บ "ตัวเลือกที่อัลกอริทึมเห็น" ก่อนตัดสินใจ — คิว + เกณฑ์ Q1 + ผู้เข้าชิง Q2
-    /// อ่านอย่างเดียว ไม่เปลี่ยนสถานะใด ๆ จึงให้เทสเรียกตัวเดียวกับที่ ServeOnePhase เรียกได้
+    /// Records the options the algorithm can see before it decides: the queue, the Q1 threshold,
+    /// and the Q2 candidates. Read-only and changes no state, so a test can call what ServeOnePhase calls.
     /// </summary>
     public void TraceDecisionInputs()
     {
@@ -386,9 +390,9 @@ public class AdaptiveController : MonoBehaviour
         }
     }
 
-    /// <summary>ขั้นตอนการคิดของเฟสล่าสุด — ให้แผง Inspector และเทสอ่านได้</summary>
+    /// <summary>Decision steps of the most recent phase - readable by the Inspector panel and by tests</summary>
     public TraceStep[] DecisionTrace { get { EnsureTrace(); return trace; } }
-    /// <summary>คิวที่อัลกอริทึมมองเห็น เรียงตาม queueStart</summary>
+    /// <summary>The queue as the algorithm sees it, ordered by queueStart</summary>
     public List<string> QueueView => queueView;
 
 
@@ -413,9 +417,9 @@ public class AdaptiveController : MonoBehaviour
 
     void TraceBegin()
     {
-        // ⭐ 11 ก.ย. 2026 — phaseCounter ต้องเดินก่อน early return
-        //    ตอน batch เราปิด showDecisionPanel ทุกรอบ เลขเฟสจึงค้างที่ 0 ทั้งไฟล์
-        //    (คอลัมน์ PhaseIndex ใน phases_*.csv ของ batch 216 รอบเป็น 0 หมดด้วยเหตุนี้)
+        // 11 Sep 2026: phaseCounter must advance before the early return.
+        //    showDecisionPanel is off for every batch run, so the phase number stayed at 0 for the
+        //    whole file (which is why PhaseIndex is 0 throughout the 216-run batch phases_*.csv).
         phaseCounter++;
         if (!showDecisionPanel) return;
         EnsureTrace();
@@ -445,7 +449,7 @@ public class AdaptiveController : MonoBehaviour
         t.resolved = true;
     }
 
-    /// <summary>ถ่ายภาพคิวปัจจุบัน เรียงตาม queueStart เก่าสุดก่อน = ลำดับที่อัลกอริทึมมองเห็น</summary>
+    /// <summary>Snapshot of the current queue, oldest queueStart first = the order the algorithm sees</summary>
     void TraceQueue()
     {
         if (!showDecisionPanel) return;
@@ -469,9 +473,9 @@ public class AdaptiveController : MonoBehaviour
     // ===================== Eyes: the snapshot =====================
 
     /// <summary>
-    /// นับรถในหัวไฟหนึ่งดวง = ผลรวมของ ROI ที่มันคุม
-    /// ⚠️ ใช้ GetSampledCount() เท่านั้น — API เดียวที่กล้องไม่มี tracker ทำได้จริง
-    ///    ห้ามเรียก GetOldestArrivalTime / GetLongestWaitTime / GetCarsInZone จากที่ไหนก็ตามในไฟล์นี้
+    /// Vehicle count for one head = the sum over the ROIs it controls.
+    /// Only GetSampledCount() may be used - the one API a camera without a tracker can really provide.
+    ///    GetOldestArrivalTime / GetLongestWaitTime / GetCarsInZone must never be called anywhere in this file.
     /// </summary>
     int CountOf(SignalHead h)
     {
@@ -490,8 +494,8 @@ public class AdaptiveController : MonoBehaviour
     }
 
     /// <summary>
-    /// หนึ่ง snapshot: อัปเดต queueStart/lastCount ของทุกหัวไฟ และนับ streak ของ gap-out
-    /// นี่คือ "ทุกสิ่งที่ controller มองเห็น" — ตัวเลข 4 ตัวทุก 2 วินาที
+    /// One snapshot: update queueStart and lastCount on every head, and advance the gap-out streak.
+    /// This is everything the controller sees - four numbers every 2 seconds.
     /// </summary>
     public void Snapshot()
     {
@@ -501,15 +505,15 @@ public class AdaptiveController : MonoBehaviour
         {
             int c = CountOf(h);
 
-            // ขอบขาขึ้น: ว่าง -> มีรถ = เริ่มจับเวลารอของเลนนี้
+            // Rising edge: empty -> occupied means this lane starts its wait clock
             if (h.lastCount == 0 && c > 0) h.queueStart = Time.time;
-            // ว่างเมื่อไหร่ ล้างทันที
+            // Clear it the moment the lane empties
             if (c == 0) h.queueStart = Mathf.Infinity;
 
             h.lastCount = c;
         }
 
-        // ---- จดว่าแต่ละเลนในกลุ่มว่างเมื่อไหร่ (ครั้งแรกเท่านั้น) ----
+        // ---- Record when each lane in the group emptied (first time only) ----
         if (activeGroup.Count > 0)
         {
             foreach (int sig in activeGroup)
@@ -519,7 +523,7 @@ public class AdaptiveController : MonoBehaviour
             }
         }
 
-        // ---- gap-out ต้องยืนยัน 2 snapshot ติดกัน ----
+        // ---- Gap-out has to be confirmed over 2 consecutive snapshots ----
         if (activeGroup.Count > 0)
         {
             if (GroupIsEmpty(activeGroup)) groupZeroStreak++;
@@ -536,14 +540,14 @@ public class AdaptiveController : MonoBehaviour
 
     // ===================== Main loop =====================
 
-    /// <summary>รอจนกว่าจะมี snapshot ใหม่ — ทุกการตัดสินใจผูกกับจังหวะนี้จังหวะเดียว</summary>
+    /// <summary>Waits for the next snapshot - every decision hangs off this one beat</summary>
     IEnumerator WaitForNextSnapshot()
     {
         int seen = snapshotIndex;
         while (snapshotIndex == seen) yield return null;
     }
 
-    /// <summary>รอ snapshot ใหม่ แต่ไม่เกิน deadline (ใช้กับเพดานเวลาของ COLLECT)</summary>
+    /// <summary>Waits for the next snapshot, but no later than a deadline (used for the COLLECT ceiling)</summary>
     IEnumerator WaitForNextSnapshotOrDeadline(float deadline)
     {
         int seen = snapshotIndex;
@@ -554,10 +558,10 @@ public class AdaptiveController : MonoBehaviour
     {
         while (true)
         {
-            yield return null;   // กันลูปหมุนฟรีในเฟรมเดียว
+            yield return null;   // keeps the loop from spinning within a single frame
 
             // ---------- ALL-RED IDLE ----------
-            // ไฟจริงปล่อยแดงทุกเลนตอนว่าง ไม่มี rest-in-green
+            // The real signal goes all-red when idle; there is no rest-in-green
             state = EyeState.AllRedIdle;
             statusText = "ALL-RED — waiting for demand";
             if (activeGroup.Count > 0)
@@ -565,13 +569,13 @@ public class AdaptiveController : MonoBehaviour
                 yield return StartCoroutine(CloseGroup(activeGroup));
             }
 
-            // ประเมินทุก snapshot พอดี ไม่เร็วกว่าและไม่ช้ากว่าข้อมูลที่มี
+            // Evaluate exactly once per snapshot: no faster and no slower than the data
             while (!AnyDemand()) yield return StartCoroutine(WaitForNextSnapshot());
 
             // ---------- COLLECT ----------
             yield return StartCoroutine(CollectPhase());
 
-            // ---------- SERVE (วนจนแยกว่าง) ----------
+            // ---------- SERVE (loops until the junction is empty) ----------
             state = EyeState.Serve;
             while (AnyDemand())
             {
@@ -582,9 +586,9 @@ public class AdaptiveController : MonoBehaviour
     }
 
     /// <summary>
-    /// หน้าต่างเก็บข้อมูล — 7 วิเป็นเพดาน ไม่ใช่ค่าคงที่
-    /// ออกก่อนได้ถ้า (ก) พบรถ >= 2 หัวไฟ หรือ (ข) หัวไฟใดมีรถ >= 3 คัน
-    /// ถ้าบังคับรอครบทุกครั้ง จะแย่กว่า controller เดิมที่มี rest-in-green
+    /// Collection window - 7 s is a ceiling, not a fixed length.
+    /// It exits early if (a) vehicles appear at 2 or more heads, or (b) any head reaches 3 vehicles.
+    /// Always waiting the full window would be worse than the old controller with rest-in-green.
     /// </summary>
     IEnumerator CollectPhase()
     {
@@ -592,8 +596,8 @@ public class AdaptiveController : MonoBehaviour
         float t0 = Time.time;
         float deadline = t0 + collectWindow;
 
-        // เงื่อนไข early exit ประเมิน "หลัง snapshot" เท่านั้น เพราะเป็นการตัดสินใจจากข้อมูล
-        // ส่วนเพดาน 7 วิเป็น timeout ล้วน ๆ ไม่ได้ดูข้อมูล จึงตัดตรงวินาทีที่ 7 ได้เลย
+        // Early-exit conditions are evaluated only after a snapshot, because they are decisions from data.
+        // The 7 s ceiling is a pure timeout that looks at no data, so it can cut in at exactly 7 s.
         while (Time.time < deadline)
         {
             int withCars = 0, best = 0;
@@ -614,14 +618,28 @@ public class AdaptiveController : MonoBehaviour
 
     IEnumerator ServeOnePhase()
     {
-        // ถ่าย snapshot ณ วินาทีที่ตัดสินใจ เพื่อไม่ให้ใช้ตัวเลขที่เก่าได้ถึง 2 วิ
-        // ยังเป็นการ "นับอย่างเดียว" เหมือนเดิม แค่สั่งถ่ายตอนต้องใช้แทนที่จะรอ tick ถัดไป
-        // (เทียบได้กับ D_green ในสเปก SODA ที่นับใหม่ก่อนเปิดไฟเขียวทุกเฟส)
+        // Take a snapshot at the moment of decision, so the numbers used are never up to 2 s stale.
+        // Still counting only; it just takes the reading when needed instead of waiting for the next tick.
+        // (Equivalent to D_green in the SODA specification, which recounts before every green.)
         Snapshot();
-        greenTimeRemaining = 0f;   // ยังไม่รู้ G ของเฟสนี้ และกำลังจะผ่าน clearance
+        greenTimeRemaining = 0f;   // this phase's G is not known yet, and clearance comes first
+
+        // ===== End of the *previous* phase - this must always come before Q1/Q2/Q3 =====
+        // Section 9 of SODA_MASTER and end_phase() in soda.py both put the reset before decide().
+        // At this point activeGroup is still the group that just finished (nextGroup overwrites it later).
+        //
+        // Never move this below the decision - it was there until 14 Sep 2026 - because queueStart
+        //    keeps running while a head is green, so a head that had just been served entered Q1/Q2
+        //    with a clock that included its own service time. The results were:
+        //      - it could win Q2 again the very next phase, having just been served
+        //      - with a green longer than 42.75 s (D >= 18) it met the Q1 threshold and triggered a
+        //        starvation override for *itself*, while the genuinely starved head lost the tie-break.
+        //    Measured on batch v2: 30 of 11,670 phases had GreenGiven >= 42.75 (all ABACEvent).
+        ResetQueueStartFor(activeGroup);
+
         TraceDecisionInputs();
 
-        // ===== Q1: มีใครใกล้อดตายไหม =====
+        // ===== Q1: is anyone close to starving? =====
         TraceEnter("Q1");
         SignalHead leader = FindStarvingHead(starvationSelectThreshold, null);
         if (leader != null)
@@ -636,19 +654,19 @@ public class AdaptiveController : MonoBehaviour
         {
             TraceVerdict("Q1", "none starving — fall through to FCFS");
 
-            // ===== Q2: ใครรอนานที่สุด =====
+            // ===== Q2: who has waited longest? =====
             TraceEnter("Q2");
             leader = ChooseLeaderByQueueStart(null);
             if (leader == null) { TraceVerdict("Q2", "no head has demand"); yield break; }
 
-            // ⛔ ไม่มี counting window แล้ว — COLLECT เป็นตัวสะสมดีมานด์ตัวเดียวของระบบ
-            //    เหตุผลที่ตัด:
-            //    1) ถามคำถามเดียวกันด้วยเกณฑ์เดียวกัน — earlyExitDemand กับ demandThresholdSkipWait
-            //       เป็น 3 คันทั้งคู่ เลนที่มีน้อยกว่า 3 จึงทำให้ COLLECT รอจนครบเพดาน 7 วิ
-            //       "แล้วยังโดนรออีก 4 วิ" ด้วยเหตุผลเดียวกันเป๊ะ = ลงโทษสองต่อ (S1: รอ 11 วิเพื่อรถ 1 คัน)
-            //    2) ตอนพีคมันแอบยืดไฟเขียวของกลุ่มก่อนหน้าไปอีก 4 วิ เพราะกลุ่มเดิมยังเขียวอยู่
-            //       ระหว่างรอ — เฟสจึงยาวเกิน G ที่คำนวณไว้โดยไม่มีใน log
-            //    3) มันเป็น WaitForSeconds ตัวสุดท้ายที่ไม่ผูกกับนาฬิกา snapshot
+            // The counting window is gone - COLLECT is now the only demand accumulator in the system.
+            //    Why it was removed:
+            //    1) It asked the same question with the same threshold: earlyExitDemand and
+            //       demandThresholdSkipWait were both 3, so a lane with fewer than 3 made COLLECT wait
+            //       the full 7 s ceiling and *then* wait another 4 s for the same reason - punished
+            //       twice (S1: 11 s of waiting for one vehicle).
+            //    2) At peak it quietly extended the previous group's green by 4 s, because that group
+            //       was still green while it waited, so phases ran longer than the logged G.
             TraceVerdict("Q2", $"LEADER -> {leader.name} (oldest queue, {WaitOf(leader):F1}s)");
         }
         if (forcePhaseChange)
@@ -658,19 +676,18 @@ public class AdaptiveController : MonoBehaviour
             forcePhaseChange = false;
         }
 
-        // ===== Q3: ใครไปพร้อมกันได้อีก =====
+        // ===== Q3: who else can go at the same time? =====
         TraceEnter("Q3");
         List<int> nextGroup = BuildCompatibleGroup(leader.signals[0]);
         TraceVerdict("Q3", $"GROUP -> {{{config.DescribeGroup(nextGroup)}}}");
         CountTieBreaks(nextGroup);
 
-        // หัวไฟที่ count = 0 ถูกข้ามทั้งรอบ — แหล่งที่มาใหญ่ที่สุดของการชนะ Fixed
+        // Heads with count = 0 are skipped for the whole round - the single largest source of the win over Fixed
         foreach (SignalHead h in heads)
             if (h.lastCount == 0 && !ContainsAny(nextGroup, h.signals)) skippedHeadTotal++;
 
-        // ===== clearance: ตัดเฉพาะเลนที่ต้องเปลี่ยนเป็นแดง =====
-        // เก็บไว้ก่อน activeGroup ถูกเขียนทับ — ใช้รีเซ็ตนาฬิกาของ "หัวที่เพิ่งได้เขียวไป"
-        List<int> servedLastPhase = new List<int>(activeGroup);
+        // ===== Clearance: only drop the lanes that must turn red =====
+        // Captured before activeGroup is overwritten - used to reset the clock of heads that just had green
         List<int> dropping = Except(activeGroup, nextGroup);
         if (dropping.Count > 0)
         {
@@ -681,40 +698,34 @@ public class AdaptiveController : MonoBehaviour
             statusText = "All-Red clearance";
             SetGroupState(dropping, TrafficLight.LightState.Red);
             activeGroup = Except(activeGroup, dropping);
-            // ⚠️ ครึ่งแรกของกฎ "ทุกหัวที่เพิ่งได้เขียว ต้องรีเซ็ตนาฬิกา" (§4 ของ SODA_BASELINE)
-            //    ครึ่งนี้ = หัวที่หลุดไปเป็นแดง · อีกครึ่ง = ResetContinuingHeads(...) ข้างล่าง
-            //    สองบรรทัดรวมกันจึงครอบ servedLastPhase ทั้งหมด ตรงกับ soda.py ที่วน `for h in self.green`
-            //    ลบอันใดอันหนึ่งออก = บั๊ก C1 กลับมา และครั้งก่อนมันทำให้ EveningPeak มีรถรอ 344 วิ
-            //    [test QueueClockTest] [ref Itim, 12 ก.ย. 2026 — baseline §8.10 coupling (b)]
-            ResetQueueStartFor(dropping);
+            // The clock reset for heads that just had green already happened at the top of
+            // ServeOnePhase and covers both dropping and continuing heads at once. Do not add it
+            // back here: that would add the clearance time to the timestamp and diverge from soda.py,
             yield return StartCoroutine(CountdownPhase(allRedDuration));
         }
 
-        // ===== เปิดเขียว =====
+        // ===== Turn green =====
         List<int> turningOn = Except(nextGroup, activeGroup);
         if (turningOn.Count > 0 || dropping.Count > 0 || continuousGreenTimer >= maxContinuousGreen)
             continuousGreenTimer = 0f;
         SetGroupState(turningOn, TrafficLight.LightState.Green);
         activeGroup = new List<int>(nextGroup);
 
-        // ⭐ 11 ก.ย. 2026 — หัวที่ "อยู่ในกลุ่มต่อเนื่อง" ต้องรีเซ็ตนาฬิกาด้วย ไม่ใช่แค่หัวที่หลุด
-        //    ก่อนหน้านี้รีเซ็ตเฉพาะ dropping หัวที่ไม่เคยหลุดกลุ่มจึงถือ queueStart เก่าค้าง
-        //    ไม่จำกัดเวลา แล้วชนะทั้ง Q1 (FindStarvingHead) และ Q2 (ChooseLeaderByQueueStart)
-        //    ตลอดกาล — หัวที่อดจริงไม่มีวันได้คิว
-        //    หลักฐาน: phases_Adaptive_EveningPeak_Rep17 t=1104.6->1470.2 (365.5 วิ) H_B อยู่ใน
-        //    กลุ่มติดกัน 24 เฟส H_CB ไม่ได้ไฟเลย รถ CB รอสูงสุด 344 วิ (maxWaitTime = 45)
-        //    ความหมายที่ถูกต้องของ queueStart = "รอมานานแค่ไหนนับจากครั้งล่าสุดที่ได้ไฟเขียว"
-        //    [test QueueClockTest]
-        // ⚠️ ครึ่งหลังของกฎเดียวกัน — ดูคอมเมนต์ที่ ResetQueueStartFor(dropping) ข้างบน
-        //    ห้ามลบข้างใดข้างหนึ่ง ทั้งคู่ต้องอยู่ครบถึงจะเท่ากับ "ทุกหัวที่เพิ่งได้เขียว"
-        ResetContinuingHeads(servedLastPhase, dropping);
+        // 11 Sep 2026: heads that *continue* in the group must have their clock reset too, not only
+        //    the ones dropped. Previously only dropping heads were reset, so a head that never left
+        //    the group held a stale queueStart indefinitely and won both Q1 (FindStarvingHead) and
+        //    Q2 (ChooseLeaderByQueueStart) forever - the genuinely starved head never got a turn.
+        //    Evidence: phases_Adaptive_EveningPeak_Rep17 t=1104.6 to 1470.2 (365.5 s), H_B in the
+        //    group for 24 consecutive phases, H_CB never served, CB vehicles waiting up to 344 s
+        //    (maxWaitTime = 45). The correct meaning of queueStart is "how long since this head last
+        //    had green". [test QueueClockTest] - the reset now lives at the top of ServeOnePhase.
 
         groupZeroStreak = 0;
         laneEmptyAt.Clear();
         phaseStartTime = Time.time;
         lastEndReason = "completed";
 
-        // ===== Q4: ให้เขียวนานเท่าไหร่ (นับใหม่สด ๆ ตอนเฟสเริ่ม) =====
+        // ===== Q4: how long a green? (recounted fresh as the phase begins) =====
         TraceEnter("Q4");
         float rawMax = gMin;
         string critical = "(floor)";
@@ -739,22 +750,22 @@ public class AdaptiveController : MonoBehaviour
 
         statusText = $"Green — {config.DescribeGroup(activeGroup)}";
         yield return StartCoroutine(GreenPhaseWithInterrupts(activeGroup, greenTime));
-        greenTimeRemaining = 0f;   // ครอบทุกทางออกของ GreenPhaseWithInterrupts รวม gap-out และการตัดกลางคัน
+        greenTimeRemaining = 0f;   // covers every exit from GreenPhaseWithInterrupts, gap-out and early cuts included
         LogPhaseTrace(greenTime);
     }
 
     /// <summary>
-    /// นับว่า tie-break ได้ทำงานจริงกี่ครั้ง และกี่ครั้งที่มันตัด H_Bx ออก
+    /// Counts how often the tie-break actually ran, and how often it excluded H_Bx.
     ///
-    /// เป็นการวัดล้วน ๆ ไม่แตะการตัดสินใจใด ๆ — เรียกหลังกลุ่มถูกสร้างเสร็จแล้ว
-    /// เหตุผลที่ต้องแยกนับ Bx: A ชนกับ Bx การ tie-break ที่เข้าข้าง A (priority สูงกว่า)
-    /// จึงตัด Bx ออกจากกลุ่มอย่างเป็นระบบ และ Bx คือเลนที่ v/c = 1.51 ที่งานนี้ศึกษาอยู่
-    /// ทิศทางของ bias เป็นแบบ conservative (ทำให้ adaptive ดูแย่กว่าจริงสำหรับ Bx)
-    /// แต่ต้องรู้ขนาดของมัน ไม่ใช่รู้แค่ทิศทาง
+    /// Pure measurement that touches no decision - called once the group has been built.
+    /// Why Bx is counted separately: A conflicts with Bx, so a tie-break favouring A (higher priority)
+    /// systematically excludes Bx, and Bx is the lane at v/c = 1.51 that this project is about.
+    /// The bias is conservative in direction (it makes adaptive look worse for Bx than it is),
+    /// but the size has to be known, not only the direction.
     /// </summary>
     void CountTieBreaks(List<int> group)
     {
-        // มีหัวไฟตั้งแต่ 2 ดวงที่มีรถและ queueStart เท่ากันเป๊ะไหม
+        // Are there two or more heads with vehicles and exactly equal queueStart?
         bool tied = false;
         for (int i = 0; i < heads.Count && !tied; i++)
         {
@@ -768,7 +779,7 @@ public class AdaptiveController : MonoBehaviour
         if (!tied) return;
         tieBreaksApplied++;
 
-        // Bx มีรถ แต่ไม่ได้เข้ากลุ่ม ทั้งที่มีสมาชิกในกลุ่มที่ queueStart เท่ากับมัน
+        // Bx has vehicles but did not join, even though a group member shares its queueStart
         SignalHead bx = null;
         foreach (SignalHead h in heads) if (h.name == "H_Bx") { bx = h; break; }
         if (bx == null || bx.lastCount == 0) return;
@@ -782,14 +793,14 @@ public class AdaptiveController : MonoBehaviour
             {
                 tieBreaksExcludingBx++;
                 if (verboseLog)
-                    Debug.Log($"[SODA] tie-break ตัด H_Bx ออก โดย {h.name} " +
-                              $"(queueStart เท่ากันที่ {bx.queueStart:F1})");
+                    Debug.Log($"[SODA] tie-break excluded H_Bx in favour of {h.name} " +
+                              $"(equal queueStart at {bx.queueStart:F1})");
                 return;
             }
         }
     }
 
-    /// <summary>ปิดกลุ่มที่เขียวอยู่ให้เป็นแดง (ใช้ตอนกลับเข้า ALL-RED IDLE)</summary>
+    /// <summary>Turns the currently green group red (used when returning to ALL-RED IDLE)</summary>
     IEnumerator CloseGroup(List<int> group)
     {
         List<int> closing = new List<int>(group);
@@ -802,27 +813,13 @@ public class AdaptiveController : MonoBehaviour
     }
 
     /// <summary>
-    /// 🛑 หัวใจของอัลกอริทึม — ไฟเขียวจบแล้วถ้ายังมีรถเหลือ ต้องเริ่มจับเวลารอใหม่
+    /// The heart of the algorithm: when a green ends with vehicles still waiting, the wait clock restarts.
     ///
-    /// ถ้าลืมบรรทัดนี้: เลนที่ไม่เคยว่าง (Bx ที่ v/c = 1.51) จะถือ queueStart เก่าค้างตลอดกาล
-    /// -> ชนะ argmin ทุกครั้ง -> เลนอื่นไม่มีวันได้ไฟ
-    /// บั๊กนี้ไม่โผล่ตอนเทสรถน้อย เพราะทุกเลนว่างเป็นระยะแล้ว queueStart reset เอง
-    /// แต่พังทันทีตอน MorningPeak — จึงมีเทสเฉพาะ (QueueStartTest)
+    /// Without this line a lane that never empties (Bx at v/c = 1.51) would hold a stale queueStart
+    /// forever, win argmin every time, and no other lane would ever get a green.
+    /// The bug does not show in light-traffic tests, because every lane empties periodically and
+    /// queueStart resets itself. It breaks immediately at MorningPeak, hence a dedicated QueueStartTest.
     /// </summary>
-    /// <summary>
-    /// รีเซ็ตนาฬิกาคิวของหัวที่ "อยู่ในกลุ่มต่อเนื่อง" คือได้ไฟเขียวไปอีกเฟสโดยไม่เคยกลายเป็นแดง
-    /// แยกเป็นเมธอดสาธารณะเพื่อให้ QueueClockTest เรียกลำดับเดียวกับ ServeOnePhase ได้จริง
-    ///
-    /// ⚠️ เมธอดนี้ครอบแค่ "ครึ่งที่ต่อเนื่อง" ไม่ใช่ทั้งกฎ — `ServeOnePhase` ต้องเรียก
-    ///    `ResetQueueStartFor(dropping)` ด้วย จึงจะครบ servedLastPhase
-    ///    ยูเนียนของสองการเรียก = `for h in self.green` ใน `end_phase` ของ soda.py
-    ///    (รวมกรณี dropping ว่าง ซึ่งบรรทัดแรกไม่ทำงานแต่บรรทัดนี้ครอบเต็ม)
-    /// </summary>
-    public void ResetContinuingHeads(List<int> servedLastPhase, List<int> dropping)
-    {
-        ResetQueueStartFor(Except(servedLastPhase, dropping));
-    }
-
     public void ResetQueueStartFor(List<int> signals)
     {
         foreach (SignalHead h in heads)
@@ -861,7 +858,7 @@ public class AdaptiveController : MonoBehaviour
                 yield break;
             }
 
-            // ---- Gap-out: ต้องเห็นว่างติดกัน gapOutSnapshots ครั้ง ----
+            // ---- Gap-out: needs gapOutSnapshots consecutive empty readings ----
             if (enableGapOut && groupZeroStreak >= gapOutSnapshots)
             {
                 if (verboseLog)
@@ -891,11 +888,11 @@ public class AdaptiveController : MonoBehaviour
     }
 
     /// <summary>
-    /// สรุปเฟสที่เพิ่งจบลง log — โดยเฉพาะ "เลนไหนว่างตั้งแต่วินาทีที่เท่าไหร่"
+    /// Summarises the phase that just ended into the log, in particular when each lane emptied.
     ///
-    /// idleLaneSeconds = ผลรวมของ (เวลาที่เฟสจบ − เวลาที่เลนนั้นว่าง) ทุกเลนในกลุ่ม
-    /// = เวลาที่เลนติดเขียวทั้งที่ไม่มีรถแล้ว ซึ่งกู้คืนได้ถ้าเปลี่ยน gap-out เป็นรายเลน
-    /// ยังไม่เปลี่ยนพฤติกรรมใด ๆ — เก็บตัวเลขไว้ตัดสินใจหลังรัน batch
+    /// idleLaneSeconds = sum over the group of (phase end time - the time that lane emptied)
+    /// = time a lane held green with nothing left to discharge, which a per-lane gap-out could recover.
+    /// No behaviour change yet - the figures are collected to decide after the batch has run.
     /// </summary>
     void LogPhaseTrace(float greenGiven)
     {
@@ -939,7 +936,7 @@ public class AdaptiveController : MonoBehaviour
 
     // ===================== Decision helpers =====================
 
-    /// <summary>หัวไฟที่รอเกิน threshold และรอนานที่สุด — ไม่นับหัวที่กำลังเขียวอยู่</summary>
+    /// <summary>The head past the threshold that has waited longest - heads currently green are excluded</summary>
     public SignalHead FindStarvingHead(float thresholdRatio, List<int> excludeSignals)
     {
         float threshold = maxWaitTime * thresholdRatio;
@@ -951,18 +948,18 @@ public class AdaptiveController : MonoBehaviour
             if (h.lastCount == 0) continue;
             if (WaitOf(h) < threshold) continue;
 
-            // รอนานสุด = queueStart เก่าสุด; เสมอกัน -> ลำดับเฟสเดิม A->B->Bx->CB
-            // ใช้ comparator ตัวเดียวกับ Q2/Q3 (SODA_BASELINE §8.3 — เดิมใช้ >= ทำให้หัวท้ายสุดชนะ
-            // เมื่อเสมอ ซึ่งกลับทิศกับ Option A และไม่ตรงกับ soda.py)
+            // Longest wait = oldest queueStart; ties fall back to the original phase order A->B->Bx->CB.
+            // Uses the same comparator as Q2/Q3 (SODA_BASELINE section 8.3 - it used >= before, which
+            // let the last head win a tie, the opposite of Option A and inconsistent with soda.py).
             if (worst == null || CompareHeads(h, worst) < 0) worst = h;
         }
         return worst;
     }
 
     /// <summary>
-    /// เลือกหัวไฟที่คิวเริ่มก่อตัวเก่าสุด — เวลาตัดสิน "ใครได้ไฟ" เพื่อความเป็นธรรม
-    /// (จำนวนรถตัดสินแค่ "ได้นานแค่ไหน" ถ้าเอาจำนวนมาจัดลำดับด้วย H_A จะชนะทุกครั้ง
-    ///  แล้ว H_Bx ที่ v/c = 1.51 จะไม่มีวันได้ไฟ)
+    /// Picks the head whose queue started forming earliest - fairness decides who gets the green.
+    /// (Vehicle count decides only how long. Ordering by count as well would make H_A win every time
+    ///  and H_Bx, at v/c = 1.51, would never get a green at all.)
     /// </summary>
     public SignalHead ChooseLeaderByQueueStart(List<int> bannedSignals)
     {
@@ -978,8 +975,8 @@ public class AdaptiveController : MonoBehaviour
     }
 
     /// <summary>
-    /// ลำดับสมบูรณ์: queueStart เก่ากว่ามาก่อน ถ้าเท่ากันเป๊ะใช้ลำดับเฟสเดิมของแยก
-    /// เป็น total order จึงให้ผลเดียวกันเสมอ ไม่ต้องพึ่งว่า sort จะ stable หรือไม่
+    /// Total order: older queueStart first, and exactly equal values fall back to the original phase order.
+    /// Being a total order, it always gives the same result without depending on the sort being stable.
     /// </summary>
     public static int CompareHeads(SignalHead a, SignalHead b)
     {
@@ -1034,7 +1031,7 @@ public class AdaptiveController : MonoBehaviour
         TraceOption("Q3", $"leader|{config.SignalName(leader)}|seeds the group");
         if (!enableConcurrentPhases) { AddPhysicallyLinkedSignals(group); return group; }
 
-        // เรียงหัวไฟที่เหลือตาม queueStart เก่าสุดก่อน (ไม่ใช่ตามจำนวนรถ)
+        // Order the remaining heads by oldest queueStart first, not by vehicle count
         List<SignalHead> candidates = new List<SignalHead>();
         foreach (SignalHead h in heads)
         {
@@ -1061,7 +1058,7 @@ public class AdaptiveController : MonoBehaviour
         return group;
     }
 
-    /// <summary>เติมเลนอื่นที่ใช้ TrafficLight component ตัวเดียวกับสมาชิกที่มีอยู่แล้วเข้ากลุ่ม (A2 ตาม A)</summary>
+    /// <summary>Adds lanes sharing a TrafficLight component with an existing group member (A2 follows A)</summary>
     void AddPhysicallyLinkedSignals(List<int> group)
     {
         bool added = true;
@@ -1083,8 +1080,8 @@ public class AdaptiveController : MonoBehaviour
     }
 
     /// <summary>
-    /// สูตร HCM: G = startupLostTime + D x saturationHeadway
-    /// เฟสที่เปิดหลายเลนใช้เลนที่คิวยาวสุดเป็นตัวกำหนด เพราะทุกเลนระบายขนานกัน
+    /// HCM formula: G = startupLostTime + D x saturationHeadway.
+    /// A phase opening several lanes is sized by the longest queue, since all of them discharge in parallel.
     /// </summary>
     public float CalculateGreenDuration(List<int> group)
     {
@@ -1139,19 +1136,19 @@ public class AdaptiveController : MonoBehaviour
     {
         if (!Application.isPlaying || config == null) return;
 
-        // 🛑 อ่านปุ่ม "ก่อน" ทางออกด่วนเสมอ
-        //    ถ้า return ก่อนถึงบรรทัดนี้ พอกด D ปิดแล้วจะไม่มีใครฟังปุ่มอีกเลย = เปิดกลับไม่ได้ตลอดกาล
-        //    (โปรเจกต์นี้ใช้ IMGUI ล้วน จึงอ่านจาก Event.current เหมือน CameraDirector)
+        // Always read the key *before* any early return.
+        //    Returning above this line would leave nothing listening for the key once D has hidden the
+        //    panel, making it impossible to bring back. (Pure IMGUI, so it reads Event.current like CameraDirector.)
         Event ev = Event.current;
         if (ev != null && ev.type == EventType.KeyDown && ev.keyCode == decisionPanelKey)
         {
             showDecisionPanel = !showDecisionPanel;
-            ev.Use();                                  // กันไม่ให้ตัวอื่นกินปุ่มเดียวกันซ้ำ
+            ev.Use();                                  // stops anything else consuming the same key
         }
 
-        // ⚠️ ห้ามผูกแผง Decision Inspector ไว้กับ showDebugGUI
-        //    SimulationControlPanel.hideLegacyDebugGUI ปิด showDebugGUI ทิ้งตั้งแต่ Start เพื่อลดความรก
-        //    ถ้าเช็ก showDebugGUI อย่างเดียว แผงขั้นตอนการคิดจะไม่มีวันโผล่เลย
+        // The Decision Inspector panel must not be tied to showDebugGUI.
+        //    SimulationControlPanel.hideLegacyDebugGUI turns showDebugGUI off at Start to reduce clutter,
+        //    so checking only showDebugGUI would mean the decision panel never appears at all.
         if (!showDebugGUI && !showDecisionPanel) return;
 
         UITheme.Begin();
@@ -1159,7 +1156,7 @@ public class AdaptiveController : MonoBehaviour
         const float W = 288f;
         float x = Screen.width - W - 12f;
 
-        // แผง trace ยึดขอบซ้ายของแผงสถานะ ถ้าแผงสถานะถูกปิดก็ยึดขอบจอแทน
+        // The trace panel hangs off the left edge of the status panel, or the screen edge if that is hidden
         float traceAnchor = showDebugGUI ? x : Screen.width - 12f;
 
         if (!showDebugGUI)
@@ -1220,7 +1217,7 @@ public class AdaptiveController : MonoBehaviour
 
     // ===================== Decision Inspector =====================
 
-    /// <summary>หนึ่งแถวของ trace — รูปแบบ "คีย์|ค่ากลาง|หมายเหตุ" วาดเป็น 3 คอลัมน์</summary>
+    /// <summary>One trace row - the format "key|value|note", drawn as three columns</summary>
     static void TraceRow(Rect r, string packed, Color keyColor, GUIStyle noteStyle)
     {
         string[] p = packed.Split('|');
@@ -1236,13 +1233,13 @@ public class AdaptiveController : MonoBehaviour
     void DrawDecisionPanel(float statusX)
     {
         const float W = 344f;
-        const float RH = 15f;      // ความสูงหนึ่งแถว
+        const float RH = 15f;      // height of one row
         float x = statusX - W - 8f;
         if (x < 8f) x = 8f;
 
-        // ---- คำนวณความสูงก่อน เพื่อให้กรอบพอดีเนื้อหาเสมอ ----
-        float h = 8f + 18f + 15f + 8f;                     // หัวเรื่อง + บรรทัดสถานะ + เส้นคั่น
-        h += 16f + queueView.Count * RH + 8f;              // บล็อกคิว
+        // ---- Compute the height first, so the frame always fits the content ----
+        float h = 8f + 18f + 15f + 8f;                     // title + status line + separator
+        h += 16f + queueView.Count * RH + 8f;              // queue block
         if (trace != null)
             foreach (TraceStep t in trace)
                 h += 17f + t.options.Count * RH + (string.IsNullOrEmpty(t.verdict) ? 0f : RH + 2f) + 6f;
@@ -1263,7 +1260,7 @@ public class AdaptiveController : MonoBehaviour
         UITheme.Rule(new Rect(cx, y, cw, 1f));
         y += 5f;
 
-        // ---- คิว: สิ่งที่อัลกอริทึมมองเห็น เรียงตาม queueStart ----
+        // ---- Queue: what the algorithm sees, ordered by queueStart ----
         GUI.Label(new Rect(cx, y, cw, 16f), "QUEUE — ordered by queueStart", UITheme.H2);
         y += 16f;
         foreach (string row in queueView)

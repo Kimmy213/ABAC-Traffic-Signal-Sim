@@ -1,4 +1,4 @@
-// stub เพิ่มสำหรับ compile-check ส่วน IMGUI ของ Control Panel
+// Extra stubs for compile-checking the IMGUI part of the Control Panel.
 using System;
 
 namespace UnityEngine

@@ -5,13 +5,13 @@ public class TrafficLight : MonoBehaviour
 {
     public enum LightState { Red, Yellow, Green }
 
-    [Header("Identity (ใส่ให้ตรงกับ IntersectionConfig เพื่ออ่าน log ง่าย)")]
+    [Header("Identity (match IntersectionConfig so logs are easy to read)")]
     public string laneName = "A";
 
     [Header("Current State")]
     public LightState currentState = LightState.Red;
 
-    [Header("Materials (ลากใส่ใน Inspector)")]
+    [Header("Materials (assign in the Inspector)")]
     public Material redMat;
     public Material yellowMat;
     public Material greenMat;
@@ -47,7 +47,7 @@ public class TrafficLight : MonoBehaviour
 
     void NotifyCars()
     {
-        // วน backward เพื่อลบรถที่ถูก Destroy ไปแล้วออกจาก list ได้ปลอดภัย
+        // Iterate backwards so destroyed cars can be removed from the list safely.
         for (int i = assignedCars.Count - 1; i >= 0; i--)
         {
             if (assignedCars[i] == null) { assignedCars.RemoveAt(i); continue; }
@@ -55,7 +55,7 @@ public class TrafficLight : MonoBehaviour
         }
     }
 
-    /// <summary>ล้างทะเบียนรถทั้งหมด — เรียกตอนเริ่ม run ใหม่ในแต่ละ batch</summary>
+    /// <summary>Clears every registered car - called at the start of each run in a batch.</summary>
     public void ClearRegistrations()
     {
         assignedCars.Clear();
@@ -64,7 +64,7 @@ public class TrafficLight : MonoBehaviour
     public void RegisterCar(CarAgent car)
     {
         if (!assignedCars.Contains(car)) assignedCars.Add(car);
-        // ส่งสถานะไฟปัจจุบันให้รถที่เพิ่งมาลงทะเบียนทันที ไม่ต้องรอไฟเปลี่ยนรอบหน้า
+        // Push the current state to a car as soon as it registers, rather than making it wait for the next change.
         car.OnLightStateChanged(currentState);
     }
 
@@ -73,7 +73,7 @@ public class TrafficLight : MonoBehaviour
         assignedCars.Remove(car);
     }
 
-    // ===== สำหรับทดสอบด้วยมือ (คลิกขวาที่ component ตอน Play) =====
+    // ===== Manual testing (right-click the component while in Play mode) =====
     [ContextMenu("TEST: Set Green")]
     void TestSetGreen()
     {

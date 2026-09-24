@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-/// รัน RunCycle() ของ FixedController จริง ๆ แล้วตรวจ safety invariant ทุกช่วงเวลา
+/// Runs the real FixedController.RunCycle() and checks the safety invariant at every instant
 public class FixedCycleTest
 {
     static int failures = 0;
@@ -18,7 +18,7 @@ public class FixedCycleTest
         var cfg = new IntersectionConfig();
         cfg.LoadABACPreset();
 
-        // ผูก TrafficLight ปลอมให้เลนที่มีไฟ
+        // Attach a fake TrafficLight to each signalised lane
         var lights = new Dictionary<string, TrafficLight>();
         foreach (var lane in cfg.lanes)
         {
@@ -33,12 +33,12 @@ public class FixedCycleTest
         fc.LoadABACPreset();
 
         Console.WriteLine($"cycle length = {fc.GetCycleLength():F0}s");
-        Check(Math.Abs(fc.GetCycleLength() - 106f) < 0.01f, "cycle = 106s ตามตารางสเตจใน SP1_HANDOFF_v2 (A=40 / B+Bx=20 / CB=31 + intergreen 15)");
+        Check(Math.Abs(fc.GetCycleLength() - 106f) < 0.01f, "cycle = 106s per the stage table in SP1_HANDOFF_v2 (A=40 / B+Bx=20 / CB=31 + intergreen 15)");
 
-        // ===== ไล่ RunCycle จริง =====
+        // ===== Step through the real RunCycle =====
         fc.RestartCycle();
         IEnumerator cycle = fc.captured;
-        Check(cycle != null, "RunCycle เริ่มทำงาน");
+        Check(cycle != null, "RunCycle started");
 
         string[] sig = { "A", "A2", "B", "Bx", "CB" };
         Func<string, string, bool> C = (a, b) =>
@@ -53,12 +53,12 @@ public class FixedCycleTest
         bool sawAplusA2 = false;
         bool sawBplusBx = false;
 
-        // 2 รอบเต็ม = 212 วินาที (รอบละ 106s)
+        // 2 full cycles = 212 seconds (106s each)
         while (cycle.MoveNext() && t < 240f && steps < 200)
         {
             steps++;
 
-            // ---- ตรวจ invariant ที่สถานะปัจจุบัน ----
+            // ---- check the invariant in the current state ----
             var notRed = new List<string>();
             var green = new List<string>();
             foreach (var n in sig)
@@ -67,15 +67,15 @@ public class FixedCycleTest
                 if (lights[n].currentState == TrafficLight.LightState.Green) { green.Add(n); greenSeen.Add(n); }
             }
 
-            // กฎเหล็ก: เลนที่ conflict กันต้องไม่ "ไม่แดง" พร้อมกัน
-            // (เหลืองก็ยังมีรถวิ่งอยู่ ถือว่ายังครองแยก)
+            // Hard rule: conflicting lanes must never both be non-red
+            // (yellow still has traffic moving, so it still holds the junction)
             for (int i = 0; i < notRed.Count; i++)
                 for (int j = i + 1; j < notRed.Count; j++)
                     if (C(notRed[i], notRed[j]))
                     {
                         violations++;
                         Console.WriteLine($"    !! t={t,6:F0}s  {notRed[i]}({lights[notRed[i]].currentState}) " +
-                                          $"+ {notRed[j]}({lights[notRed[j]].currentState}) ครองแยกพร้อมกัน");
+                                          $"+ {notRed[j]}({lights[notRed[j]].currentState}) hold the junction together");
                     }
 
             if (green.Contains("A") && green.Contains("B")) sawAplusB = true;
@@ -93,16 +93,16 @@ public class FixedCycleTest
             t += dur;
         }
 
-        Console.WriteLine("\n--- timeline รอบแรก (106s) ---");
+        Console.WriteLine("\n--- first cycle timeline (106s) ---");
         foreach (var line in timeline) Console.WriteLine(line);
 
         Console.WriteLine();
-        Check(violations == 0, $"ไม่มีเลน conflict ครองแยกพร้อมกันเลยตลอด 2 รอบ ({steps} state changes)");
-        Check(sawAplusB, "เห็น A + B เขียวพร้อมกันจริง (concurrent phase ทำงาน)");
-        Check(sawAplusA2, "เห็น A + A2 เขียวพร้อมกันจริง (shared lane อยู่ phase เดียวกัน)");
-        Check(sawBplusBx, "เห็น B + Bx เขียวพร้อมกันจริง (protected right turn)");
-        foreach (var n in sig) Check(greenSeen.Contains(n), $"เลน {n} ได้ไฟเขียวจริงในรอบ");
-        Check(t >= 240f || steps >= 200, "วนต่อเนื่องไม่หยุดกลางคัน");
+        Check(violations == 0, $"no conflicting lanes ever held the junction together across 2 cycles ({steps} state changes)");
+        Check(sawAplusB, "saw A + B green together (concurrent phase works)");
+        Check(sawAplusA2, "saw A + A2 green together (the shared lane is in the same phase)");
+        Check(sawBplusBx, "saw B + Bx green together (protected right turn)");
+        foreach (var n in sig) Check(greenSeen.Contains(n), $"lane {n} did get a green during the cycle");
+        Check(t >= 240f || steps >= 200, "the cycle kept running without stalling");
 
         Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
         return failures;

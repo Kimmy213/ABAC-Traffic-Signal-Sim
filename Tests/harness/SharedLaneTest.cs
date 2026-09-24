@@ -4,10 +4,10 @@ using System.Reflection;
 using UnityEngine;
 
 /// <summary>
-/// ตรวจ shared-lane (A2) โดยเฉพาะ — ใช้การ wiring แบบเดียวกับที่ ABACSceneBuilder ทำจริง
-/// (A2.trafficLight == A.trafficLight คือ instance เดียวกันเป๊ะ ไม่ใช่แค่ค่าเท่ากัน)
-/// แล้วเรียก AdaptiveController.BuildCompatibleGroup() ตัวจริงผ่าน reflection
-/// เพื่อพิสูจน์ว่า closure "physically-linked signal" ทำงานถูกต้อง
+/// Focused check on the shared lane (A2), wired exactly as ABACSceneBuilder wires it
+/// (A2.trafficLight == A.trafficLight is the same instance, not merely an equal value),
+/// then calling the real AdaptiveController.BuildCompatibleGroup() through reflection
+/// to prove the "physically-linked signal" closure behaves correctly.
 /// </summary>
 public class SharedLaneTest
 {
@@ -24,7 +24,7 @@ public class SharedLaneTest
     static MethodInfo PrivateMethod(Type t, string name) =>
         t.GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance);
 
-    /// <summary>ยัดรถปลอมเข้า ROI ตรง ๆ ผ่าน reflection (หนี OnTriggerEnter ที่ใช้ physics จริงไม่ได้ใน stub)</summary>
+    /// <summary>Injects fake vehicles straight into an ROI by reflection (OnTriggerEnter needs real physics, unavailable in the stub)</summary>
     static void SeedDemand(ROIZone roi, int count, float arrivalTime)
     {
         var dict = (Dictionary<CarAgent, float>)PrivateField(typeof(ROIZone), "carsInZone").GetValue(roi);
@@ -38,12 +38,12 @@ public class SharedLaneTest
 
     public static int Main()
     {
-        Time.time = 100f; // "ตอนนี้" ของการจำลอง — ใช้คำนวณ wait time
+        Time.time = 100f; // the simulation "now", used to compute wait times
 
         var cfg = new IntersectionConfig();
         cfg.LoadABACPreset();
 
-        // ===== wiring แบบเดียวกับ ABACSceneBuilder จริง: A กับ A2 ใช้ TrafficLight instance เดียวกัน =====
+        // ===== Wired exactly as ABACSceneBuilder does: A and A2 use the same TrafficLight instance =====
         var lightA  = new TrafficLight { laneName = "A" };
         var lightB  = new TrafficLight { laneName = "B" };
         var lightBx = new TrafficLight { laneName = "Bx" };
@@ -56,22 +56,22 @@ public class SharedLaneTest
         var roiCB = new ROIZone { laneName = "CB" };
 
         cfg.FindLane("A").trafficLight  = lightA;   cfg.FindLane("A").roi  = roiA;
-        cfg.FindLane("A2").trafficLight = lightA;   cfg.FindLane("A2").roi = roiA2;  // ← instance เดียวกับ A โดยตั้งใจ
+        cfg.FindLane("A2").trafficLight = lightA;   cfg.FindLane("A2").roi = roiA2;  // deliberately the same instance as A
         cfg.FindLane("B").trafficLight  = lightB;   cfg.FindLane("B").roi  = roiB;
         cfg.FindLane("Bx").trafficLight = lightBx;  cfg.FindLane("Bx").roi = roiBx;
         cfg.FindLane("CB").trafficLight = lightCB;  cfg.FindLane("CB").roi = roiCB;
         cfg.Build();
 
         Check(cfg.SignalLight(cfg.SignalIndexOf("A")) == cfg.SignalLight(cfg.SignalIndexOf("A2")),
-              "A และ A2 อ้างถึง TrafficLight component เดียวกันจริง ๆ (reference เท่ากัน ไม่ใช่แค่ค่า)");
+              "A and A2 really do reference the same TrafficLight component (reference equality, not just value)");
 
         var adaptive = new AdaptiveController { config = cfg };
-        // เรียก Awake() ตรง ๆ ผ่าน reflection (ปกติ Unity engine เป็นคนเรียกให้)
+        // Call Awake() directly through reflection (normally the Unity engine does this)
         PrivateMethod(typeof(AdaptiveController), "Awake").Invoke(adaptive, null);
 
         var buildGroup = PrivateMethod(typeof(AdaptiveController), "BuildCompatibleGroup");
-        // SODA อ่านจำนวนรถจาก snapshot ไม่ใช่จาก ROI สด ๆ จึงต้องถ่าย snapshot ก่อนทุกครั้ง
-        // เหมือนที่ ServeOnePhase ทำจริงตอนตัดสินใจ
+        // SODA reads counts from a snapshot rather than the live ROI, so a snapshot has to be taken first,
+        // exactly as ServeOnePhase does when it decides.
         Func<int, List<int>> Group = leader =>
         {
             adaptive.Snapshot();
@@ -84,50 +84,50 @@ public class SharedLaneTest
         int iBx = cfg.SignalIndexOf("Bx");
         int iCB = cfg.SignalIndexOf("CB");
 
-        Console.WriteLine("\n--- กรณี A2 demand = 0 (ไม่มีรถ A2 เลยตอนนี้) แต่ leader = A ---");
+        Console.WriteLine("\n--- Case: A2 demand = 0 (no A2 vehicles right now) but leader = A ---");
         SeedDemand(roiA2, 0, 0f);
         SeedDemand(roiB, 0, 0f);
         var g1 = Group(iA);
         Check(g1.Contains(iA) && g1.Contains(iA2) && g1.Count == 2,
-              $"leader=A, A2 demand=0 -> group ต้องมี A2 ด้วยอยู่ดี (ไฟดวงเดียวกัน) = {{{string.Join(",", g1)}}}");
+              $"leader=A, A2 demand=0 -> the group must still include A2 (same lamp) = {{{string.Join(",", g1)}}}");
 
-        Console.WriteLine("\n--- กรณีเดียวกัน แต่สลับ leader = A2 ---");
+        Console.WriteLine("\n--- Same case with leader = A2 instead ---");
         var g2 = Group(iA2);
         Check(g2.Contains(iA) && g2.Contains(iA2) && g2.Count == 2,
-              $"leader=A2 -> closure ต้องดึง A เข้ามาด้วยเหมือนกัน (สมมาตร) = {{{string.Join(",", g2)}}}");
+              $"leader=A2 -> the closure must pull A in as well (symmetric) = {{{string.Join(",", g2)}}}");
 
-        Console.WriteLine("\n--- กรณี B มี demand จริง ต้องเข้าร่วมกลุ่มด้วย (ไม่ conflict กับ A/A2) ---");
-        SeedDemand(roiB, 3, 90f); // มาตั้งแต่ t=90, wait = 100-90 = 10s
+        Console.WriteLine("\n--- B has real demand and must join (it does not conflict with A/A2) ---");
+        SeedDemand(roiB, 3, 90f); // arrived at t=90, so wait = 100-90 = 10 s
         var g3 = Group(iA);
         Check(g3.Contains(iA) && g3.Contains(iA2) && g3.Contains(iB) && g3.Count == 3,
-              $"leader=A, B มีรถรอ -> กลุ่ม = {{{string.Join(",", g3)}}} ต้องมีครบ A, A2, B");
+              $"leader=A with B waiting -> group = {{{string.Join(",", g3)}}} must contain A, A2 and B");
 
-        Console.WriteLine("\n--- Bx และ CB conflict กับ A2 (mirror ของ A) ต้องไม่มีวันเข้ากลุ่ม แม้จะมี demand ล้น ---");
-        SeedDemand(roiBx, 10, 50f); // รอนานมาก demand เยอะมาก
+        Console.WriteLine("\n--- Bx and CB conflict with A2 (mirroring A) and must never join, however heavy their demand ---");
+        SeedDemand(roiBx, 10, 50f); // a very long wait and very heavy demand
         var g4 = Group(iA);
-        Check(!g4.Contains(iBx), $"leader=A, Bx demand สูง -> Bx ยังต้องไม่เข้ากลุ่ม (conflict) = {{{string.Join(",", g4)}}}");
+        Check(!g4.Contains(iBx), $"leader=A with heavy Bx demand -> Bx still must not join (conflict) = {{{string.Join(",", g4)}}}");
 
-        // ============ ROI ที่ใช้ร่วมกันหลาย movement ============
-        Console.WriteLine("\n--- ROI เดียวครอบทั้ง A2 และ Ax (แบบที่ detector จริงเห็น) ---");
+        // ============ One ROI covering several movements ============
+        Console.WriteLine("\n--- One ROI covering both A2 and Ax, as a real detector would see it ---");
         var shared = new ROIZone { laneName = "Ax", alsoCountLanes = new[] { "A2" } };
-        Check(shared.Accepts("Ax"),  "ROI ร่วมรับเลน Ax");
-        Check(shared.Accepts("A2"),  "ROI ร่วมรับเลน A2");
-        Check(!shared.Accepts("A"),  "ROI ร่วมต้องไม่รับเลน A (คนละเลนกายภาพ ห่าง 3.5 ม.)");
-        Check(!shared.Accepts("Bx"), "ROI ร่วมต้องไม่รับเลน Bx");
-        Check(shared.DisplayName == "Ax+A2", $"ชื่อที่โชว์บนจอบอกครบทั้งสอง movement (ได้ '{shared.DisplayName}')");
+        Check(shared.Accepts("Ax"),  "the shared ROI accepts lane Ax");
+        Check(shared.Accepts("A2"),  "the shared ROI accepts lane A2");
+        Check(!shared.Accepts("A"),  "the shared ROI must not accept lane A (a different physical lane, 3.5 m away)");
+        Check(!shared.Accepts("Bx"), "the shared ROI must not accept lane Bx");
+        Check(shared.DisplayName == "Ax+A2", $"the on-screen name lists both movements (got '{shared.DisplayName}')");
 
-        // ยัดรถปนกันสองเลนเข้า ROI เดียว แล้วดูว่าแยกนับได้ไหม
+        // Mix vehicles from both lanes into one ROI and check they can still be told apart
         var dict = (Dictionary<CarAgent, float>)PrivateField(typeof(ROIZone), "carsInZone").GetValue(shared);
         dict.Clear();
         for (int i = 0; i < 7; i++) dict[new CarAgent { assignedLane = "Ax" }] = 10f;
         for (int i = 0; i < 2; i++) dict[new CarAgent { assignedLane = "A2" }] = 10f;
         Check(shared.GetVehicleCount() == 9,
-              $"GetVehicleCount() = จำนวนรถในเลนนอกทั้งหมด 9 คัน (สิ่งที่ detector จริงเห็น) ได้ {shared.GetVehicleCount()}");
+              $"GetVehicleCount() = all 9 vehicles in the outer lane, which is what a real detector sees (got {shared.GetVehicleCount()})");
         Check(shared.GetVehicleCount("Ax") == 7 && shared.GetVehicleCount("A2") == 2,
-              $"แยกนับราย movement ได้สำหรับการตรวจสอบ (Ax={shared.GetVehicleCount("Ax")}, A2={shared.GetVehicleCount("A2")})");
+              $"per-movement counts are still available for inspection (Ax={shared.GetVehicleCount("Ax")}, A2={shared.GetVehicleCount("A2")})");
 
-        // ============ เลนให้ทาง: ไฟกลับด้าน ============
-        Console.WriteLine("\n--- Ax เป็นเลนให้ทาง: Bx เขียว/เหลือง = Ax หยุด, Bx แดง = Ax ไปได้ ---");
+        // ============ Yielding lane: inverted signal ============
+        Console.WriteLine("\n--- Ax yields: Bx green or yellow = Ax stops, Bx red = Ax may go ---");
         var greenField = PrivateField(typeof(CarAgent), "lightIsGreen");
         Func<TrafficLight.LightState, bool, bool> CanGo = (state, inverted) =>
         {
@@ -136,13 +136,13 @@ public class SharedLaneTest
             return (bool)greenField.GetValue(c);
         };
 
-        Check(!CanGo(TrafficLight.LightState.Green,  true),  "Bx เขียว  -> Ax ไปไม่ได้");
-        Check(!CanGo(TrafficLight.LightState.Yellow, true),  "Bx เหลือง -> Ax ยังไปไม่ได้ (รถ Bx ยังเคลียร์ปากทางไม่หมด)");
-        Check( CanGo(TrafficLight.LightState.Red,    true),  "Bx แดง    -> Ax ไปได้ตามปกติ");
+        Check(!CanGo(TrafficLight.LightState.Green,  true),  "Bx green  -> Ax may not go");
+        Check(!CanGo(TrafficLight.LightState.Yellow, true),  "Bx yellow -> Ax still may not go (Bx traffic has not cleared the entrance)");
+        Check( CanGo(TrafficLight.LightState.Red,    true),  "Bx red    -> Ax may go as normal");
 
-        // เลนปกติต้องไม่โดนกระทบ
-        Check( CanGo(TrafficLight.LightState.Green, false), "เลนปกติ: ไฟเขียวของตัวเอง -> ไปได้ (ไม่โดน inversion กระทบ)");
-        Check(!CanGo(TrafficLight.LightState.Red,   false), "เลนปกติ: ไฟแดงของตัวเอง  -> หยุด");
+        // An ordinary lane must be unaffected
+        Check( CanGo(TrafficLight.LightState.Green, false), "ordinary lane: its own green -> may go (inversion does not apply)");
+        Check(!CanGo(TrafficLight.LightState.Red,   false), "ordinary lane: its own red  -> stops");
 
         Console.WriteLine(failures == 0 ? "\nALL CHECKS PASSED" : $"\n{failures} CHECK(S) FAILED");
         return failures;

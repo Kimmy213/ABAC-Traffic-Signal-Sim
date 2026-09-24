@@ -5,86 +5,86 @@ using UnityEditor.SceneManagement;
 using System.Collections.Generic;
 
 /// <summary>
-/// สร้าง/อัปเดต Scene แยก ABAC แบบ 4 ไฟ 7 เลน ให้อัตโนมัติ (A2 ใช้ไฟร่วมกับ A — shared lane กับ Ax)
-/// เมนู: ABAC ▸ Build 4-Phase Scene
+/// Builds or updates the ABAC scene: 4 signals, 7 lanes (A2 shares A's signal and Ax's lane).
+/// Menu: ABAC > Build 4-Phase Scene
 ///
-/// ทำงานแบบ idempotent — กดซ้ำได้ ของเดิมที่มีอยู่จะถูกใช้ต่อ ไม่สร้างซ้ำ
-/// รองรับ Undo (Ctrl+Z) แต่ควร commit git ก่อนกดอยู่ดี
+/// Idempotent - press it again and existing objects are reused rather than duplicated.
+/// Supports Undo (Ctrl+Z), but commit to git first anyway.
 ///
-/// ===== พิกัดอ้างอิงจากซีนจริง =====
-/// ถนนบางนา-ตราด วางตามแกน X   (centerline z = 0.88)
-/// ทางเข้า ABAC อยู่ทาง +Z (เหนือ)
-/// A  = วิ่งไปทางตะวันออก (+X)  อยู่ครึ่งเหนือ  (ขับชิดซ้าย)
-/// B  = วิ่งไปทางตะวันตก (-X)  อยู่ครึ่งใต้
-/// ABAC อยู่ทางซ้ายของ A  -> Ax เลี้ยวซ้าย ฟรี
-/// ABAC อยู่ทางขวาของ B  -> Bx เลี้ยวขวา ต้องมีไฟ (ตัดกระแส A)
-/// ออกจาก ABAC มุ่งใต้: เลี้ยวซ้าย = ตะวันออก = merge เข้าเลน A ฟรี  -> CA
-///                      เลี้ยวขวา = ตะวันตก = ข้ามเลน A ไป merge B   -> CB (ต้องมีไฟ)
+/// ===== Coordinates taken from the real site =====
+/// Bangna-Trad Road runs along X (centreline z = 0.88).
+/// The ABAC entrance is to the +Z side (north).
+/// A  = eastbound (+X), on the northern half (left-hand traffic).
+/// B  = westbound (-X), on the southern half.
+/// ABAC is on A's left  -> Ax turns left, free.
+/// ABAC is on B's right -> Bx turns right and needs a signal (it cuts the A stream).
+/// Leaving ABAC heading south: left = east = merges into lane A, free -> CA
+///                             right = west = crosses lane A to merge into B -> CB (signalised)
 /// </summary>
 public static class ABACSceneBuilder
 {
     // ---------- geometry ----------
-    public const float ROAD_Z   = 0.88f;    // centerline ถนนตะวันออก-ตะวันตก
-    public const float ABAC_X   = -0.52f;   // centerline ถนนเข้า ABAC
+    public const float ROAD_Z   = 0.88f;    // centreline of the east-west road
+    public const float ABAC_X   = -0.52f;   // centreline of the ABAC access road
 
-    public const float Z_AX = 6.5f;    // ช่องเลี้ยวซ้ายเข้า ABAC (นอกสุดฝั่งเหนือ)
-    public const float Z_A  = 3.0f;    // ช่องวิ่งตรง ขาตะวันออก
-    public const float Z_BX = -1.2f;   // ช่องเลี้ยวขวาเข้า ABAC (ชิด centerline ฝั่งใต้)
-    public const float Z_B  = -4.5f;   // ช่องวิ่งตรง ขาตะวันตก
+    public const float Z_AX = 6.5f;    // left turn into ABAC (outermost on the north side)
+    public const float Z_A  = 3.0f;    // eastbound through lane
+    public const float Z_BX = -1.2f;   // right turn into ABAC (next to the centreline, south side)
+    public const float Z_B  = -4.5f;   // westbound through lane
 
-    public const float X_AX_IN = -4.0f;   // เลนขาเข้า ABAC ที่รับจาก Ax
-    public const float X_BX_IN = -1.8f;   // เลนขาเข้า ABAC ที่รับจาก Bx
-    public const float X_CB    = 1.5f;    // เลนขาออก ABAC เลี้ยวขวา (ไปตะวันตก)
-    public const float X_CA    = 3.8f;    // เลนขาออก ABAC เลี้ยวซ้าย (ไปตะวันออก)
+    public const float X_AX_IN = -4.0f;   // ABAC inbound lane fed by Ax
+    public const float X_BX_IN = -1.8f;   // ABAC inbound lane fed by Bx
+    public const float X_CB    = 1.5f;    // ABAC outbound lane turning right (west)
+    public const float X_CA    = 3.8f;    // ABAC outbound lane turning left (east)
 
     public const float STOP_A_X = -10.5f;
-    // จุดหยุดของเลนนอก (Ax) — ⭐ ต้องเป็น "ค่าเดียวกับ" เส้นหยุดของเลนใน (A) เป๊ะ ๆ
-    // ของเดิมตั้งไว้ที่ -11.0 ต่างจาก A ที่ -10.5 อยู่ 0.5 ม. มองจากในเกมเห็นเป็นเส้นขาวเหลื่อมกันสองเส้น
-    // ของจริงเส้นหยุดขาเดียวกันต้องอยู่แนวเดียวกัน จึงผูกให้เท่ากับ STOP_A_X ไปเลย (มีเทสล็อกไว้)
+    // Stop point of the outer lane (Ax) - must be exactly the same as the inner lane (A) stop line.
+    // It used to be -11.0 against A at -10.5, and the 0.5 m offset showed in game as two staggered
+    // white lines. In reality one approach has one stop line, so it is tied to STOP_A_X (a test locks this).
     public const float AX_STOP_X = STOP_A_X;
-    // จุดที่ Ax เริ่มหักเลี้ยว = จุดเดียวกับเส้นหยุด (รถหยุดตรงนั้นแล้วค่อยเลี้ยวออกไป)
+    // Where Ax begins its turn - the same point as the stop line (cars stop there, then turn out)
     public const float AX_TURN_X = AX_STOP_X;
 
-    // ===== จุดที่รถ A2 เปลี่ยนเลนเข้ามาในเลนแชร์ (late merge) =====
-    // Itim นับจากคลิป: รถตรงที่เข้าเลนแชร์ทั้ง 3 คัน เปลี่ยนเลนเข้ามาตอนเหลือ ~5 ช่วงรถก่อนถึงจุดเลี้ยว
-    // 5 ช่วงรถ ~ 5 x (ยาว 4 ม. + เว้น 2 ม.) = 30 ม. — ใช้ 20 ม. เป็นจุดที่ "merge เสร็จ" แล้วเริ่มเบียด
-    // ตั้งแต่ 22 ม. ก่อนหน้านั้น (รวมแล้วการเปลี่ยนเลนเกิดในช่วง ~5-10 ช่วงรถสุดท้าย ตรงกับที่สังเกต)
+    // ===== Where A2 merges into the shared lane (late merge) =====
+    // Itim counted from the clip: all 3 through vehicles entering the shared lane changed with about
+    // five car lengths left before the turn. Five car lengths ~ 5 x (4 m + 2 m gap) = 30 m, so 20 m is
+    // used as the point where the merge completes, with edging starting 22 m before that.
     //
-    // ⚠️ ค่านี้สำคัญกว่าที่เห็น: มันคือสิ่งที่ทำให้รถ A2 ไป "แทรกหัวคิว" แทนที่จะกระจายอยู่กลางคิว
-    //    ถ้า merge ตั้งแต่ไกล จะได้ "บล็อกบ่อยแต่เบา" ซึ่งผิดจากของจริงที่ "บล็อกนาน ๆ ครั้งแต่รุนแรง"
-    // ⭐ ความยาวเลนแชร์จริง = ~5 คันรถ ≈ 32 ม. (Itim ยืนยัน SP1_HANDOFF_v2 §5.6)
-    //    การเปลี่ยนเลนของ A2 ต้องเกิด "ภายใน" ช่วงนี้ทั้งหมด ไม่ใช่เริ่มตั้งแต่ก่อนเลนแชร์จะมีอยู่
-    //    เดิม A2_MERGE_DIST = 22 -> เริ่มหักตั้งแต่ 20+22 = 42 ม. ซึ่งเลยขอบเลนแชร์ไป 10 ม.
+    // This value matters more than it looks: it is what makes A2 cut in at the head of the queue rather
+    //    than spread through it. Merging from far back gives frequent mild blocking, which is wrong -
+    //    the real pattern is rare but severe. The shared lane is about 5 car lengths, roughly 32 m
+    //    (Itim confirmed, SP1_HANDOFF_v2 section 5.6), and the A2 lane change has to happen entirely
+    //    within it, not before the shared lane exists.
     public const float SHARED_LANE_LENGTH = 32f;
-    public const float A2_MERGE_X    = STOP_A_X - 20f;      // จุดที่ merge เสร็จ (20 ม. ก่อนเส้นหยุด)
-    public const float A2_MERGE_DIST = SHARED_LANE_LENGTH - 20f;   // = 12 ม. -> เริ่มหักที่ขอบเลนแชร์พอดี
+    public const float A2_MERGE_X    = STOP_A_X - 20f;      // merge completes 20 m before the stop line
+    public const float A2_MERGE_DIST = SHARED_LANE_LENGTH - 20f;   // = 12 m, so edging starts right at the shared lane edge
     public const float STOP_B_X = 9.5f;
     public const float STOP_C_Z = 10.9f;
 
-    // ===== กลไก "แซงไหล่ทาง" — ปิดใช้งานแล้ว (ดูเหตุผลด้านล่าง) =====
+    // ===== Shoulder-passing mechanism - disabled (reasons below) =====
     //
-    // ⚠️ ขาเข้าฝั่งตะวันออกมี 2 แถวเท่านั้น: เลนใน (A) กับเลนนอก (Ax ใช้ร่วมกับ A2)
-    //    ไม่มีไหล่ทางให้แซงเป็นแถวที่ 3 — ยืนยันจากหน้างานโดย Kimmy
+    // The eastbound approach has only two rows: inner (A) and outer (Ax shared with A2).
+    //    There is no shoulder for a third row - confirmed on site by Kimmy.
     //
-    // เหตุผลเชิงโมเดลที่ปิดด้วย (สำคัญกว่าเรื่องภาพ): ค่า A2_SHARE = 18% ที่ใช้อยู่นั้น Itim
-    // **back-calculate มาจากอัตราการบล็อกที่สังเกตจริง 40-60%** โดยใช้โมเดล car-following ล้วน ๆ
-    // แปลว่า 18% + ไม่มีการแซง = ได้อัตราบล็อก 40-60% ตามที่สังเกตอยู่แล้ว
-    // ถ้าใส่การแซง 65% ทับเข้าไปอีก = หักลบผลเดียวกันสองรอบ อัตราบล็อกจะเหลือแค่ ~14-21% ต่ำกว่าที่วัดได้จริงมาก
+    // The modelling reason matters more than the visual one: the A2_SHARE value of 18% was
+    // back-calculated by Itim from an observed 40-60% blocking rate using a pure car-following model,
+    // so 18% with no passing already reproduces the observed blocking. Adding 65% passing on top would
+    // discount the same effect twice, dropping blocking to ~14-21%, far below what was measured.
     //
-    // โค้ดกลไกยังอยู่ครบ (CarAgent.canBypassCrossLaneBlocker / bypassLateralOffset) เผื่ออยาก
-    // เปิดใช้ทีหลังเมื่อมีข้อมูลแยกต่างหาก — แต่ถ้าจะเปิด **ต้องตั้ง offset ให้มากกว่า lookAheadAngle เสมอ**
-    // ไม่งั้นรถจะวิ่งทะลุผ่านกันเหมือนบั๊กรอบที่ 6 (Test6 บังคับกฎข้อนี้ไว้แล้ว)
+    // The mechanism is still in the code (CarAgent.canBypassCrossLaneBlocker / bypassLateralOffset) in
+    // case separate data ever justifies it - but if re-enabled, the offset must always exceed
+    // lookAheadAngle, or cars drive through each other as in bug round 6 (Test6 enforces this).
     public const float AX_BYPASS_OFFSET_Z = 0f;
     public const float AX_BYPASS_CHANCE   = 0f;
-    // ROI เลนแชร์กลับมาใช้ความกว้างปกติ เพราะไม่มีแถวไหล่ทางให้ครอบแล้ว
+    // The shared-lane ROI is back to the normal width, since there is no shoulder row to cover
     public const float ROI_WIDTH_SHARED = ROI_WIDTH;
 
     public const float SPAWN_FAR   = 200f;
     public const float ROI_LEN     = 100f;
     public const float ROI_WIDTH   = 3f;
-    public const float ROAD_WIDTH  = 18f;   // ความกว้างถนนบางนา-ตราดในซีน (ใช้ตรวจว่าไหล่ทางไม่หลุดขอบ)
-    // ความกว้างตัวรถ — คำนวณจากโมเดลจริง car_low_poly.fbx: สัดส่วน กว้าง 879.6 : ยาว 1636.9 หน่วย
-    // เมื่อย่อให้ยาว 4.00 ม. ตาม CarAgent.carLength จะได้กว้าง 879.6/1636.9*4 = 2.15 ม.
+    public const float ROAD_WIDTH  = 18f;   // width of Bangna-Trad Road in the scene (checks the shoulder stays on the road)
+    // Car width, computed from the real model car_low_poly.fbx: 879.6 wide : 1636.9 long in model units,
+    // so scaled to 4.00 m long per CarAgent.carLength it is 879.6/1636.9*4 = 2.15 m wide.
     public const float CAR_WIDTH   = 2.15f;
     public const float CAR_Y       = 0.5f;
     public const float DESPAWN     = 300f;
@@ -96,18 +96,18 @@ public static class ABACSceneBuilder
     public static void BuildScene()
     {
         if (!EditorUtility.DisplayDialog("ABAC Scene Builder",
-            "จะสร้าง/อัปเดต object ของแยก 4 ไฟ 7 เลน ในซีนปัจจุบัน (เพิ่มเลน A2 = shared lane กับ Ax)\n\n" +
-            "• ของเดิมที่ชื่อตรงกันจะถูกใช้ต่อ ไม่สร้างซ้ำ\n" +
-            "• เลน C เดิมจะถูกเปลี่ยนเป็น CB\n" +
-            "• ตำแหน่งเลน A และ B จะถูกขยับเพื่อเปิดที่ให้ช่องเลี้ยว\n" +
-            "• Fixed preset = cycle 107s ตามค่าที่วัดจริง (A 40 / B+Bx 21 / CB 31 + intergreen 15)\n" +
-            "• ⭐ A2 กับ Ax รวมมาใช้ ROI เดียวกัน (ROI_A2 เดิมจะถูกลบ)\n" +
-            "• ⭐ ขาเข้าฝั่งตะวันออกมี 2 แถวเท่านั้น (A เลนใน / Ax+A2 เลนนอก) — ปิดการแซงไหล่ทางแล้ว\n" +
-            "• ⭐ Ax จะมีเส้นหยุดของตัวเอง และหยุดรอตอน Bx เขียว (เลี้ยวเข้ามอไม่ได้)\n\n" +
-            "แนะนำให้ commit git ก่อน — ดำเนินการต่อไหม?",
-            "สร้างเลย", "ยกเลิก")) return;
+            "This will create or update the objects for the 4-signal, 7-lane junction in the current scene (adding lane A2, shared with Ax).\n\n" +
+            "- existing objects with matching names are reused, not duplicated\n" +
+            "- the old lane C is renamed CB\n" +
+            "- lanes A and B move to make room for the turning lanes\n" +
+            "- Fixed preset = 107s cycle from the measured values (A 40 / B+Bx 21 / CB 31 + intergreen 15)\n" +
+            "- A2 and Ax share one ROI (the old ROI_A2 is deleted)\n" +
+            "- the eastbound approach has only two rows (A inner / Ax+A2 outer) - shoulder passing is off\n" +
+            "- Ax gets its own stop line and waits while Bx is green (it cannot turn in)\n\n" +
+            "Committing to git first is recommended. Continue?",
+            "Build", "Cancel")) return;
 
-        // ให้ Unity อ่านไฟล์ที่เพิ่งถูกก๊อปเข้ามา (texture PNG / โมเดล FBX) ก่อนเริ่มใช้งาน
+        // Let Unity import any files just copied in (PNG textures, FBX models) before using them
         AssetDatabase.Refresh();
 
         var scene = EditorSceneManager.GetActiveScene();
@@ -122,51 +122,51 @@ public static class ABACSceneBuilder
 
         BuildRoads();
 
-        // ---------- ไฟจราจร 4 ดวง ----------
+        // ---------- Four traffic signals ----------
         var lightA  = BuildLight("Light_A",  "A",  new Vector3(-11.5f, 1.9f,  9.5f));
         var lightB  = BuildLight("Light_B",  "B",  new Vector3( 10.5f, 1.9f, -8.0f));
         var lightBx = BuildLight("Light_Bx", "Bx", new Vector3( 13.5f, 1.9f, -8.0f));
         var lightCB = BuildLight("Light_CB", "CB", new Vector3(  7.0f, 1.9f, 12.0f));
 
-        // ---------- เส้นหยุด ----------
+        // ---------- Stop lines ----------
         var stopA  = BuildStopLine("StopLine_A",  new Vector3(STOP_A_X, 0f, Z_A),  true);
         var stopB  = BuildStopLine("StopLine_B",  new Vector3(STOP_B_X, 0f, Z_B),  true);
         var stopBx = BuildStopLine("StopLine_Bx", new Vector3(STOP_B_X, 0f, Z_BX), true);
         var stopCB = BuildStopLine("StopLine_CB", new Vector3(X_CB, 0f, STOP_C_Z), false);
-        // ⭐ เส้นหยุดของเลนนอก — ตอนนี้เป็นเส้นหยุด "จริง" ของ Ax แล้ว ไม่ใช่แค่เส้นตกแต่ง
-        // Ax ต้องหยุดตรงนี้ตอน Bx เขียว (เลี้ยวเข้ามอไม่ได้) คิวจึงค้างอยู่ในเลนนอกและไปขวาง A2 ต่อได้
-        // A2 ยังใช้ stopA (x=-10.5) เป็น stopLineTarget เหมือนเดิม — ต่างกัน 0.5 ม. ไม่มีผลในทางปฏิบัติ
-        // เพราะรถวิ่งขนานแกน X ระยะเบรกคำนวณจากผลต่าง X อย่างเดียว (ดู CarAgent.signedDistToStopPoint)
-        DestroyIfExists("StopLine_A2_Visual");   // เส้นตกแต่งเดิม เลิกใช้แล้ว
+        // The outer lane stop line is now a real stop line for Ax, not just decoration.
+        // Ax has to stop here while Bx is green (it cannot turn in), so its queue stays in the outer
+        // lane and can go on blocking A2. A2 still uses stopA (x=-10.5) as its stopLineTarget - the
+        // 0.5 m difference has no practical effect, since cars run parallel to X (see signedDistToStopPoint).
+        DestroyIfExists("StopLine_A2_Visual");   // the old decorative line, no longer used
         var stopAx = BuildStopLine("StopLine_Ax", new Vector3(AX_STOP_X, 0f, Z_AX), true);
 
-        // ---------- ROI (100 ม. จ่อเส้นหยุด) ----------
-        // ⭐ A2 กับ Ax ใช้ ROI "ตัวเดียวกัน" — เพราะมันคือเลนกายภาพเดียวกันจริง ๆ
-        //    กล้อง/เครื่องตรวจจับตัวจริงแยกไม่ออกว่าคันไหนจะวิ่งตรงคันไหนจะเลี้ยวเข้ามอ
-        //    (ของเดิมแยกเป็น 2 ROI ซ้อนตำแหน่งกัน = ให้ข้อมูลที่ detector จริงไม่มีทางรู้ได้)
-        //    สถิติเวลารอยังแยกราย movement ได้ เพราะ ROIZone.LogVehicle ใช้ car.assignedLane
+        // ---------- ROI (100 m back from the stop line) ----------
+        // A2 and Ax use one and the same ROI, because they really are one physical lane.
+        //    A real camera cannot tell which vehicle will go straight and which will turn into the campus.
+        //    (There used to be two overlapping ROIs, handing the controller information a real detector
+        //    could never have.) Wait statistics still separate by movement, via ROIZone.LogVehicle.
         var roiA  = BuildROI("ROI_A",  "A",  0, new Vector3(STOP_A_X - ROI_LEN/2f, 1.5f, Z_A),  true);
-        // ROI ของเลนนอก — ครอบทั้ง Ax และ A2 (เลนกายภาพเดียวกัน) จัดกลางที่ z = Z_AX + offset/2
-        // ตอนนี้ offset = 0 จึงเป็น ROI ปกติที่ z=6.5 กว้าง 3 ม. เหมือนเลนอื่น
+        // ROI for the outer lane, covering both Ax and A2 (one physical lane), centred at z = Z_AX + offset/2.
+        // The offset is 0 now, so it is an ordinary 3 m wide ROI at z=6.5 like the others.
         var roiAx = BuildROI("ROI_Ax", "Ax", 1,
             new Vector3(STOP_A_X - ROI_LEN/2f, 1.5f, Z_AX + AX_BYPASS_OFFSET_Z/2f), true, ROI_WIDTH_SHARED);
         var roiB  = BuildROI("ROI_B",  "B",  2, new Vector3(STOP_B_X + ROI_LEN/2f, 1.5f, Z_B),  true);
         var roiBx = BuildROI("ROI_Bx", "Bx", 3, new Vector3(STOP_B_X + ROI_LEN/2f, 1.5f, Z_BX), true);
         var roiCB = BuildROI("ROI_CB", "CB", 4, new Vector3(X_CB, 1.5f, STOP_C_Z + ROI_LEN/2f), false);
         var roiCA = BuildROI("ROI_CA", "CA", 5, new Vector3(X_CA, 1.5f, STOP_C_Z + ROI_LEN/2f), false);
-        DestroyIfExists("ROI_A2");   // เลิกใช้ — รวมเข้ากับ ROI_Ax แล้ว (ถ้าปล่อยไว้จะนับ/บันทึกซ้ำสองรอบ)
+        DestroyIfExists("ROI_A2");   // no longer used - merged into ROI_Ax (leaving it would double-count)
         roiAx.alsoCountLanes = new[] { "A2" };
         EditorUtility.SetDirty(roiAx);
 
-        // ---------- waypoint เลนเลี้ยว ----------
-        // ---------- waypoint เลนเลี้ยว ----------
-        // วางตามส่วนโค้งรัศมี 7 ม. (0° / 30° / 60° / 90° ของวงเลี้ยว) แล้วต่อด้วยทางตรงไกล ๆ
-        // ตรวจด้วยการจำลองเชิงตัวเลขแล้วว่าทุกเส้นทางอยู่ในเลนของตัวเอง ไม่ทับเลนอื่น
+        // ---------- Waypoints for the turning lanes ----------
+        // Placed along a 7 m radius arc (0 / 30 / 60 / 90 degrees of the turn), then a long straight.
+        // Verified by numerical simulation that every path stays inside its own lane.
+        //
         var wpAx = BuildWaypoints("Ax", new[] {
-            new Vector3(AX_TURN_X, CAR_Y, Z_AX),   // จุดเริ่มหักเลี้ยว (= เส้นหยุดของ Ax)
+            new Vector3(AX_TURN_X, CAR_Y, Z_AX),   // start of the turn (= the Ax stop line)
             new Vector3( -7.50f, CAR_Y,  7.44f),   // 30°
             new Vector3( -4.94f, CAR_Y, 10.00f),   // 60°
-            new Vector3( -4.00f, CAR_Y, 13.50f),   // 90° เข้าเลนขาเข้า ABAC
+            new Vector3( -4.00f, CAR_Y, 13.50f),   // 90 degrees, into the ABAC inbound lane
             new Vector3( -4.00f, CAR_Y, 90.00f),
         });
         var wpBx = BuildWaypoints("Bx", new[] {
@@ -180,61 +180,61 @@ public static class ABACSceneBuilder
             new Vector3(  1.50f, CAR_Y,  2.50f),
             new Vector3(  0.56f, CAR_Y, -1.00f),
             new Vector3( -2.00f, CAR_Y, -3.56f),
-            new Vector3( -5.50f, CAR_Y, -4.50f),   // เข้าเลน B
+            new Vector3( -5.50f, CAR_Y, -4.50f),   // into lane B
             new Vector3(-90.00f, CAR_Y, -4.50f),
         });
-        // CA จบที่เลน Ax (z=6.5) ซึ่งเป็นเลนซ้ายสุดของฝั่งขาตะวันออก
-        // = เลนที่ใกล้ทางออก ABAC ที่สุด ตรงตามกฎจราจรจริง (merge เข้าเลนใกล้ตัวก่อน)
-        // และทำให้ CA ไม่ตัดผ่านเส้นทางของ A เลย → เป็นเลนฟรีได้อย่างถูกต้อง
+        // CA ends in lane Ax (z=6.5), the leftmost lane of the eastbound side and the one nearest the
+        // ABAC exit, which matches real road rules (merge into the nearest lane first) and means CA
+        // never crosses A's path, so it can correctly be a free lane.
         var wpCA = BuildWaypoints("CA", new[] {
-            new Vector3(  3.80f, CAR_Y, 13.50f),   // จุดเริ่มหักเลี้ยว
+            new Vector3(  3.80f, CAR_Y, 13.50f),   // start of the turn
             new Vector3(  4.74f, CAR_Y, 10.00f),   // 30°
             new Vector3(  7.30f, CAR_Y,  7.44f),   // 60°
-            new Vector3( 10.80f, CAR_Y,  6.50f),   // 90° เข้าเลน Ax
+            new Vector3( 10.80f, CAR_Y,  6.50f),   // 90 degrees, into lane Ax
             new Vector3( 90.00f, CAR_Y,  6.50f),
         });
 
         // ---------- spawner ----------
-        // สีรถแยกตามกลุ่มเลนใหญ่ A / B / C — ดูแล้วรู้ทันทีว่ารถคันไหนมาจากไหน
-        // สีรถจริงเงากว่าวัสดุทั่วไปมาก — ใส่ smoothness/metallic ให้ดูเป็นสีพ่นรถ ไม่ใช่พลาสติกด้าน
+        // Car colours by lane group A / B / C, so it is obvious at a glance where a car came from.
+        // Real car paint is far glossier than a default material, so smoothness and metallic are set
         Material matA = GetOrCreateMaterial("Car_LaneA", new Color(0.23f, 0.51f, 0.96f), 0.78f, null, 1f, 1f, 0.35f);
         Material matB = GetOrCreateMaterial("Car_LaneB", new Color(0.96f, 0.62f, 0.07f), 0.78f, null, 1f, 1f, 0.35f);
         Material matC = GetOrCreateMaterial("Car_LaneC", new Color(0.13f, 0.77f, 0.37f), 0.78f, null, 1f, 1f, 0.35f);
 
         var spA  = BuildSpawner("A",  new Vector3(-SPAWN_FAR, CAR_Y, Z_A),   90f, stopA,  lightA,  null, matA);
-        // ⭐ Ax ไม่ใช่เลนฟรี 100% อีกแล้ว — หน้างานจริงเลี้ยวเข้ามอไม่ได้ตอน Bx เขียว
-        //    (Bx ก็เลี้ยวขวาเข้ามอเหมือนกัน กวาดผ่านปากทางเข้า) จึงผูกกับไฟ Bx แบบ "กลับด้าน":
-        //    Bx เขียว/เหลือง = Ax แดง, Bx แดง = Ax ไปได้ตามปกติ
-        //    Ax ยังคง isSignalized = false เพราะไม่มีเฟสของตัวเอง ไม่กินเวลาเขียวของใคร
+        // Ax is no longer a fully free lane: on site it cannot turn into the campus while Bx is green
+        //    (Bx turns in as well and sweeps across the entrance), so it is tied to the Bx signal, inverted:
+        //    Bx green or yellow = Ax red, Bx red = Ax may go.
+        //    Ax still has isSignalized = false, because it has no phase of its own and consumes no green time.
         var spAx = BuildSpawner("Ax", new Vector3(-SPAWN_FAR, CAR_Y, Z_AX),  90f, stopAx, lightBx, wpAx, matA);
         spAx.lightIsInverted = true;
-        // กลไกแซงไหล่ทาง — ปิดอยู่ (ทั้งคู่เป็น 0) ดูเหตุผลเต็มที่ค่าคงที่ AX_BYPASS_OFFSET_Z ด้านบน
-        // สรุปสั้น: ขาเข้ามี 2 แถวเท่านั้น ไม่มีไหล่ทาง + ค่า 18% ที่ใช้อยู่ calibrate จากอัตราบล็อกจริงมาแล้ว
+        // Shoulder passing is off (both values 0) - full reasoning at the AX_BYPASS_OFFSET_Z constant above.
+        // In short: the approach has only two rows and no shoulder, and the 18% figure is already calibrated.
         spAx.laneBypassChance    = AX_BYPASS_CHANCE;
         spAx.bypassLateralOffset = new Vector3(0f, 0f, AX_BYPASS_OFFSET_Z);
         var spB  = BuildSpawner("B",  new Vector3( SPAWN_FAR, CAR_Y, Z_B),  -90f, stopB,  lightB,  null, matB);
         var spBx = BuildSpawner("Bx", new Vector3( SPAWN_FAR, CAR_Y, Z_BX), -90f, stopBx, lightBx, wpBx, matB);
         var spCB = BuildSpawner("CB", new Vector3(X_CB, CAR_Y, SPAWN_FAR),  180f, stopCB, lightCB, wpCB, matC);
         var spCA = BuildSpawner("CA", new Vector3(X_CA, CAR_Y, SPAWN_FAR),  180f, null,   null,    wpCA, matC);
-        // A2 = รถตรงที่ไปใช้เลนนอก (เลนแชร์กับ Ax) — จุด spawn อยู่ในเลนใน ถอยจาก A ไป 20 ม.
-        // ⚠️ ของเดิมถอยแค่ 5 ม. ซึ่งสั้นกว่าความยาวรถ + ระยะเผื่อ (4 ม. + 2 ม.) แทบไม่มีที่ว่าง
-        //    พอ Poisson ปล่อยสองเลนใกล้กันก็เกิดรถซ้อนทับกันทันที — ตอนนี้ถอยเป็น 20 ม. (5 ช่วงรถ)
-        //    และมี CarSpawner.spawnClearRadius คอยกันซ้ำอีกชั้นหนึ่ง
-        // ไม่มี waypoints (วิ่งตรงเหมือน A), stopLineTarget/
-        // assignedLight ใช้ตัวเดียวกับ A เป๊ะ ๆ — ดูคอมเมนต์ที่ BuildStopLine("StopLine_A2_Visual", ...)
-        // ⭐ A2 spawn ใน "เลนใน" (Z_A) เหมือนรถตรงทั่วไป แล้วค่อยเปลี่ยนเลนเข้าเลนแชร์ตอนใกล้ถึงเส้นหยุด
-        //    ไม่ใช่ spawn ในเลนแชร์ตั้งแต่ต้นทางเหมือนเดิม — ดูเหตุผลที่ค่าคงที่ A2_MERGE_X
+        // A2 = through traffic using the outer lane (shared with Ax). Its spawn point is in the inner lane, 20 m behind A.
+        // It used to be only 5 m back, less than a car length plus margin (4 m + 2 m), leaving almost no
+        //    room, so Poisson releasing on two lanes at once immediately overlapped cars.
+        //    It is 20 m (five car lengths) now, with CarSpawner.spawnClearRadius as a second guard.
+        // No waypoints (it runs straight like A). stopLineTarget and assignedLight are exactly the same
+        // objects as A's - see the comment at BuildStopLine("StopLine_A2_Visual", ...).
+        // A2 spawns in the inner lane (Z_A) like ordinary through traffic and changes into the shared
+        //    lane near the stop line, rather than spawning in it - see the A2_MERGE_X constant.
         var wpA2 = BuildWaypoints("A2", new[] {
-            new Vector3(A2_MERGE_X, CAR_Y, Z_AX),    // จุดที่ merge เข้าเลนแชร์เสร็จ
-            new Vector3(SPAWN_FAR,  CAR_Y, Z_AX),    // จากนั้นวิ่งตรงในเลนแชร์ต่อไป
+            new Vector3(A2_MERGE_X, CAR_Y, Z_AX),    // where the merge into the shared lane completes
+            new Vector3(SPAWN_FAR,  CAR_Y, Z_AX),    // then straight on in the shared lane
         });
         var spA2 = BuildSpawner("A2", new Vector3(-SPAWN_FAR - 20f, CAR_Y, Z_A), 90f, stopA, lightA, wpA2, matA);
         spA2.steerBeforeStopLine = true;
         spA2.steerStartDistance  = A2_MERGE_DIST;
 
-        // ---------- โมเดลรถ ----------
-        // สร้าง Car.prefab จากโมเดล 3D จริงใหม่ทุกครั้ง แล้วแจกให้ทุก spawner
-        // (ถ้าไม่มีไฟล์โมเดล ฟังก์ชันจะคืน prefab เดิมมาให้ ไม่พัง)
+        // ---------- Car model ----------
+        // Rebuilds Car.prefab from the real 3D model every time and hands it to every spawner.
+        // (With no model file the function returns the existing prefab rather than failing.)
         GameObject carPrefab = CarPrefabBuilder.Rebuild(matA);
         if (carPrefab != null)
         {
@@ -255,7 +255,7 @@ public static class ABACSceneBuilder
         Undo.RecordObject(cfg, "ABAC Build");
         cfg.LoadABACPreset();
         Wire(cfg, "A",  lightA,  roiA,  spA);
-        // ใช้ TrafficLight ตัวเดียวกับ "A" และ ROI ตัวเดียวกับ "Ax" โดยตั้งใจทั้งคู่ (shared lane)
+        // Deliberately uses the same TrafficLight object as "A" and the same ROI as "Ax" (shared lane)
         Wire(cfg, "A2", lightA,  roiAx, spA2);
         Wire(cfg, "Ax", null,    roiAx, spAx);
         Wire(cfg, "B",  lightB,  roiB,  spB);
@@ -277,8 +277,8 @@ public static class ABACSceneBuilder
         var adaptC = GetOrAdd<AdaptiveController>(gc);
         Undo.RecordObject(adaptC, "ABAC Build");
         adaptC.config = cfg;
-        // ⚠️ ต้องเรียกเหมือนที่ FixedController.LoadABACPreset() ทำ ไม่งั้นค่าที่ซีน serialize ไว้
-        //    (เช่น 1 / 2.5 / 8 ของเก่า) จะค้างอยู่ตลอด แม้จะแก้ค่า default ในไฟล์ .cs แล้วก็ตาม
+        // This must be called the way FixedController.LoadABACPreset() does, or the values serialized
+        //    in the scene (the old 1 / 2.5 / 8, for instance) persist even after the .cs defaults change.
         adaptC.LoadMeasuredPreset();
         EditorUtility.SetDirty(adaptC);
 
@@ -286,8 +286,8 @@ public static class ABACSceneBuilder
 
         var sm = GetOrAdd<ScenarioManager>(gc);
         Undo.RecordObject(sm, "ABAC Build");
-        // ⚠️ เหตุผลเดียวกับ AdaptiveController — ถ้าไม่เรียก ค่าที่ซีนค้างไว้ (reps=1, speed=2, share=0.18)
-        //    จะอยู่ต่อไปตลอด ทำให้ batch ได้ 10 runs แทน 270 และใช้สัดส่วนเลนแชร์ที่เลิกใช้แล้ว
+        // Same reason as AdaptiveController: without this call the stale scene values (reps=1, speed=2,
+        //    share=0.18) persist, giving a batch of 10 runs instead of 270 and a retired lane share.
         sm.LoadBatchPreset();
         sm.config = cfg;
         sm.fixedController = fixedC;
@@ -296,7 +296,7 @@ public static class ABACSceneBuilder
         sm.LoadABACScenarioPreset();
         EditorUtility.SetDirty(sm);
 
-        // ---------- Control Panel (UI ตอน runtime) ----------
+        // ---------- Control Panel (runtime UI) ----------
         var panel = GetOrAdd<SimulationControlPanel>(gc);
         Undo.RecordObject(panel, "ABAC Build");
         panel.config = cfg;
@@ -307,17 +307,17 @@ public static class ABACSceneBuilder
         panel.LoadDefaultTestCases();
         EditorUtility.SetDirty(panel);
 
-        // ---------- Custom test case builder (กด N ตอนรันเพื่อเปิด) ----------
+        // ---------- Custom test case builder (press N at runtime to open) ----------
         var custom = GetOrAdd<CustomTestCase>(gc);
         Undo.RecordObject(custom, "ABAC Build");
         custom.config = cfg;
         custom.controlPanel = panel;
         EditorUtility.SetDirty(custom);
 
-        // ---------- มุมกล้อง ----------
+        // ---------- Camera shots ----------
         BuildCameraRig(gc);
 
-        // ---------- Batch Run Panel (UI ฝั่งขวา โผล่เองตอนกดเริ่ม batch) ----------
+        // ---------- Batch Run Panel (right-hand UI, appears when a batch starts) ----------
         var batchPanel = GetOrAdd<BatchRunPanel>(gc);
         Undo.RecordObject(batchPanel, "ABAC Build");
         batchPanel.scenarioManager = sm;
@@ -325,13 +325,13 @@ public static class ABACSceneBuilder
 
         EditorSceneManager.MarkSceneDirty(scene);
 
-        Debug.Log("<b>[ABACSceneBuilder] สร้างซีนเสร็จแล้ว</b>\n" +
-                  $"• 7 เลน / 4 ไฟ (A2 ใช้ร่วมกับ A) / cycle {fixedC.GetCycleLength():F0}s\n" +
-                  $"• Control Panel พร้อม test case {panel.testCases.Count} ชุด (กด Play แล้วเห็นเลย)\n" +
-                  "• Batch Run Panel ต่อแล้ว — กดเริ่ม batch จะโผล่ทางขวาเอง\n" +
-                  "• มุมกล้อง 8 มุมพร้อมแถบปุ่มกลางล่าง (ปุ่มลัด [ ] เปลี่ยนมุม, V ตามรถ, C กลับภาพรวม)\n" +
-                  "• กด ABAC ▸ Validate Scene เพื่อตรวจซ้ำ\n" +
-                  "• อย่าลืม Ctrl+S บันทึกซีน");
+        Debug.Log("<b>[ABACSceneBuilder] scene built</b>\n" +
+                  $"- 7 lanes / 4 signals (A2 shares A) / cycle {fixedC.GetCycleLength():F0}s\n" +
+                  $"- Control Panel with {panel.testCases.Count} test cases (visible as soon as you press Play)\n" +
+                  "- Batch Run Panel wired up - it appears on the right when a batch starts\n" +
+                  "- 8 camera shots with a button bar along the bottom ([ ] changes shot, V follows a car, C returns to overview)\n" +
+                  "- run ABAC > Validate Scene to check everything\n" +
+                  "- remember to save the scene with Ctrl+S");
 
         cfg.ValidateConfiguration();
         Selection.activeGameObject = cfgGO;
@@ -342,7 +342,7 @@ public static class ABACSceneBuilder
     public static void ValidateScene()
     {
         var cfg = Object.FindFirstObjectByType<IntersectionConfig>();
-        if (cfg == null) { Debug.LogError("[ABAC] ไม่พบ IntersectionConfig ในซีน — กด Build ก่อน"); return; }
+        if (cfg == null) { Debug.LogError("[ABAC] no IntersectionConfig in the scene - run Build first"); return; }
         cfg.ValidateConfiguration();
 
         var fc = Object.FindFirstObjectByType<FixedController>();
@@ -353,52 +353,52 @@ public static class ABACSceneBuilder
         {
             if (lane?.spawner == null) continue;
             var sp = lane.spawner;
-            if (sp.carPrefab == null) { Debug.LogError($"[ABAC] Spawner {lane.laneName} ไม่มี carPrefab"); problems++; }
-            if (sp.spawnPoint == null) { Debug.LogError($"[ABAC] Spawner {lane.laneName} ไม่มี spawnPoint"); problems++; }
-            // A2 มี waypoint เหมือนกัน แต่เป็น "เปลี่ยนเลน" ไม่ใช่ "เลี้ยว" — เช็ครวมได้เลยเพราะมันต้องมี waypoint จริง
+            if (sp.carPrefab == null) { Debug.LogError($"[ABAC] spawner {lane.laneName} has no carPrefab"); problems++; }
+            if (sp.spawnPoint == null) { Debug.LogError($"[ABAC] spawner {lane.laneName} has no spawnPoint"); problems++; }
+            // A2 has waypoints too, but for a lane change rather than a turn - it needs them either way
             bool turning = lane.laneName != "A" && lane.laneName != "B";
             if (turning && (sp.pathWaypoints == null || sp.pathWaypoints.Length == 0))
-            { Debug.LogWarning($"[ABAC] Spawner {lane.laneName} เป็นเลนเลี้ยวแต่ไม่มี waypoint"); }
+            { Debug.LogWarning($"[ABAC] spawner {lane.laneName} is a turning lane but has no waypoints"); }
             if (lane.isSignalized && sp.stopLineTarget == null)
-            { Debug.LogError($"[ABAC] เลนมีไฟ {lane.laneName} ต้องมี stopLineTarget"); problems++; }
+            { Debug.LogError($"[ABAC] signalised lane {lane.laneName} must have a stopLineTarget"); problems++; }
             if (lane.isSignalized && sp.lightIsInverted)
-            { Debug.LogError($"[ABAC] เลนที่มีไฟของตัวเอง {lane.laneName} ห้ามตั้ง lightIsInverted " +
-                             "(ใช้ได้เฉพาะเลนให้ทางที่ไม่มีเฟสของตัวเอง)"); problems++; }
+            { Debug.LogError($"[ABAC] lane {lane.laneName} has its own signal and must not set lightIsInverted " +
+                             "(that is only for a yielding lane with no phase of its own)"); problems++; }
 
             if (!lane.isSignalized)
             {
                 if (sp.lightIsInverted)
                 {
-                    // เลน "ให้ทาง" เช่น Ax — ไม่มีเฟสของตัวเอง แต่ต้องหยุดตอนอีกกระแสได้ไฟเขียว
+                    // A yielding lane such as Ax: no phase of its own, but it must stop while the other stream is green
                     if (sp.stopLineTarget == null)
-                    { Debug.LogError($"[ABAC] เลนให้ทาง {lane.laneName} ต้องมี stopLineTarget (ไว้ให้หยุดรอ)"); problems++; }
+                    { Debug.LogError($"[ABAC] yielding lane {lane.laneName} needs a stopLineTarget to wait at"); problems++; }
                     if (sp.assignedLight == null)
-                    { Debug.LogError($"[ABAC] เลนให้ทาง {lane.laneName} ต้องมี assignedLight (ไฟของกระแสที่เราต้องให้ทาง)"); problems++; }
-                    else Debug.Log($"[ABAC] เลน {lane.laneName} = เลนให้ทาง → หยุดเมื่อไฟ '{sp.assignedLight.laneName}' ไม่แดง");
+                    { Debug.LogError($"[ABAC] yielding lane {lane.laneName} needs an assignedLight (the signal it yields to)"); problems++; }
+                    else Debug.Log($"[ABAC] lane {lane.laneName} yields - it stops whenever signal '{sp.assignedLight.laneName}' is not red");
                 }
                 else
                 {
                     if (sp.stopLineTarget != null)
-                    { Debug.LogError($"[ABAC] เลนฟรี {lane.laneName} ห้ามมี stopLineTarget (รถจะจอดแช่ตลอดไป)"); problems++; }
+                    { Debug.LogError($"[ABAC] free lane {lane.laneName} must not have a stopLineTarget (cars would wait forever)"); problems++; }
                     if (sp.assignedLight != null)
-                    { Debug.LogError($"[ABAC] เลนฟรี {lane.laneName} ห้ามมี assignedLight"); problems++; }
+                    { Debug.LogError($"[ABAC] free lane {lane.laneName} must not have an assignedLight"); problems++; }
                 }
             }
         }
 
-        // ===== ตรวจ ROI ที่ใช้ร่วมกันหลายเลน =====
+        // ===== Check ROIs shared between lanes =====
         foreach (var lane in cfg.lanes)
         {
             if (lane?.roi == null) continue;
             if (!lane.roi.Accepts(lane.laneName))
             {
-                Debug.LogError($"[ABAC] เลน {lane.laneName} ชี้ไปที่ ROI '{lane.roi.name}' แต่ ROI นั้นไม่ได้นับเลนนี้ " +
-                               $"(laneName='{lane.roi.laneName}', alsoCountLanes ไม่มี '{lane.laneName}') → demand จะเป็น 0 ตลอด");
+                Debug.LogError($"[ABAC] lane {lane.laneName} points at ROI '{lane.roi.name}' but that ROI does not count this lane " +
+                               $"(laneName='{lane.roi.laneName}', alsoCountLanes has no '{lane.laneName}') - demand will always read 0");
                 problems++;
             }
         }
 
-        // เตือนถ้ามี ROI ซ้ำที่นับเลนเดียวกันสองที่ = บันทึกสถิติซ้ำ
+        // Warn if two ROIs count the same lane, which would record its statistics twice
         var allRois = Object.FindObjectsByType<ROIZone>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         foreach (var lane in cfg.lanes)
         {
@@ -407,12 +407,12 @@ public static class ABACSceneBuilder
             foreach (var r in allRois) if (r != null && r.Accepts(lane.laneName)) n++;
             if (n > 1)
             {
-                Debug.LogError($"[ABAC] เลน {lane.laneName} ถูกนับโดย ROI {n} ตัว → เวลารอจะถูกบันทึกซ้ำ {n} เท่า " +
-                               "(ลบ ROI ที่เกินออกจากซีน)");
+                Debug.LogError($"[ABAC] lane {lane.laneName} is counted by {n} ROIs - its wait time will be recorded {n} times " +
+                               "(remove the extra ROIs from the scene)");
                 problems++;
             }
         }
-        Debug.Log(problems == 0 ? "[ABAC] ✓ ตรวจ spawner ผ่านทั้งหมด" : $"[ABAC] พบปัญหา spawner {problems} จุด");
+        Debug.Log(problems == 0 ? "[ABAC] all spawner checks passed" : $"[ABAC] found {problems} spawner problem(s)");
     }
 
     // =====================================================================
@@ -422,19 +422,19 @@ public static class ABACSceneBuilder
     static void Wire(IntersectionConfig cfg, string lane, TrafficLight light, ROIZone roi, CarSpawner sp)
     {
         var l = cfg.FindLane(lane);
-        if (l == null) { Debug.LogError($"[ABAC] preset ไม่มีเลน {lane}"); return; }
+        if (l == null) { Debug.LogError($"[ABAC] the preset has no lane {lane}"); return; }
         l.trafficLight = light;
         l.roi = roi;
         l.spawner = sp;
     }
 
-    /// <summary>ลบ object เก่าที่เลิกใช้แล้ว (idempotent — ไม่มีอยู่ก็ไม่เป็นไร)</summary>
+    /// <summary>Removes a retired object (idempotent - fine if it does not exist)</summary>
     static void DestroyIfExists(string name)
     {
         var go = FindByName(name);
         if (go != null)
         {
-            Debug.Log($"[ABAC] ลบ '{name}' ที่เลิกใช้แล้วออกจากซีน");
+            Debug.Log($"[ABAC] removed the retired '{name}' from the scene");
             Undo.DestroyObjectImmediate(go);
         }
     }
@@ -472,7 +472,7 @@ public static class ABACSceneBuilder
         return c;
     }
 
-    /// <summary>ค้น GameObject ตามชื่อทั้งซีน รวม object ที่ inactive</summary>
+    /// <summary>Finds a GameObject by name anywhere in the scene, including inactive ones</summary>
     static GameObject FindByName(string name)
     {
         foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
@@ -499,11 +499,11 @@ public static class ABACSceneBuilder
     // ---------- camera ----------
 
     /// <summary>
-    /// ตั้งชุดมุมกล้องให้ครบทุกขาเข้า/ขาออก โดยคำนวณจากพิกัดเลนจริงในไฟล์นี้
-    /// (ถ้าขยับเลนหรือเส้นหยุดแล้วกด Build ใหม่ มุมกล้องจะขยับตามเองโดยไม่ต้องแก้มือ)
+    /// Sets up a camera shot for every approach and exit, computed from the lane coordinates in this file,
+    /// so moving a lane or stop line and pressing Build moves the cameras with it.
     ///
-    /// หลักการวางมุม: ยืนถอยหลังจากเส้นหยุดไปตามแนวเลน ยกสูงพอเห็นหลังคารถ
-    /// แล้วก้มลงเล็กน้อย — เห็นทั้งคิวที่รออยู่และสิ่งที่เกิดขึ้นกลางแยกในภาพเดียว
+    /// Placement principle: stand back from the stop line along the lane, high enough to see over the
+    /// car roofs, tilted slightly down, so one frame shows both the waiting queue and the junction.
     /// </summary>
     static void BuildCameraRig(GameObject gc)
     {
@@ -521,66 +521,62 @@ public static class ABACSceneBuilder
         EditorUtility.SetDirty(dir);
 
         if (cam == null)
-            Debug.LogWarning("[ABAC] ไม่พบกล้องในซีน — CameraDirector จะไปหา Camera.main เองตอนกด Play");
+            Debug.LogWarning("[ABAC] no camera in the scene - CameraDirector will find Camera.main itself on Play");
     }
 
     /// <summary>
-    /// ตารางมุมกล้อง — แยกออกมาเป็น static ล้วน ๆ เพื่อให้เทสตรวจทิศทางได้โดยไม่ต้องมีซีน
+    /// The camera shot table, kept as pure static data so tests can check the angles without a scene.
     ///
-    /// ⭐ แนวคิดของชุดนี้: กล้อง "ตั้งอยู่กลางสามแยก" ทุกมุม เปลี่ยนแค่ทิศที่หันกับความสูง
-    ///    เหมือนกล้อง PTZ ตัวเดียวที่ติดบนเสาไว้กลางแยก แล้วหมุนไปดูทีละขา
+    /// The idea: every shot sits at the centre of the T-junction and only the heading and height change,
+    ///    like one PTZ camera on a mast in the middle, turning to look at each approach.
     ///
-    ///    นอกจากดูเป็นระเบียบแล้ว ยังตรงกับสิ่งที่โปรเจกต์เสนอจริง ๆ ด้วย — โดรนเป็นแค่เครื่องมือเก็บข้อมูล
-    ///    ส่วนระบบที่จะติดตั้งจริงคือ "กล้องบนเสาที่แยก" (ดู SP1_REPORT_MATERIAL หัวข้อ System scope)
-    ///    มุมกล้องพวกนี้จึงเป็นภาพที่กล้องตัวจริงจะเห็น ไม่ใช่มุมลอยที่ไม่มีทางติดตั้งได้
+    ///    Besides looking tidy, this matches what the project actually proposes - the drone is only a
+    ///    data-collection tool, and the system to be installed is a camera on a mast at the junction
+    ///    (see SP1_REPORT_MATERIAL, System scope). These are the views the real camera would have.
     ///
-    /// yaw -90 = หันไปทางตะวันตก (ดูขาเข้า A/Ax ที่วิ่งเข้าหาเรา)
-    /// yaw  90 = หันไปทางตะวันออก (ดูขาเข้า B/Bx)
-    /// yaw   0 = หันไปทางเหนือ (ดูทางออกมหาลัย CB/CA)
+    /// yaw -90 = facing west (the A/Ax approach coming towards us)
+    /// yaw  90 = facing east (the B/Bx approach)
+    /// yaw   0 = facing north (the campus exit, CB/CA)
     /// </summary>
     public static List<CameraDirector.Shot> MakeShots()
     {
-        float jx = ABAC_X, jz = ROAD_Z;          // กลางสามแยก
-        float zMidA = (Z_A + Z_AX) / 2f;         // กึ่งกลางระหว่างเลนใน/เลนนอก ฝั่งขาเข้าตะวันตก
-        float zMidB = (Z_B + Z_BX) / 2f;         // กึ่งกลางฝั่งขาเข้าตะวันออก
-        float xMidC = (X_CB + X_CA) / 2f;        // กึ่งกลางสองเลนขาออกจากมหาลัย
+        float jx = ABAC_X, jz = ROAD_Z;          // centre of the T-junction
+        float zMidA = (Z_A + Z_AX) / 2f;         // midway between the inner and outer westbound-approach lanes
+        float zMidB = (Z_B + Z_BX) / 2f;         // midway on the eastbound approach
+        float xMidC = (X_CB + X_CA) / 2f;        // midway between the two campus exit lanes
 
-        const float MAST = 8.5f;                 // ความสูงเสากล้องสำหรับมุมมองขาเข้า (สูงกว่าหลังคารถชัดเจน)
-        const float LOW  = 6.0f;                 // มุมเจาะเลนเดียว ต่ำลงหน่อยให้เห็นคิวเป็นแถวยาว
+        const float MAST = 8.5f;                 // mast height for approach views (clearly above car roofs)
+        const float LOW  = 6.0f;                 // single-lane views sit lower, so the queue reads as a long row
 
         return new List<CameraDirector.Shot>
         {
-            // ---- ภาพรวม: มองดิ่งลงมาจากเหนือแยกพอดี เห็นคิวทุกขาพร้อมกัน ----
+            // ---- Overview: straight down on the junction, every queue visible at once ----
             new CameraDirector.Shot {
                 label = "Overview", lane = "", canFollow = false, fov = 55f,
                 position = new Vector3(jx, 48f, jz), euler = new Vector3(90f, 0f, 0f) },
 
-            // ---- กลางแยก: ก้มดูตัวสี่เหลี่ยมกลางแยก เห็นจังหวะที่กระแสรถตัดกัน ----
-            new CameraDirector.Shot {
-                label = "Junction", lane = "", canFollow = false, fov = 60f,
-                position = new Vector3(jx, 11f, jz), euler = new Vector3(38f, 215f, 0f) },
 
-            // ---- หันไปทางตะวันตก: ขาเข้า A + Ax วิ่งเข้าหากล้อง ----
+            // ---- Facing west: the A + Ax approach coming towards the camera ----
             new CameraDirector.Shot {
                 label = "Approach A / Ax", lane = "A", fov = 62f,
                 position = new Vector3(jx, MAST, zMidA), euler = new Vector3(10f, -90f, 0f) },
 
-            // ---- ⭐ เจาะเลนแชร์: จุดที่ A2 จอดรอไฟแล้วขัง Ax ไว้ข้างหลัง ----
+            // ---- Shared lane close-up: where A2 waits at the red and traps Ax behind it ----
             new CameraDirector.Shot {
                 label = "Shared Lane", lane = "Ax", fov = 55f, followBack = 9f, followUp = 4f,
                 position = new Vector3(jx, LOW, Z_AX), euler = new Vector3(8f, -90f, 0f) },
 
-            // ---- หันไปทางตะวันออก: ขาเข้า B + Bx ----
+            // ---- Facing east: the B + Bx approach ----
             new CameraDirector.Shot {
                 label = "Approach B / Bx", lane = "B", fov = 62f,
                 position = new Vector3(jx, MAST, zMidB), euler = new Vector3(10f, 90f, 0f) },
 
-            // ---- ⭐ เจาะเลน Bx: คอขวดจริง v/c 1.51 คิวยาวไปถึงสี่แยกถัดไปใน 5.7 นาที ----
+            // ---- Bx close-up: the real bottleneck at v/c 1.51, queue reaching the next junction in 5.7 min ----
             new CameraDirector.Shot {
                 label = "Bx Bottleneck", lane = "Bx", fov = 55f, followBack = 9f, followUp = 4f,
                 position = new Vector3(jx, LOW, Z_BX), euler = new Vector3(8f, 90f, 0f) },
 
-            // ---- หันไปทางเหนือ: ทางออกมหาลัย CB + CA ----
+            // ---- Facing north: the campus exits CB + CA ----
             new CameraDirector.Shot {
                 label = "ABAC Exit", lane = "CB", fov = 62f, followBack = 9f, followUp = 4f,
                 position = new Vector3(xMidC, MAST, jz), euler = new Vector3(10f, 0f, 0f) },
@@ -588,13 +584,13 @@ public static class ABACSceneBuilder
     }
 
     // ---------- roads ----------
-    // ขนาดพื้นผิว 1 ผืนบนถนน/พื้น (เมตร) — ยิ่งเล็ก ลายยิ่งถี่
+    // Size of one texture tile on the road surface, in metres - smaller means a denser pattern
     const float TILE_ROAD   = 8f;
     const float TILE_GROUND = 10f;
 
     static void BuildRoads()
     {
-        // ยางมะตอย: ผิวด้าน สะท้อนน้อย ไม่มีความเป็นโลหะ
+        // Asphalt: matte, low reflectance, not metallic
         Material road = GetOrCreateMaterial("Road_Mat", new Color(0.72f, 0.72f, 0.74f), 0.12f,
                                             "Asphalt", 400f / TILE_ROAD, ROAD_WIDTH / TILE_ROAD);
         Material roadAbac = GetOrCreateMaterial("Road_ABAC_Mat", new Color(0.72f, 0.72f, 0.74f), 0.12f,
@@ -605,14 +601,14 @@ public static class ABACSceneBuilder
         var ew = GetOrCreate("Road_EastWest", tEnv, PrimitiveType.Cube, true);
         Undo.RecordObject(ew.transform, "ABAC Build");
         ew.transform.position   = new Vector3(ABAC_X, -0.05f, ROAD_Z);
-        ew.transform.localScale = new Vector3(400f, 0.1f, ROAD_WIDTH);   // ขยายจาก 8 -> 18 เพื่อให้มีช่องเลี้ยว
+        ew.transform.localScale = new Vector3(400f, 0.1f, ROAD_WIDTH);   // widened from 8 to 18 to fit the turning lanes
         SetMaterial(ew, road);
         StripCollider(ew);
 
         var ab = GetOrCreate("Road_ABAC", tEnv, PrimitiveType.Cube, true);
         Undo.RecordObject(ab.transform, "ABAC Build");
         ab.transform.position   = new Vector3(ABAC_X, -0.05f, 100f);
-        ab.transform.localScale = new Vector3(14f, 0.1f, 200f);   // ขยายจาก 8 -> 14 (2 เลนเข้า + 2 เลนออก)
+        ab.transform.localScale = new Vector3(14f, 0.1f, 200f);   // widened from 8 to 14 (2 lanes in + 2 out)
         SetMaterial(ab, roadAbac);
         StripCollider(ab);
 
@@ -624,13 +620,13 @@ public static class ABACSceneBuilder
             SetMaterial(ground, grass);
         }
 
-        // ตึก/ป้อมยาม: ผนังปูนมีหน้าต่าง
+        // Buildings and guard huts: rendered concrete with windows
         Material bld = GetOrCreateMaterial("Building", new Color(0.90f, 0.88f, 0.85f), 0.15f,
                                            "Building", 1f, 1f);
         SetMaterial(FindByName("ABAC_Building_Left"),  bld);
         SetMaterial(FindByName("ABAC_Building_Right"), bld);
 
-        // ป้อมยาม 2 หลัง ขยับออกนอกถนนที่กว้างขึ้น
+        // Two guard huts, moved outwards to clear the widened road
         MoveIfExists("ABAC_Building_Left",  new Vector3( 9.5f, 2.9f, 12f));
         MoveIfExists("ABAC_Building_Right", new Vector3(-10.5f, 2.9f, 12f));
     }
@@ -646,7 +642,7 @@ public static class ABACSceneBuilder
     // ---------- lights ----------
     static TrafficLight BuildLight(string goName, string lane, Vector3 pos)
     {
-        // เลน C เดิม -> เปลี่ยนชื่อเป็น CB
+        // The old lane C is renamed CB
         if (goName == "Light_CB")
         {
             var old = FindByName("Light_C");
@@ -682,7 +678,7 @@ public static class ABACSceneBuilder
         var go = GetOrCreate(goName, tStops, PrimitiveType.Cube, true);
         Undo.RecordObject(go.transform, "ABAC Build");
         go.transform.position = pos;
-        // แถบขาวขวางเลน: เลน A/B ขวางตามแกน Z, เลน CB ขวางตามแกน X
+        // White bars across the lane: A/B run along Z, CB runs along X
         go.transform.localScale = alongX ? new Vector3(0.3f, 0.05f, ROI_WIDTH)
                                          : new Vector3(ROI_WIDTH, 0.05f, 0.3f);
         StripCollider(go);
@@ -693,7 +689,7 @@ public static class ABACSceneBuilder
     static ROIZone BuildROI(string goName, string lane, int guiSlot, Vector3 pos, bool alongX,
                            float width = ROI_WIDTH)
     {
-        // ROI_C เดิม (laneName "C") -> CB
+        // The old ROI_C (laneName "C") becomes CB
         if (goName == "ROI_CB")
         {
             var old = FindByName("ROI_C");
@@ -706,11 +702,11 @@ public static class ABACSceneBuilder
         go.transform.localScale = alongX ? new Vector3(ROI_LEN, 3f, width)
                                          : new Vector3(width, 3f, ROI_LEN);
 
-        // ซ่อนกล่อง แต่ยังเห็น gizmo สีเหลืองใน Scene view
+        // Hide the box but keep the yellow gizmo visible in the Scene view
         var rend = go.GetComponent<Renderer>();
         if (rend != null) { Undo.RecordObject(rend, "ABAC Build"); rend.enabled = false; }
 
-        // ⚠️ ของเดิมมี collider 2 ตัว (trigger + solid) — เหลือ trigger ตัวเดียวพอ
+        // The old version had two colliders (trigger + solid); one trigger is enough
         var cols = go.GetComponents<BoxCollider>();
         for (int i = cols.Length - 1; i >= 1; i--) Undo.DestroyObjectImmediate(cols[i]);
         var col = go.GetComponent<BoxCollider>() ?? Undo.AddComponent<BoxCollider>(go);
@@ -748,7 +744,7 @@ public static class ABACSceneBuilder
                                    Transform stopLine, TrafficLight light, Transform[] waypoints,
                                    Material carMat = null)
     {
-        // ของเดิมชื่อเพี้ยน (มีอักขระไทยปน) — หาโดยดูจาก laneName ของ component แทนชื่อ object
+        // Some old objects had corrupted names, so they are found by the component laneName instead
         CarSpawner existing = null;
         foreach (var sp in Object.FindObjectsByType<CarSpawner>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
@@ -788,7 +784,7 @@ public static class ABACSceneBuilder
         return spawner;
     }
 
-    /// <summary>ใส่ material ให้ object (ข้ามถ้าไม่มีตัวใดตัวหนึ่ง)</summary>
+    /// <summary>Assigns a material to an object (skipped if either is missing)</summary>
     static void SetMaterial(GameObject go, Material m)
     {
         if (go == null || m == null) return;
@@ -801,15 +797,15 @@ public static class ABACSceneBuilder
 
     // ---------- textures ----------
 
-    /// <summary>โหลด texture จาก Assets/Textures/ (สร้างไว้ล่วงหน้าเป็นไฟล์ PNG แบบต่อขอบได้)</summary>
+    /// <summary>Loads a texture from Assets/Textures/ (pre-made tileable PNG files)</summary>
     static Texture2D Tex(string name)
     {
         if (string.IsNullOrEmpty(name)) return null;
         string path = $"Assets/Textures/{name}.png";
         Texture2D t = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         if (t == null)
-            Debug.LogWarning($"[ABAC] ไม่พบ texture {path} — จะใช้สีเรียบแทน " +
-                             "(ถ้าเพิ่งก๊อปไฟล์เข้ามา ให้กด Assets ▸ Refresh แล้ว Build ใหม่)");
+            Debug.LogWarning($"[ABAC] texture {path} not found - falling back to a flat colour " +
+                             "(if the file was just copied in, run Assets > Refresh and build again)");
         return t;
     }
 
@@ -834,12 +830,12 @@ public static class ABACSceneBuilder
 
     // ---------- materials ----------
 
-    /// <summary>โหลด material จาก Assets/Materials ถ้าไม่มีก็สร้างใหม่แล้วบันทึกเป็นไฟล์</summary>
+    /// <summary>Loads a material from Assets/Materials, creating and saving one if it does not exist</summary>
     /// <summary>
-    /// สร้าง material หรือ "อัปเดตของเดิม" ให้ตรงกับที่ builder กำหนด
+    /// Creates a material, or updates an existing one to match what the builder specifies.
     ///
-    /// ⚠️ ของเดิมเจอไฟล์แล้ว return ทันที ทำให้ material ที่สร้างไว้ก่อนหน้าไม่มีวันได้ texture เลย
-    ///    แม้จะกด Build ใหม่ — ตอนนี้เขียนค่าทับให้ทุกครั้ง builder จึงเป็นแหล่งความจริงจุดเดียว
+    /// The old version returned as soon as it found the file, so a material created earlier could never
+    ///    pick up a texture even after a rebuild. It now writes the values every time.
     /// </summary>
     static Material GetOrCreateMaterial(string name, Color color, float smoothness = 0.3f,
                                         string textureName = null, float tileX = 1f, float tileY = 1f,
@@ -858,7 +854,7 @@ public static class ABACSceneBuilder
         if (sh == null) sh = Shader.Find("Universal Render Pipeline/Lit");
         if (sh == null)
         {
-            Debug.LogWarning($"[ABAC] หา shader ไม่เจอ ข้ามการสร้าง {name}");
+            Debug.LogWarning($"[ABAC] shader not found, skipping creation of {name}");
             return null;
         }
 
@@ -867,43 +863,43 @@ public static class ABACSceneBuilder
 
         AssetDatabase.CreateAsset(m, path);
         AssetDatabase.SaveAssets();
-        Debug.Log($"[ABAC] สร้าง material ใหม่: {path}");
+        Debug.Log($"[ABAC] created material: {path}");
         return m;
     }
 
     // ---------- lane markings ----------
 
     /// <summary>
-    /// เส้นแบ่งเลนสีขาวแบบถนนจริง
-    ///   • เส้นทึบ  = เส้นกึ่งกลางถนน (ห้ามข้าม) และเส้นขอบทาง
-    ///   • เส้นประ = แบ่งเลนที่วิ่งทิศเดียวกัน (เปลี่ยนเลนได้)
-    /// เว้นช่วงกลางแยกไว้ ไม่ลากทับ เหมือนแยกจริง
+    /// White lane markings as on a real road:
+    ///   - solid  = road centreline (no crossing) and the edge lines
+    ///   - dashed = between lanes running the same way (lane changes allowed)
+    /// The junction area is left unmarked, as it is in reality.
     /// </summary>
     static void BuildLaneMarkings()
     {
         var root = GetOrCreate("LaneMarkings", null, PrimitiveType.Cube, false).transform;
-        // ล้างของเดิมก่อน กันซ้อนตอนกดปุ่มซ้ำ
+        // Clear the old markings first, so pressing the button again does not stack them
         for (int i = root.childCount - 1; i >= 0; i--)
             Undo.DestroyObjectImmediate(root.GetChild(i).gameObject);
 
         Material white = GetOrCreateMaterial("LaneMarking_White", new Color(0.95f, 0.95f, 0.92f), 0.1f);
 
-        const float MARK_Y = 0.02f;   // ลอยเหนือผิวถนนนิดหน่อย กัน z-fighting
-        const float W = 0.22f;        // ความกว้างเส้น
-        const float EXT = 90f;        // ลากไกลจากแยกเท่าไหร่
+        const float MARK_Y = 0.02f;   // floats just above the road surface to avoid z-fighting
+        const float W = 0.22f;        // line width
+        const float EXT = 90f;        // how far from the junction the lines run
 
-        // กรอบสี่แยก — ไม่ลากเส้นทับบริเวณนี้
-        float jxMin = -8.2f, jxMax = 7.2f;      // ความกว้างถนน ABAC
-        float jzMax = 10.2f;                    // ขอบเหนือของถนนหลัก = จุดเริ่มเส้นถนน ABAC
+        // Junction box - no lines are drawn across this area
+        float jxMin = -8.2f, jxMax = 7.2f;      // width of the ABAC road
+        float jzMax = 10.2f;                    // north edge of the main road = where the ABAC road markings start
 
-        // ===== ถนนหลัก (ลากตามแกน X) =====
+        // ===== Main road (along X) =====
         SolidLineX(root, white, "Center_EW",  ROAD_Z,   -EXT, EXT, W * 1.3f, MARK_Y, jxMin, jxMax);
         SolidLineX(root, white, "Edge_North", 9.60f,    -EXT, EXT, W,        MARK_Y, jxMin, jxMax);
         SolidLineX(root, white, "Edge_South", -7.85f,   -EXT, EXT, W,        MARK_Y, jxMin, jxMax);
         DashLineX (root, white, "Dash_Ax_A",  (Z_AX + Z_A) / 2f,  -EXT, EXT, W, MARK_Y, jxMin, jxMax);
         DashLineX (root, white, "Dash_Bx_B",  (Z_BX + Z_B) / 2f,  -EXT, EXT, W, MARK_Y, jxMin, jxMax);
 
-        // ===== ถนนเข้า ABAC (ลากตามแกน Z ทางเหนือของแยก) =====
+        // ===== ABAC access road (along Z, north of the junction) =====
         float zStart = jzMax, zEnd = 95f;
         SolidLineZ(root, white, "Center_ABAC", (X_BX_IN + X_CB) / 2f, zStart, zEnd, W * 1.3f, MARK_Y);
         SolidLineZ(root, white, "Edge_ABAC_W", -7.10f,                zStart, zEnd, W,        MARK_Y);
@@ -911,7 +907,7 @@ public static class ABACSceneBuilder
         DashLineZ (root, white, "Dash_ABAC_In",  (X_AX_IN + X_BX_IN) / 2f, zStart, zEnd, W, MARK_Y);
         DashLineZ (root, white, "Dash_ABAC_Out", (X_CB + X_CA) / 2f,       zStart, zEnd, W, MARK_Y);
 
-        Debug.Log($"[ABAC] วาดเส้นแบ่งเลน {root.childCount} ชิ้น");
+        Debug.Log($"[ABAC] drew {root.childCount} lane-marking pieces");
     }
 
     static GameObject MarkPiece(Transform parent, Material mat, string name,
@@ -932,7 +928,7 @@ public static class ABACSceneBuilder
     static void SolidLineX(Transform p, Material m, string n, float z,
                            float x0, float x1, float w, float y, float skipMin, float skipMax)
     {
-        // ตัดเป็น 2 ท่อน เว้นช่วงกลางแยก
+        // Split into two sections, leaving the junction clear
         if (x0 < skipMin) MarkPiece(p, m, n + "_L",
             new Vector3((x0 + skipMin) / 2f, y, z), new Vector3(skipMin - x0, 0.02f, w));
         if (x1 > skipMax) MarkPiece(p, m, n + "_R",
@@ -953,7 +949,7 @@ public static class ABACSceneBuilder
         for (float x = x0; x < x1; x += DASH + GAP)
         {
             float cx = x + DASH / 2f;
-            if (cx > skipMin - DASH && cx < skipMax + DASH) continue;   // ข้ามกลางแยก
+            if (cx > skipMin - DASH && cx < skipMax + DASH) continue;   // skip the junction
             MarkPiece(p, m, $"{n}_{i++}", new Vector3(cx, y, z), new Vector3(DASH, 0.02f, w));
         }
     }
@@ -973,7 +969,7 @@ public static class ABACSceneBuilder
     static Material LoadMat(string path)
     {
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (m == null) Debug.LogWarning($"[ABAC] ไม่พบ material: {path}");
+        if (m == null) Debug.LogWarning($"[ABAC] material not found: {path}");
         return m;
     }
 

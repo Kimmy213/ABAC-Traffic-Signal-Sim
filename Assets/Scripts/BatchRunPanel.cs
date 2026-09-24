@@ -4,13 +4,13 @@ using System.Text;
 using System.IO;
 
 /// <summary>
-/// หน้าจอ Batch Run — โผล่ทางขวาอัตโนมัติเมื่อกดเริ่ม batch
+/// Batch Run screen - appears on the right automatically once a batch starts.
 ///
-///   • หลอดความคืบหน้า + ETA + run ที่กำลังรันอยู่
-///   • ตารางรายซีนาริโอ: Fixed กี่วิ / Adaptive กี่วิ / ใครเร็วกว่ากี่ %
-///   • พอจบ ขึ้นหน้าสรุปใหญ่ตรงกลางจอ พร้อมกราฟแท่งเทียบทุกซีนาริโอ
+///   - progress bar, ETA, and the run currently in flight
+///   - per-scenario table: Fixed seconds / Adaptive seconds / who is faster and by what percent
+///   - on completion, a full-screen summary with a bar chart comparing every scenario
 ///
-/// อ่านข้อมูลจาก ScenarioManager อย่างเดียว ไม่ได้ควบคุมอะไร (ยกเว้นปุ่มหยุด)
+/// Reads from ScenarioManager only; it controls nothing except the stop button.
 /// </summary>
 public class BatchRunPanel : MonoBehaviour
 {
@@ -29,8 +29,8 @@ public class BatchRunPanel : MonoBehaviour
     static readonly Color BG_PANEL   = new Color(0.09f, 0.10f, 0.13f, 0.96f);
     static readonly Color BG_CARD    = new Color(0.15f, 0.16f, 0.21f, 1f);
     static readonly Color BG_TRACK   = new Color(0.22f, 0.23f, 0.29f, 1f);
-    static readonly Color C_FIXED    = new Color(0.30f, 0.45f, 0.69f);   // น้ำเงิน
-    static readonly Color C_ADAPTIVE = new Color(0.87f, 0.52f, 0.32f);   // ส้ม
+    static readonly Color C_FIXED    = new Color(0.30f, 0.45f, 0.69f);   // blue
+    static readonly Color C_ADAPTIVE = new Color(0.87f, 0.52f, 0.32f);   // orange
     static readonly Color C_GOOD     = new Color(0.33f, 0.66f, 0.41f);
     static readonly Color C_BAD      = new Color(0.77f, 0.31f, 0.32f);
     static readonly Color C_TEXT     = new Color(0.92f, 0.93f, 0.95f);
@@ -108,7 +108,7 @@ public class BatchRunPanel : MonoBehaviour
         GUI.color = old;
     }
 
-    /// <summary>หลอดความคืบหน้า</summary>
+    /// <summary>Progress bar</summary>
     static void ProgressBar(Rect r, float t01, Color fill)
     {
         Fill(r, BG_TRACK);
@@ -185,19 +185,19 @@ public class BatchRunPanel : MonoBehaviour
         ProgressBar(bar, p, C_ADAPTIVE);
         GUILayout.Space(8);
 
-        // ---- เวลา ----
+        // ---- timing ----
         Row("Elapsed", FormatDuration(sm.ElapsedRealtime));
         Row("Remaining", FormatDuration(sm.EstimatedRemaining));
 
-        // ก่อน run แรกจบ ตัวเลขยังเป็นการคำนวณจาก timeScale ล้วน ๆ
-        // พอ run แรกจบจะเปลี่ยนไปใช้เวลาจริง ตัวเลขอาจกระโดดครั้งเดียว บอกไว้ก่อนจะได้ไม่งง
+        // Before the first run finishes this is derived from timeScale alone; afterwards it
+        // switches to measured time, so the number may jump once. Say so, to avoid confusion.
         if (sm.CompletedRuns == 0)
             GUILayout.Label("(rough estimate until the first run finishes)", sDim);
 
         Row("Sim speed", $"{Time.timeScale:0.#}x");
         GUILayout.Space(8);
 
-        // ---- run ปัจจุบัน ----
+        // ---- current run ----
         Rect cur = GUILayoutUtility.GetRect(w - 28f, 46f);
         Fill(cur, BG_CARD);
         bool isFixed = sm.CurrentController == DataLogger.ControllerType.Fixed;
@@ -213,7 +213,7 @@ public class BatchRunPanel : MonoBehaviour
 
         Divider(w - 28f);
 
-        // ---- ตารางผลรายซีนาริโอ ----
+        // ---- per-scenario results table ----
         GUILayout.Label("PER-SCENARIO RESULTS (mean wait)", sH2);
         GUILayout.Space(2);
 
@@ -238,7 +238,7 @@ public class BatchRunPanel : MonoBehaviour
 
         Divider(w - 28f);
 
-        // ---- ภาพรวมสด ----
+        // ---- live overview ----
         float fW, aW, pct;
         sm.GetOverall(out fW, out aW, out pct);
         if (fW >= 0f)
@@ -293,7 +293,7 @@ public class BatchRunPanel : MonoBehaviour
         }
         GUI.contentColor = oc;
 
-        // แท่งเทียบ 2 แถว
+        // two comparison bars
         float barX = row.x + 4f, barW = width - 60f;
         if (r.fixedWait.Count > 0 && maxWait > 0f)
         {
@@ -314,7 +314,7 @@ public class BatchRunPanel : MonoBehaviour
     {
         var sm = scenarioManager;
 
-        // ฉากหลังมืดทั้งจอ
+        // full-screen dim backdrop
         Fill(new Rect(0, 0, sw, sh), new Color(0f, 0f, 0f, 0.72f));
 
         float w = Mathf.Min(920f, sw - 60f);
@@ -335,7 +335,7 @@ public class BatchRunPanel : MonoBehaviour
                         $"wall-clock {FormatDuration(sm.ElapsedRealtime)}", sDim);
         GUILayout.Space(14);
 
-        // ---------- แถวตัวเลขใหญ่ ----------
+        // ---------- row of headline numbers ----------
         float cardW = (w - 56f - 24f) / 3f;
         Rect cards = GUILayoutUtility.GetRect(w - 56f, 108f);
 
@@ -353,7 +353,7 @@ public class BatchRunPanel : MonoBehaviour
 
         GUILayout.Space(16);
 
-        // ---------- กราฟแท่งรายซีนาริโอ ----------
+        // ---------- per-scenario bar chart ----------
         GUILayout.Label("BY SCENARIO", sH2);
         GUILayout.Space(4);
 

@@ -3,11 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
-/// Baseline controller: วนเฟสตายตัวตามลำดับที่กำหนดไว้ ไม่สนใจ demand จริง
-/// รองรับ "เฟสที่เปิดหลายเลนพร้อมกัน" (เช่น A+B กระแสตรงสวนทาง)
-/// เดิมอ้างอิงรอบสัญญาณ 120 วินาที/รอบ ตาม DOH Thailand (2019) — ปัจจุบันปรับเป็น 106s
-/// ตามที่ Kimmy จับเวลาจริงหน้างาน + Itim วิเคราะห์วิดีโอยืนยัน (A=40s/B=65s/Bx=20-23s/CB=31s แดง 73.5s)
-/// ดูรายละเอียดที่ LoadABACPreset() — ยืนยันแล้วว่าไฟเป็น fixed-time จริง ไม่ใช่ actuated (ดู reply_to_badin_4.md ข้อ 3)
+/// Baseline controller: cycles through a fixed phase order and ignores actual demand.
+/// Supports phases that open several lanes at once (e.g. A+B, opposing through movements).
+/// Originally used the 120 s cycle from DOH Thailand (2019); now 106 s, from Kimmy timing the
+/// real signal on site and Itim confirming it on video (A=40s / B=65s / Bx=20-23s / CB=31s, red 73.5s).
+/// See LoadABACPreset() for detail - confirmed fixed-time, not actuated (reply_to_badin_4.md item 3).
 /// </summary>
 public class FixedController : MonoBehaviour
 {
@@ -15,7 +15,7 @@ public class FixedController : MonoBehaviour
     public class FixedPhase
     {
         public string phaseName = "Phase";
-        [Tooltip("ชื่อเลนที่ได้ไฟเขียวในเฟสนี้ (ต้องไม่ conflict กันเอง)")]
+        [Tooltip("Lanes that get green in this phase (they must not conflict with each other)")]
         public string[] greenLanes;
         public float greenDuration = 30f;
     }
@@ -23,7 +23,7 @@ public class FixedController : MonoBehaviour
     [Header("Intersection")]
     public IntersectionConfig config;
 
-    [Header("Fixed Phase Plan (วนตามลำดับนี้)")]
+    [Header("Fixed Phase Plan (cycled in this order)")]
     public List<FixedPhase> phases = new List<FixedPhase>();
 
     [Header("Inter-green Timing (ITE)")]
@@ -35,7 +35,7 @@ public class FixedController : MonoBehaviour
     public bool verboseLog = false;
 
     // runtime
-    private List<int>[] phaseLaneIndices;   // แปลงชื่อเลน -> signal index ไว้ล่วงหน้า
+    private List<int>[] phaseLaneIndices;   // lane names resolved to signal indices ahead of time
     private List<int> currentGreen = new List<int>();
     private int currentPhase = 0;
     private string statusText = "Idle";
@@ -45,7 +45,7 @@ public class FixedController : MonoBehaviour
         if (config == null) config = FindFirstObjectByType<IntersectionConfig>();
         if (config == null)
         {
-            Debug.LogError("[FixedController] ไม่พบ IntersectionConfig ในซีน");
+            Debug.LogError("[FixedController] no IntersectionConfig found in the scene");
             return;
         }
         config.EnsureBuilt();
@@ -68,24 +68,24 @@ public class FixedController : MonoBehaviour
                     int s = config.SignalIndexOf(name);
                     if (s == -1)
                     {
-                        Debug.LogError($"[FixedController] เฟส '{phase.phaseName}' อ้างถึงเลน '{name}' " +
-                                       $"ที่ไม่มีอยู่ใน IntersectionConfig (หรือไม่ใช่เลนที่มีไฟ)");
+                        Debug.LogError($"[FixedController] phase '{phase.phaseName}' refers to lane '{name}' " +
+                                       $"which is not in IntersectionConfig (or is not a signalised lane)");
                         continue;
                     }
                     if (!indices.Contains(s)) indices.Add(s);
                 }
             }
 
-            // ===== ตรวจ conflict ภายในเฟสเดียวกัน — กันตั้งค่าผิดแล้วรถชนกลางแยก =====
+            // ===== Check for conflicts inside one phase - guards against a misconfiguration causing a collision =====
             for (int i = 0; i < indices.Count; i++)
             {
                 for (int j = i + 1; j < indices.Count; j++)
                 {
                     if (config.AreConflicting(indices[i], indices[j]))
                     {
-                        Debug.LogError($"[FixedController] เฟส '{phase.phaseName}' เปิด " +
-                                       $"{config.SignalName(indices[i])} กับ {config.SignalName(indices[j])} " +
-                                       $"พร้อมกัน แต่สองเลนนี้ conflict กัน — ตัด {config.SignalName(indices[j])} ออก");
+                        Debug.LogError($"[FixedController] phase '{phase.phaseName}' opens " +
+                                       $"{config.SignalName(indices[i])} and {config.SignalName(indices[j])} " +
+                                       $"together, but those two conflict - dropping {config.SignalName(indices[j])}");
                         indices.RemoveAt(j);
                         j--;
                     }
@@ -109,7 +109,7 @@ public class FixedController : MonoBehaviour
         StopAllCoroutines();
         currentPhase = 0;
         currentGreen.Clear();
-        BuildPhaseCache();       // เผื่อมีการแก้ค่าใน Inspector ระหว่าง batch
+        BuildPhaseCache();       // in case values were edited in the Inspector during a batch
         SetAllRed();
         StartCoroutine(RunCycle());
     }
@@ -144,7 +144,7 @@ public class FixedController : MonoBehaviour
     {
         if (phases.Count == 0)
         {
-            Debug.LogError("[FixedController] ยังไม่ได้ตั้ง phase plan — กด 'Load ABAC 4-Phase Preset' ที่ context menu ก่อน");
+            Debug.LogError("[FixedController] no phase plan set - use 'Load ABAC 4-Phase Preset' from the context menu first");
             yield break;
         }
 
@@ -153,7 +153,7 @@ public class FixedController : MonoBehaviour
             List<int> greenNow = phaseLaneIndices[currentPhase];
             FixedPhase phase = phases[currentPhase];
 
-            // ===== เปิดเขียวเฉพาะเลนที่ยังไม่เขียว (เลนที่ต่อเนื่องจากเฟสก่อนไม่ต้องกระพริบ) =====
+            // ===== Turn green only the lanes not already green (continuing lanes must not flicker) =====
             List<int> turningOn = Except(greenNow, currentGreen);
             SetLanes(turningOn, TrafficLight.LightState.Green);
             currentGreen = new List<int>(greenNow);
@@ -164,7 +164,7 @@ public class FixedController : MonoBehaviour
 
             yield return new WaitForSeconds(phase.greenDuration);
 
-            // ===== หาว่าเฟสถัดไปยังต้องเขียวเลนไหนบ้าง เลนที่ต้อง "ตัด" เท่านั้นที่ขึ้นเหลือง =====
+            // ===== Work out which lanes the next phase still needs; only the dropped ones go yellow =====
             int nextPhase = (currentPhase + 1) % phases.Count;
             List<int> greenNext = phaseLaneIndices[nextPhase];
             List<int> dropping = Except(greenNow, greenNext);
@@ -195,7 +195,7 @@ public class FixedController : MonoBehaviour
         return result;
     }
 
-    /// <summary>ความยาวรอบสัญญาณรวม (วินาที) — ใช้ตรวจว่าตรง 120s ตาม DOH หรือยัง</summary>
+    /// <summary>Total cycle length in seconds - used to check it against the DOH 120 s figure.</summary>
     public float GetCycleLength()
     {
         float total = 0f;
@@ -215,34 +215,34 @@ public class FixedController : MonoBehaviour
     void PrintCycleLength()
     {
         if (config != null) { config.EnsureBuilt(); BuildPhaseCache(); }
-        Debug.Log($"[FixedController] Cycle length = {GetCycleLength():F0}s (เป้าหมาย 106s ตาม SP1_HANDOFF_v2)");
+        Debug.Log($"[FixedController] Cycle length = {GetCycleLength():F0}s (target 106s per SP1_HANDOFF_v2)");
     }
 
     /// <summary>
-    /// แผนเฟสตายตัวของแยก ABAC — 3 เฟส คุม 5 ไฟ (A ใช้ TrafficLight ร่วมกับ A2) รวม 107 วินาที/รอบ
-    ///   P1 A+A2+B  40s  (กระแสตรงสวนทาง + เลนแชร์นอก A2 วิ่งพร้อมกันได้ — A2 ใช้ไฟดวงเดียวกับ A)
-    ///   P2 B+Bx    20s  (ขาตะวันออกตรง + เลี้ยวขวาเข้า ABAC แบบ protected — ⭐ นี่คือคอขวดจริง ดูหมายเหตุด้านล่าง)
-    ///   P3 CB      31s  (ระบายรถออกจาก ABAC)
-    ///   inter-green 3 ครั้ง x (3s เหลือง + 2s แดงทั้งหมด) = 15s
-    ///   รวม 40+20+31+15 = 106s
+    /// Fixed phase plan for ABAC - 3 phases driving 5 signals (A shares a TrafficLight with A2).
+    ///   P1 A+A2+B  40s  (opposing through movements plus the shared outer lane A2, on A's signal head)
+    ///   P2 B+Bx    20s  (eastbound through plus the protected right turn into ABAC - the real bottleneck)
+    ///   P3 CB      31s  (clears traffic out of ABAC)
+    ///   inter-green 3 times x (3s yellow + 2s all-red) = 15s
+    ///   total 40+20+31+15 = 106s
     ///
-    ///   ⭐ ค่าชุดนี้มาจาก Kimmy จับเวลาไฟจริงหน้างาน (A=50/B=90-95/Bx=20/CB=31/3/75 ที่นับสด — เชื่อถือ CB
-    ///   ได้สุดเพราะมีจอนับถอยหลัง) แล้ว Itim เอาไปเทียบกับวิดีโอที่ Kimmy ถ่ายมา วิเคราะห์ซ้ำได้ A=40s / B=65s /
-    ///   Bx=20-23s / CB=31s เขียว, แดง C=73.5s (วัดซ้ำ 2 รอบได้เท่ากันเป๊ะ → ยืนยันเป็น fixed-time จริง ไม่ใช่
+    ///   These values come from Kimmy timing the real signal on site (A=50 / B=90-95 / Bx=20 / CB=31/3/75
+    ///   counted live, CB the most reliable because it has a countdown display), which Itim then checked
+    ///   against Kimmy's video and re-derived as A=40s / B=65s / Bx=20-23s / CB=31s green, C red 73.5s
     ///   actuated)
     ///
-    ///   ⭐ อัปเดตตาม SP1_HANDOFF_v2: Itim ให้ตารางสเตจเต็มมาแล้ว และสั่งให้ **ใช้ Bx = 20s** (ไม่ใช่ 21 หรือ 23)
-    ///   เพราะค่าจับด้วยนาฬิกาได้ 20.0s พอดี ส่วน 23s มาจากการจับอีกวิธี — ช่วงคลาด ±3s นี้ไม่เปลี่ยนข้อสรุป
-    ///   (Bx oversaturated ทั้งช่วง: v/c 1.21 ที่ 23s, 1.51 ที่ 20s) ตารางสเตจจริงที่ตรงกับ preset นี้เป๊ะ ๆ:
-    ///     t=  0-40  A เขียว + B เขียว     |  t= 40-43 A เหลือง (B ยังเขียว)  |  t= 43-45 all-red
-    ///     t= 45-65  Bx เขียว + B เขียว    |  t= 65-68 B+Bx เหลืองพร้อมกัน    |  t= 68-70 all-red
-    ///     t= 70-101 CB เขียว              |  t=101-104 CB เหลือง             |  t=104-106 all-red
+    ///   Updated per SP1_HANDOFF_v2: Itim supplied the full stage table and specified Bx = 20s, not 21 or 23,
+    ///   because a stopwatch gave exactly 20.0s while 23s came from a different method. The +/-3s spread
+    ///   does not change the conclusion (Bx is oversaturated throughout: v/c 1.21 at 23s, 1.51 at 20s).
+    ///     t=  0-40  A green + B green   |  t= 40-43 A yellow (B still green) |  t= 43-45 all-red
+    ///     t= 45-65  Bx green + B green  |  t= 65-68 B+Bx yellow together     |  t= 68-70 all-red
+    ///     t= 70-101 CB green            |  t=101-104 CB yellow               |  t=104-106 all-red
     ///
-    ///   ⚠️ v/c จากค่าชุดนี้ (handoff v2): Bx = **1.51** (ล้น คิวโต 3.7 คัน/รอบ กินที่จอด 78m หมดใน 5.7 นาที
-    ///   แล้วไปบล็อกสี่แยกถัดไป), CB = **1.04** (เต็มพอดี), A และ B = **0.25** ทั้งคู่ (ได้เขียวเกินที่ต้องใช้ 4 เท่า)
-    ///   — ข้อเสนอ "ย้ายเขียว **10s** จาก A ไป Bx" (Bx → v/c 0.95) เป็น**นโยบายที่ควร
-    ///   เขียนในรายงาน/ให้ Adaptive หาเจอเอง** ไม่ได้เอามาแก้ preset นี้ตรง ๆ เพราะ Fixed ต้องจำลองปัญหาจริงของ
-    ///   ระบบเดิมไว้ ถ้าแก้ preset ให้ฉลาดขึ้นเอง จะเสียจุดประสงค์ของการเทียบ Fixed vs Adaptive ไป
+    ///   v/c from this set (handoff v2): Bx = 1.51 (over capacity; the queue grows 3.7 veh per cycle and
+    ///   fills the 78 m of storage in 5.7 minutes, then blocks the next junction), CB = 1.04 (exactly at
+    ///   capacity), A and B = 0.25 each (four times the green they need). The proposal to move 10s of green
+    ///   from A to Bx (taking Bx to v/c 0.95) is a policy for the report, or for Adaptive to find on its own.
+    ///   It is deliberately not applied here: Fixed has to reproduce the real problem, or the comparison fails.
     /// </summary>
     [ContextMenu("Load ABAC 4-Phase Preset (106s cycle)")]
     public void LoadABACPreset()
@@ -259,7 +259,7 @@ public class FixedController : MonoBehaviour
         if (config == null) config = FindFirstObjectByType<IntersectionConfig>();
         if (config != null) { config.EnsureBuilt(); BuildPhaseCache(); }
 
-        Debug.Log($"[FixedController] โหลด preset 3 เฟส / 4 ไฟ แล้ว — cycle = {GetCycleLength():F0}s");
+        Debug.Log($"[FixedController] loaded the 3-phase / 4-signal preset - cycle = {GetCycleLength():F0}s");
     }
 
     void OnGUI()

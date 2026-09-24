@@ -1,71 +1,71 @@
 ==================================================================
-ABAC TRAFFIC SIGNAL SIMULATION — ผลการวิเคราะห์
+ABAC TRAFFIC SIGNAL SIMULATION - ANALYSIS RESULTS
 ==================================================================
-จำนวน run ทั้งหมดในไฟล์สรุป : 216
-จับคู่ Fixed-Adaptive ได้     : 108 คู่
-Scenario ที่พบ                : ABACEvent, EveningPeak, MiddayNormal, MorningPeak
+total runs in the summary file : 216
+Fixed-Adaptive pairs matched   : 108
+scenarios found                : ABACEvent, EveningPeak, MiddayNormal, MorningPeak
 
 
-### 1. AVERAGE WAITING TIME (ตัวชี้วัดหลัก) ###
+### 1. AVERAGE WAITING TIME (primary measure) ###
 
 ------------------------------------------------------------------
-Average waiting time (วินาที)   (n = 108 pairs)
+Average waiting time (seconds)   (n = 108 pairs)
 ------------------------------------------------------------------
   Fixed     : mean =   40.763   sd =  30.054
   Adaptive  : mean =   31.597   sd =  27.306
-  ผลต่าง (Fixed - Adaptive) = +9.165  (+22.5%)
-  95% CI ของผลต่าง         = [7.722, 10.609]
+  difference (Fixed - Adaptive) = +9.165  (+22.5%)
+  95% CI of the difference     = [7.722, 10.609]
   paired t-test            : t(107) = 12.5853,  p = 7.76162e-23
   Wilcoxon signed-rank     : W = 95.0,  p = 2.5571e-18
   Cohen's d (paired)       : 1.211  (large)
-  Shapiro-Wilk ของผลต่าง   : p = 5.12567e-10  (ผลต่างไม่ normal -> อ้างอิง Wilcoxon ด้วย)
-  => Adaptive ดีกว่าอย่างมีนัยสำคัญ
+  Shapiro-Wilk on differences  : p = 5.12567e-10  (differences not normal -> cite Wilcoxon as well)
+  => Adaptive significantly better
 
 
 ### 2. MAXIMUM WAITING TIME (worst case) ###
 
 ------------------------------------------------------------------
-Maximum waiting time (วินาที)   (n = 108 pairs)
+Maximum waiting time (seconds)   (n = 108 pairs)
 ------------------------------------------------------------------
   Fixed     : mean =  151.269   sd = 100.191
   Adaptive  : mean =  111.013   sd =  82.033
-  ผลต่าง (Fixed - Adaptive) = +40.256  (+26.6%)
-  95% CI ของผลต่าง         = [34.654, 45.858]
+  difference (Fixed - Adaptive) = +40.256  (+26.6%)
+  95% CI of the difference     = [34.654, 45.858]
   paired t-test            : t(107) = 14.2462,  p = 1.83568e-26
   Wilcoxon signed-rank     : W = 89.0,  p = 2.17319e-18
   Cohen's d (paired)       : 1.371  (large)
-  Shapiro-Wilk ของผลต่าง   : p = 0.00105574  (ผลต่างไม่ normal -> อ้างอิง Wilcoxon ด้วย)
-  => Adaptive ดีกว่าอย่างมีนัยสำคัญ
+  Shapiro-Wilk on differences  : p = 0.00105574  (differences not normal -> cite Wilcoxon as well)
+  => Adaptive significantly better
 
 
-### 3. THROUGHPUT (รถที่ระบายได้) ###
+### 3. THROUGHPUT (vehicles cleared) ###
 
 ------------------------------------------------------------------
-Vehicles cleared ต่อ run   (n = 108 pairs)
+Vehicles cleared per run   (n = 108 pairs)
 ------------------------------------------------------------------
   Fixed     : mean = 1201.454   sd = 503.131
   Adaptive  : mean = 1244.139   sd = 516.176
-  ผลต่าง (Fixed - Adaptive) = -42.685  (-3.6%)
-  95% CI ของผลต่าง         = [-59.355, -26.015]
+  difference (Fixed - Adaptive) = -42.685  (-3.6%)
+  95% CI of the difference     = [-59.355, -26.015]
   paired t-test            : t(107) = -5.0760,  p = 1.63666e-06
   Wilcoxon signed-rank     : W = 976.0,  p = 5.88823e-08
   Cohen's d (paired)       : -0.488  (small)
-  Shapiro-Wilk ของผลต่าง   : p = 6.69342e-16  (ผลต่างไม่ normal -> อ้างอิง Wilcoxon ด้วย)
-  => Adaptive ดีกว่าอย่างมีนัยสำคัญ
+  Shapiro-Wilk on differences  : p = 6.69342e-16  (differences not normal -> cite Wilcoxon as well)
+  => Adaptive significantly better
 
 
 ### 4. STARVATION EVENTS (success criteria) ###
-  Fixed    : รวม 0 events
-  Adaptive : รวม 7887 events  (เกิดใน 107/108 run)
+  Fixed    : 0 events in total
+  Adaptive : 7887 events in total  (occurring in 107/108 runs)
 
-  หมายเหตุสำคัญ: ในระบบนี้ 'starvation event' = กลไกกันอดทำงาน (ตัดเฟสให้เลนที่รอนาน)
-  ไม่ใช่ 'เลนโดนอดจริง' — ค่ามากกว่า 0 แปลว่ากลไกทำหน้าที่ของมัน ไม่ใช่ระบบล้มเหลว
-  ถ้าจะเคลม 'zero starvation' ให้เช็คจาก MaxWaitTime ว่าไม่มี run ไหนเกิน threshold แทน
-  -> run ที่ MaxWaitTime ของ Adaptive เกิน 60s : 64/108
+  Important: in this system a starvation event means the anti-starvation mechanism fired
+  (cutting a phase for a lane that had waited), not that a lane was actually starved.
+  Above 0 means the mechanism did its job. For a zero-starvation claim, check MaxWaitTime instead.
+  -> runs where Adaptive MaxWaitTime exceeded 60s : 64/108
 
 
-### 5. แยกตาม SCENARIO ###
-  Scenario         n    Fixed    Adapt     ลด%          p      d
+### 5. BY SCENARIO ###
+  Scenario         n    Fixed    Adapt   Cut %          p      d
   --------------------------------------------------------------
   ABACEvent       27    92.27    77.29   16.2%   1.98e-06   1.17
   EveningPeak     27    25.28    21.81   13.7%   4.01e-21   5.48
@@ -73,8 +73,8 @@ Vehicles cleared ต่อ run   (n = 108 pairs)
   MorningPeak     27    22.81    12.89   43.5%   7.02e-29  11.01
 
 
-### 6. แยกตามเลน (จาก detailed CSV) ###
-  Lane        Fixed   Adaptive      ลด%
+### 6. BY LANE (from the detailed CSV) ###
+  Lane        Fixed   Adaptive    Cut %
   -----------------------------------
   A           51.68      49.22     4.7%
   Ax          19.93      18.77     5.8%
@@ -84,13 +84,13 @@ Vehicles cleared ต่อ run   (n = 108 pairs)
   CA          10.16      11.98   -17.9%
   A2          17.59      15.26    13.2%
 
-  ตรวจ sanity: เลนฟรี Ax และ CA ควรมีค่าใกล้ 0 (ไม่มีไฟให้รอ)
+  Sanity check: the free lanes Ax and CA should be near 0 (no signal to wait at)
 
 
 ==================================================================
-ประโยคสำเร็จรูปสำหรับใส่ในรายงาน / abstract
+Ready-made sentence for the report or abstract
 ==================================================================
-จากการทดลอง 108 คู่ (paired design, seed ร่วมกัน) พบว่า adaptive controller
-ทำให้เวลารอเฉลี่ยลดลงจาก 40.76 วินาที เหลือ 31.60 วินาที (ผลต่างเฉลี่ย 9.17
-วินาที หรือ 22.5%, 95% CI [7.72, 10.61]) ซึ่งมีนัยสำคัญทางสถิติ (paired
-t-test: t(107) = 12.59, p = 7.762e-23, Cohen's d = 1.21 ซึ่งถือว่า large)
+Across 108 pairs (paired design, shared seeds), the adaptive controller
+cut the mean waiting time from 40.76 seconds to 31.60 seconds (a mean difference of 9.17
+seconds, or 22.5%, 95% CI [7.72, 10.61]), which is statistically significant (paired
+t-test: t(107) = 12.59, p = 7.762e-23, Cohen's d = 1.21, considered large)

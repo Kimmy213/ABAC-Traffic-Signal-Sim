@@ -43,8 +43,12 @@ sysinfo.txt
 Assets/_Recovery/
 Assets/_Recovery.meta
 
-# ผลคอมไพล์ของชุดเทสนอก Unity
+# Compile output of the out-of-Unity test suites
 Tests/harness/_build/
 
-# zip ที่ทำไว้ส่งให้เพื่อน — เป็นของซ้ำกับที่ track อยู่แล้ว ไม่ต้องเข้า git
+# Zips made to send to teammates - duplicates of files already tracked, keep them out of git
 SimulationResults/*.zip
+
+# Python bytecode (created when the Python tests or tools/demo_soda.py import soda.py)
+__pycache__/
+*.pyc

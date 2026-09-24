@@ -1,0 +1,2 @@
+ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents,StartupLostTime,SaturationHeadway,SnapshotInterval,CollectCount,CollectDuration,SkippedHeads,QueueStartResets,IdleLaneSeconds,TieBreaksApplied,TieBreaksExcludingBx
+Fixed,T4 · Starvation test,2026-09-14 11:16:34,81,81,24.55,72.70,0,2.95,2.31,2.0,0,0.0,0,0,0.0,0,0

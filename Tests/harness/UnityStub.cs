@@ -1,4 +1,4 @@
-// Minimal UnityEngine stub — ใช้เฉพาะ syntax/type check ด้วย mcs เท่านั้น ไม่ใช่ของจริง
+// Minimal UnityEngine stub - only for syntax and type checking with mcs. Not the real thing.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -13,18 +13,34 @@ namespace UnityEngine
         public static Vector3 up => new Vector3(0, 1, 0);
         public static Vector3 zero => new Vector3(0, 0, 0);
         public static Vector3 one => new Vector3(1, 1, 1);
-        public float magnitude => 0f;
-        public Vector3 normalized => this;
-        public static float Dot(Vector3 a, Vector3 b) => 0f;
-        public static Vector3 Cross(Vector3 a, Vector3 b) => a;
-        public static float Distance(Vector3 a, Vector3 b) => 0f;
-        public static float Angle(Vector3 a, Vector3 b) => 0f;
-        public static Vector3 operator +(Vector3 a, Vector3 b) => a;
-        public static Vector3 operator -(Vector3 a, Vector3 b) => a;
-        public static Vector3 operator *(Vector3 a, float b) => a;
-        public static Vector3 operator *(float b, Vector3 a) => a;
-        public static Vector3 operator /(Vector3 a, float b) => a;
-        public static Vector3 Lerp(Vector3 a, Vector3 b, float t) => a;
+        public static Vector3 right => new Vector3(1, 0, 0);
+        // 15 Sep 2026: every operator used to return a and Dot returned 0, which meant there was
+        //    no vector arithmetic at all. No test could touch vehicle behaviour (car-following,
+        //    distance to the stop line) even though both recent bugs - cars skidding across the
+        //    line when a queue is placed, and the whole queue launching at once - lived there.
+        //    It is real arithmetic now, so HeadwayTest can run a queue through the real CarAgent.
+        public float magnitude => (float)Math.Sqrt(x * x + y * y + z * z);
+        public Vector3 normalized
+        {
+            get { float m = magnitude; return m < 1e-6f ? zero : new Vector3(x / m, y / m, z / m); }
+        }
+        public static float Dot(Vector3 a, Vector3 b) => a.x * b.x + a.y * b.y + a.z * b.z;
+        public static Vector3 Cross(Vector3 a, Vector3 b) => new Vector3(
+            a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+        public static float Distance(Vector3 a, Vector3 b) => (a - b).magnitude;
+        public static float Angle(Vector3 a, Vector3 b)
+        {
+            float d = a.normalized.x * b.normalized.x + a.normalized.y * b.normalized.y
+                    + a.normalized.z * b.normalized.z;
+            return (float)(Math.Acos(Math.Max(-1.0, Math.Min(1.0, d))) * 180.0 / Math.PI);
+        }
+        public static Vector3 operator +(Vector3 a, Vector3 b) => new Vector3(a.x + b.x, a.y + b.y, a.z + b.z);
+        public static Vector3 operator -(Vector3 a, Vector3 b) => new Vector3(a.x - b.x, a.y - b.y, a.z - b.z);
+        public static Vector3 operator *(Vector3 a, float b) => new Vector3(a.x * b, a.y * b, a.z * b);
+        public static Vector3 operator *(float b, Vector3 a) => new Vector3(a.x * b, a.y * b, a.z * b);
+        public static Vector3 operator /(Vector3 a, float b) => new Vector3(a.x / b, a.y / b, a.z / b);
+        public static Vector3 Lerp(Vector3 a, Vector3 b, float t) => a + (b - a) * Mathf.Clamp01(t);
+        public override string ToString() => $"({x:F2}, {y:F2}, {z:F2})";
     }
 
     public struct Quaternion
@@ -58,15 +74,19 @@ namespace UnityEngine
     public static class Mathf
     {
         public static int CeilToInt(float f) => (int)System.Math.Ceiling(f);
+        public static int FloorToInt(float f) => (int)System.Math.Floor(f);
+        public const float Rad2Deg = 57.29578f;
+        public static float Sin(float f) => (float)System.Math.Sin(f);
+        public static float Cos(float f) => (float)System.Math.Cos(f);
 
         public static float Max(float a, float b, float c) => Max(Max(a,b),c);
-        public static float Exp(float a) => a;
-        public static float Round(float a) => a;
-        public static float Lerp(float a, float b, float t) => a;
+        public static float Exp(float a) => (float)System.Math.Exp(a);
+        public static float Round(float a) => (float)System.Math.Round(a);
+        public static float Lerp(float a, float b, float t) => a + (b - a) * Clamp01(t);
         public const float Infinity = float.PositiveInfinity;
         public const float Deg2Rad = 0.0174532924f;
-        public static float Log(float f) => 0f;
-        public static float Sqrt(float f) => 0f;
+        public static float Log(float f) => (float)System.Math.Log(f);
+        public static float Sqrt(float f) => (float)System.Math.Sqrt(f);
         public static float Abs(float f) => f < 0 ? -f : f;
         public static float Clamp01(float v) => v < 0 ? 0 : (v > 1 ? 1 : v);
         public static int RoundToInt(float v) => (int)System.Math.Round(v);
@@ -75,7 +95,13 @@ namespace UnityEngine
         public static int Max(int a, int b) => a > b ? a : b;
         public static int Min(int a, int b) => a < b ? a : b;
         public static float Clamp(float v, float a, float b) => v < a ? a : (v > b ? b : v);
-        public static float MoveTowards(float a, float b, float c) => a;
+        // Used to return a unchanged, so cars never accelerated. Together with Sqrt returning 0
+        // that zeroed the whole car-following term, and no test could catch a queue-launch bug.
+        public static float MoveTowards(float a, float b, float c)
+        {
+            if (System.Math.Abs(b - a) <= c) return b;
+            return a + System.Math.Sign(b - a) * c;
+        }
         public static bool Approximately(float a, float b) => System.Math.Abs(a - b) < 1e-5f;
         public static int Clamp(int v, int a, int b) => v < a ? a : (v > b ? b : v);
     }
@@ -156,7 +182,10 @@ namespace UnityEngine
         public void SetParent(Transform p) { }
         public void SetParent(Transform p, bool worldPositionStays) { }
         public Vector3 TransformPoint(Vector3 v) => v;
-        public void Translate(Vector3 v) { }
+        // This stub only models motion along the object's own heading, which is all
+        // CarAgent.MoveForward does: transform.Translate(Vector3.forward * v) in Unity
+        // is position += rotation * (0,0,v).
+        public void Translate(Vector3 v) { position += forward * v.z; }
     }
 
     public class Coroutine { }
@@ -171,7 +200,7 @@ namespace UnityEngine
     {
         public bool enabled;
         public GameObject gameObject;
-        // stub: เก็บ enumerator ไว้ให้ test ไล่ step เองได้
+        // stub: keeps the enumerator so a test can step it manually
         public IEnumerator captured;
         public Coroutine StartCoroutine(IEnumerator r) { captured = r; return null; }
         public void StopAllCoroutines() { captured = null; }
@@ -225,6 +254,7 @@ namespace UnityEngine
 
     public class HeaderAttribute : Attribute { public HeaderAttribute(string s) { } }
     public class TooltipAttribute : Attribute { public TooltipAttribute(string s) { } }
+    public class HideInInspectorAttribute : Attribute { }
     public class RangeAttribute : Attribute { public RangeAttribute(float a, float b) { } }
     public class ContextMenuAttribute : Attribute { public ContextMenuAttribute(string s) { } }
     public class SerializeFieldAttribute : Attribute { }

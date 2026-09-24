@@ -25,25 +25,25 @@ public class DataLogger : MonoBehaviour
     }
 
     /// <summary>
-    /// หนึ่งเฟสไฟเขียว — บันทึกไว้เพื่อวัด "เขียวเปล่า" ที่ gap-out ปัจจุบันมองไม่เห็น
+    /// One green phase - recorded to measure the idle green that the current gap-out cannot see.
     ///
-    /// ที่มา (Ratchnon): gap-out ยิงเมื่อ "ทุกเลนในกลุ่มว่าง" ถ้าเลนหนึ่งว่างก่อน มันจะติดเขียวเปล่ารอ
-    /// อีกเลนจนหมด เช่นกลุ่ม {B=10, Bx=3} -> G = 26.05s แต่ Bx ว่างตั้งแต่ ~9.88s
-    /// = เขียวเปล่า 16.17s และตลอดช่วงนั้น Bx บล็อก A อยู่ (A ชนกับ Bx แต่ไม่ชนกับ B)
+    /// Origin (Ratchanon): gap-out fires only when every lane in the group is empty, so if one lane
+    /// empties first the group holds green waiting for the other. For {B=10, Bx=3}, G = 26.05 s but Bx
+    /// is empty from ~9.88 s = 16.17 s idle green, during all of which Bx blocks A (A conflicts with Bx, not B).
     ///
-    /// SkippedHeads มองเคสนี้ไม่เห็น เพราะเลนนั้น "มีรถ" ตอนเฟสเริ่ม
-    /// ต้องเทียบ greenGiven กับเวลาที่แต่ละเลนว่างจริง จึงจะรู้ว่าคุ้มแก้ไหม
+    /// SkippedHeads cannot see this case, because the lane did have vehicles when the phase began.
+    /// Only comparing greenGiven against when each lane actually emptied shows whether fixing it pays.
     /// </summary>
     private struct PhaseRecord
     {
         public int index;
         public float startTime;
         public string group;
-        public float greenGiven;      // G ที่สูตรคำนวณให้
-        public float greenUsed;       // เวลาที่ใช้จริง (อาจสั้นกว่าถ้าโดน interrupt)
+        public float greenGiven;      // G as computed by the formula
+        public float greenUsed;       // time actually used (shorter if an interrupt fired)
         public string endReason;
-        public string laneEmptyAt;    // "B=25.1;Bx=9.9" — วินาทีที่แต่ละเลนว่าง (nan = ไม่เคยว่าง)
-        public float idleLaneSeconds; // ผลรวมเวลาที่เลนว่างแล้วยังติดเขียว = เขียวเปล่าที่กู้คืนได้
+        public string laneEmptyAt;    // "B=25.1;Bx=9.9" - second each lane emptied (nan = never emptied)
+        public float idleLaneSeconds; // total time a lane sat empty while still green = recoverable idle green
     }
 
     private List<PhaseRecord> phases = new List<PhaseRecord>();
@@ -80,7 +80,7 @@ public class DataLogger : MonoBehaviour
         });
     }
 
-    /// <summary>บันทึกหนึ่งเฟส — AdaptiveController เรียกตอนไฟเขียวจบ</summary>
+    /// <summary>Records one phase - AdaptiveController calls this when the green ends.</summary>
     public void LogPhase(int index, float startTime, string group, float greenGiven, float greenUsed,
                          string endReason, string laneEmptyAt, float idleLaneSeconds)
     {
@@ -97,7 +97,7 @@ public class DataLogger : MonoBehaviour
         });
     }
 
-    /// <summary>รวมเวลา "เลนว่างแล้วยังติดเขียว" ทั้ง run — ตัวเลขที่ตอบว่าคุ้มแก้ gap-out ไหม</summary>
+    /// <summary>Total "lane empty but still green" time over the run - answers whether fixing gap-out pays.</summary>
     public float GetIdleLaneSeconds()
     {
         float t = 0f;
@@ -163,18 +163,18 @@ public class DataLogger : MonoBehaviour
         Debug.Log($"[DataLogger] Exported {records.Count} records to: {path}");
     }
 
-    // ===== หัวตารางปัจจุบันของ summary CSV =====
-    // ⚠️ ถ้าแก้บรรทัดนี้เมื่อไหร่ ไฟล์เก่าจะถูกย้ายไปเก็บอัตโนมัติ ไม่ append ปนกัน
-    // StartupLostTime / SaturationHeadway = ค่าที่ "ใช้จริงตอนรันรอบนั้น" ไม่ใช่ค่าที่เขียนไว้ในโค้ด
-    // มีไว้เพื่อให้ทุกแถวของผลลัพธ์พิสูจน์ตัวเองได้ว่าใช้ค่าที่วัดจริง (2.95 / 2.31) หรือค่าตำรา
-    // StartupLostTime / SaturationHeadway = ค่าที่ "ใช้จริงตอนรันรอบนั้น" ไม่ใช่ค่าที่เขียนไว้ในโค้ด
-    // มีไว้เพื่อให้ทุกแถวของผลลัพธ์พิสูจน์ตัวเองได้ว่าใช้ค่าที่วัดจริง (2.95 / 2.31) หรือค่าตำรา
+    // ===== Current header row of the summary CSV =====
+    // If this line ever changes, the old file is archived automatically rather than appended to.
+    // StartupLostTime / SaturationHeadway are the values actually in force for that run, not the
+    // ones written in the code, so every result row can prove for itself whether it used the
+    // measured constants (2.95 / 2.31) or the textbook ones.
     //
-    // สี่คอลัมน์ท้ายเป็นของ SODA (sampled observation):
-    //   SnapshotInterval  ยืนยันว่า run นี้ใช้ 2 วิจริง (เผื่อทำ sensitivity 1/2/4 วิ)
-    //   CollectCount      COLLECT ถูกเรียกกี่ครั้ง — คาดว่าตอนพีคเกือบ 0 เพราะอยู่ใน SERVE loop ตลอด
-    //   SkippedHeads      หัวไฟที่ count = 0 แล้วถูกข้าม = เวลาที่ประหยัดตรง ๆ เทียบ Fixed
-    //   QueueStartResets  สูงมาก = อยู่ใน saturated regime ตลอด (ลำดับถูกกำหนดโดยกฎ reset)
+    //
+    // The last four columns belong to SODA (sampled observation):
+    //   SnapshotInterval  confirms this run really used 2 s (in case of a 1/2/4 s sensitivity study)
+    //   CollectCount      how often COLLECT ran - expected near 0 at peak, since it stays in the SERVE loop
+    //   SkippedHeads      heads with count = 0 that were skipped = time saved directly against Fixed
+    //   QueueStartResets  a high value means a permanently saturated regime (order set by the reset rule)
     const string SUMMARY_HEADER =
         "ControllerType,Scenario,RunTimestamp,TotalSpawned,VehiclesCleared,AvgWaitTime,MaxWaitTime,StarvationEvents,StartupLostTime,SaturationHeadway,SnapshotInterval,CollectCount,CollectDuration,SkippedHeads,QueueStartResets,IdleLaneSeconds,TieBreaksApplied,TieBreaksExcludingBx";
 
@@ -184,10 +184,10 @@ public class DataLogger : MonoBehaviour
         string folder = GetExportFolder();
         string path = Path.Combine(folder, "summary_all_runs.csv");
 
-        // ===== กันไฟล์สคีมาปนกัน =====
-        // เดิม: ถ้าไฟล์มีอยู่แล้วจะ append เลยโดยไม่ดูหัวตาราง
-        // พอมีการเพิ่ม/ลดคอลัมน์ทีหลัง แถวใหม่จะมีจำนวนคอลัมน์ไม่ตรงหัว -> pandas อ่านไม่ออก
-        // ตอนนี้: ถ้าหัวตารางไม่ตรง ย้ายไฟล์เก่าไปเก็บไว้แล้วเริ่มไฟล์ใหม่
+        // ===== Keep schemas from mixing in one file =====
+        // Before: an existing file was appended to without checking its header. Adding or removing
+        // a column later gave rows whose width did not match the header, and pandas could not read it.
+        // Now a mismatched header archives the old file and starts a new one.
         bool needHeader = true;
 
         if (File.Exists(path))
@@ -202,7 +202,7 @@ public class DataLogger : MonoBehaviour
             }
             catch (System.Exception e)
             {
-                Debug.LogWarning($"[DataLogger] อ่านหัวตารางเดิมไม่ได้: {e.Message}");
+                Debug.LogWarning($"[DataLogger] could not read the existing header: {e.Message}");
             }
 
             if (existingHeader.Trim() == SUMMARY_HEADER)
@@ -216,13 +216,13 @@ public class DataLogger : MonoBehaviour
                 try
                 {
                     File.Move(path, backup);
-                    Debug.LogWarning($"[DataLogger] หัวตารางของ summary เดิมไม่ตรงกับรูปแบบปัจจุบัน " +
-                                     $"— ย้ายไฟล์เก่าไปที่ {Path.GetFileName(backup)} แล้วเริ่มไฟล์ใหม่");
+                    Debug.LogWarning($"[DataLogger] the existing summary header does not match the current format " +
+                                     $"- archived it as {Path.GetFileName(backup)} and started a new file");
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogError($"[DataLogger] ย้ายไฟล์เก่าไม่สำเร็จ ({e.Message}) — " +
-                                   $"ข้อมูลอาจปนกัน ให้ลบ summary_all_runs.csv เองก่อนรันใหม่");
+                    Debug.LogError($"[DataLogger] could not archive the old file ({e.Message}) - " +
+                                   $"data may get mixed; delete summary_all_runs.csv yourself before running again");
                     needHeader = false;
                 }
             }
