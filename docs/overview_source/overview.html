@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ABAC Smart Traffic Light - Project Overview</title>
+<style>
+  @page { size: A4; margin: 20mm 19mm 22mm 19mm; }
+  :root{
+    --paper:#ffffff; --ink:#1c2226; --ink2:#3a4349; --muted:#646e75; --rule:#dcd8cf;
+    --blue:#1d4f91; --blue-tint:#e8eef6; --go:#2f8a58; --amber:#c98a06; --stop:#c0402f;
+    --road:#e9e7e2; --roadline:#ffffff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink)}
+  body{font-family:Charter,"Iowan Old Style",Georgia,serif;font-size:10.4pt;line-height:1.52;
+       -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  h1,h2,h3,h4,.sans,.kicker,.caption,table,.stat,.pill,figcaption,.partnum{
+       font-family:"Avenir Next","Helvetica Neue",Helvetica,Arial,sans-serif}
+  h1{font-size:30pt;line-height:1.08;margin:0 0 6mm;font-weight:700;letter-spacing:-.4px;text-wrap:balance}
+  h2{font-size:17pt;line-height:1.2;margin:0 0 3.5mm;font-weight:700;letter-spacing:-.2px;text-wrap:balance}
+  h3{font-size:11.6pt;margin:6mm 0 1.8mm;font-weight:700;color:var(--ink)}
+  h4{font-size:9.2pt;margin:4mm 0 1mm;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:var(--blue)}
+  p{margin:0 0 3mm;max-width:158mm}
+  .lede{font-size:12.2pt;line-height:1.5;color:var(--ink2);max-width:150mm}
+  .kicker{font-size:8.4pt;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:2mm}
+  .muted{color:var(--muted)}
+  .num{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.92em;font-variant-numeric:tabular-nums}
+  strong{font-weight:700}
+  .page{break-before:page}
+  .avoid{break-inside:avoid}
+  figure{margin:4mm 0 5mm;break-inside:avoid}
+  figcaption,.caption{font-size:8.4pt;color:var(--muted);line-height:1.4;margin-top:1.8mm;max-width:165mm}
+  img{max-width:100%;display:block;border-radius:2px}
+  hr{border:0;border-top:1px solid var(--rule);margin:6mm 0}
+
+  /* cover */
+  .cover{height:257mm;display:flex;flex-direction:column}
+  .cover .band{margin:0 -19mm;height:78mm;background:#333 url(junction.jpg) center/cover no-repeat}
+  .cover .top{padding-top:14mm}
+  .cover .sub{font-family:"Avenir Next",sans-serif;font-size:13pt;color:var(--ink2);margin:-2mm 0 8mm;max-width:150mm;line-height:1.35}
+  .cover .meta{margin-top:auto;font-family:"Avenir Next",sans-serif;font-size:9.4pt;color:var(--ink2);
+               display:grid;grid-template-columns:1fr 1fr;gap:5mm 10mm;border-top:1px solid var(--rule);padding-top:5mm}
+  .cover .meta b{display:block;font-size:7.8pt;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:.6mm}
+  .lamps{display:flex;gap:3mm;margin-bottom:9mm}
+  .lamps i{width:9mm;height:9mm;border-radius:50%;display:block}
+
+  /* tiles */
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:3.5mm;margin:4mm 0 5mm}
+  .tile{background:var(--blue-tint);border-radius:3px;padding:3.6mm 4mm 3.4mm}
+  .tile .stat{font-size:22pt;font-weight:700;line-height:1;color:var(--blue);letter-spacing:-.5px}
+  .tile .lbl{font-family:"Avenir Next",sans-serif;font-size:8.6pt;color:var(--ink2);margin-top:1.8mm;line-height:1.3}
+  .tile.warn{background:#faf1e0}.tile.warn .stat{color:var(--amber)}
+
+  /* part opener */
+  .opener{display:grid;grid-template-columns:34mm 1fr;gap:6mm;align-items:end;
+          padding-bottom:5mm;margin-bottom:5mm;border-bottom:2px solid var(--ink)}
+  .partnum{font-size:64pt;line-height:.8;font-weight:700;color:var(--blue);letter-spacing:-2px}
+  .opener .who{font-family:"Avenir Next",sans-serif;font-size:8.8pt;color:var(--muted);margin-top:1.5mm}
+
+  /* two-column body */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:7mm}
+  .cols p{max-width:none}
+  .box{border-left:3px solid var(--blue);padding:1mm 0 1mm 4mm;margin:4mm 0}
+  .box p:last-child{margin-bottom:0}
+  .note{background:#f2f0ea;border-radius:3px;padding:3.5mm 4.5mm;margin:4mm 0;font-size:9.6pt}
+  .note p:last-child{margin-bottom:0}
+
+  table{border-collapse:collapse;width:100%;font-size:8.9pt;margin:2mm 0 4mm;font-variant-numeric:tabular-nums}
+  th{text-align:left;font-weight:600;color:var(--muted);font-size:7.8pt;letter-spacing:.6px;text-transform:uppercase;
+     border-bottom:1.5px solid var(--ink);padding:1.6mm 2mm 1.4mm}
+  td{border-bottom:1px solid var(--rule);padding:1.5mm 2mm;vertical-align:top}
+  td.r,th.r{text-align:right}
+  tr.hl td{background:var(--blue-tint);font-weight:600}
+  .good{color:var(--go);font-weight:600}.bad{color:var(--stop);font-weight:600}
+
+  ol.steps{padding-left:5.5mm;margin:1mm 0 3mm}
+  ol.steps li{margin-bottom:1.6mm;padding-left:1mm}
+  ul.plain{padding-left:4.5mm;margin:1mm 0 3mm}
+  ul.plain li{margin-bottom:1.2mm}
+
+  dl.gloss{display:grid;grid-template-columns:38mm 1fr;gap:2.2mm 5mm;margin:2mm 0;font-size:9.4pt}
+  dl.gloss dt{font-family:"Avenir Next",sans-serif;font-weight:700;font-size:9pt}
+  dl.gloss dd{margin:0;color:var(--ink2)}
+
+  svg{display:block;width:100%;height:auto}
+  svg text{font-family:"Avenir Next","Helvetica Neue",Arial,sans-serif}
+</style>
+</head>
+<body>
+
+<!-- ============================================================ COVER -->
+<section class="cover">
+  <div class="top">
+    <div class="lamps"><i style="background:var(--stop)"></i><i style="background:var(--amber)"></i><i style="background:var(--go)"></i></div>
+    <div class="kicker">Senior Project · Plain-language overview</div>
+    <h1>A traffic light that counts the cars before it decides</h1>
+    <p class="sub">An adaptive signal for the ABAC university entrance on Bang Na, built from a camera, a counting algorithm, and a digital twin that tested it across 216 simulation runs.</p>
+  </div>
+  <div class="band" role="img" aria-label="Overhead drone photograph of the ABAC entrance junction with queues on both approaches"></div>
+  <p class="caption" style="margin-top:2mm">The junction this project is about, filmed by drone just before the light turned green. Queues stand on both approaches, motorcycles have filtered to the front, and taxis wait along the left kerb.</p>
+  <div class="meta">
+    <div><b>Project</b>CSX3010 Senior Project 1 · Project 26008<br>Assumption University (ABAC), Bang Na</div>
+    <div><b>Team</b>Warachai Aranchot<br>Ratchanon Puwapattarapokin<br>Badin Bangsen</div>
+    <div><b>Three parts</b>1 · Computer vision<br>2 · The algorithm<br>3 · Unity simulation test</div>
+    <div><b>Results in this edition</b>Batch v4, 216 runs, completed 19 September 2026</div>
+  </div>
+</section>
+
+<!-- ============================================================ ONE PAGE -->
+<section class="page">
+  <div class="kicker">If you read only one page</div>
+  <h2>What we did, why, and what we found</h2>
+
+  <p class="lede">The traffic light at the ABAC entrance runs on a fixed timer. It gives the same green to every direction whether ten cars are waiting or none. We built a system that watches the queues with a camera and gives green to whoever actually needs it.</p>
+
+  <h3>Why</h3>
+  <p>We measured the junction ourselves and found that the fixed timer hands out green almost backwards. The through road gets <strong>three times</strong> the green it needs. The right turn into the university gets far too little, so its queue grows every cycle and reaches the next junction within about six minutes. A security guard stands at the gate waving cars through by hand, because the signal cannot.</p>
+
+  <h3>How</h3>
+  <div class="cols">
+    <div>
+      <p><strong>1 · Computer vision.</strong> We filmed the junction by drone, labelled 6,585 images by hand, and trained a model to find cars, motorcycles and heavy vehicles from above. Its vehicle counts land within <strong>1.7%</strong> of a human count.</p>
+      <p><strong>2 · The algorithm.</strong> Once a second, the controller reads one number per traffic light: how many vehicles are waiting. It gives green to the queue that formed first, for as long as that queue needs.</p>
+    </div>
+    <div>
+      <p><strong>3 · Unity test.</strong> We rebuilt the junction as a 3D simulation, with cars calibrated to leave a queue at the same pace as real ones. Then we raced the old fixed timer against our controller on exactly the same traffic, 108 times each.</p>
+    </div>
+  </div>
+
+  <h3>What we found</h3>
+  <div class="tiles">
+    <div class="tile"><div class="stat">&minus;42.5%</div><div class="lbl">Longest wait at the junction.<br>187 s &rarr; 108 s</div></div>
+    <div class="tile"><div class="stat">&minus;55.3%</div><div class="lbl">Wait on the starved right turn into the university. 118 s &rarr; 53 s</div></div>
+    <div class="tile"><div class="stat">+7.7%</div><div class="lbl">More vehicles cleared through the junction per half hour</div></div>
+  </div>
+  <p>The average wait also falls, by <span class="num">20.3%</span> per simulation run, or <span class="num">12.6%</span> counted car by car. All three results are statistically significant (p &lt; 0.001 for the first two).</p>
+
+  <div class="note avoid">
+    <p><strong>It is not better everywhere.</strong> In the busy evening scenario, when every direction is jammed at once, the new controller's average wait is <span class="num">8.4%</span> worse than the timer's. There is no empty lane to skip and no queue that ever clears, so its fairness rule switches green every twenty seconds and loses time to the amber and all-red between switches. What it buys with that time is fairness: the worst waits still fall. Page 11 explains this in full.</p>
+  </div>
+</section>
+
+<!-- ============================================================ THE PROBLEM -->
+<section class="page">
+  <div class="kicker">The starting point</div>
+  <h2>A T-junction with six ways through it</h2>
+
+  <p>The ABAC entrance is a T-junction. A main road runs left to right, and the university gate sits on one side. Traffic makes six distinct movements through it, and the report names each one with a letter.</p>
+
+  <figure>
+    <svg viewBox="0 0 680 330" role="img" aria-label="Diagram of the T-junction showing the six movements">
+      <!-- grass -->
+      <rect x="0" y="0" width="680" height="330" fill="#eef1e8"/>
+      <!-- gate road -->
+      <rect x="284" y="0" width="112" height="110" fill="#d6d3cc"/>
+      <line x1="340" y1="0" x2="340" y2="104" stroke="#fff" stroke-width="2" stroke-dasharray="8 7"/>
+      <text x="340" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#1c2226">UNIVERSITY GATE</text>
+      <!-- main road -->
+      <rect x="0" y="104" width="680" height="190" fill="#d6d3cc"/>
+      <!-- median -->
+      <rect x="0" y="194" width="250" height="10" fill="#b9b5ab"/>
+      <rect x="430" y="194" width="250" height="10" fill="#b9b5ab"/>
+      <!-- lane lines, upper carriageway -->
+      <line x1="0" y1="149" x2="250" y2="149" stroke="#fff" stroke-width="1.5" stroke-dasharray="10 8"/>
+      <line x1="430" y1="149" x2="680" y2="149" stroke="#fff" stroke-width="1.5" stroke-dasharray="10 8"/>
+      <line x1="0" y1="249" x2="250" y2="249" stroke="#fff" stroke-width="1.5" stroke-dasharray="10 8"/>
+      <line x1="430" y1="249" x2="680" y2="249" stroke="#fff" stroke-width="1.5" stroke-dasharray="10 8"/>
+      <!-- stop lines -->
+      <line x1="250" y1="104" x2="250" y2="194" stroke="#fff" stroke-width="4"/>
+      <line x1="430" y1="204" x2="430" y2="294" stroke="#fff" stroke-width="4"/>
+      <line x1="284" y1="104" x2="396" y2="104" stroke="#fff" stroke-width="4"/>
+      <!-- direction labels -->
+      <text x="14" y="98" font-size="10" font-weight="600" fill="#646e75">EASTBOUND &rarr;</text>
+      <text x="666" y="312" text-anchor="end" font-size="10" font-weight="600" fill="#646e75">&larr; WESTBOUND</text>
+
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>
+      </defs>
+
+      <!-- A: inner eastbound lane, straight -->
+      <path d="M40,172 L640,172" fill="none" stroke="#1d4f91" stroke-width="3.2" marker-end="url(#ah)"/>
+      <text x="60" y="166" font-size="13" font-weight="700" fill="#1d4f91">A</text>
+      <!-- Ax: outer eastbound lane, turns left up into the gate -->
+      <path d="M40,127 L262,127 Q300,127 300,92 L300,30" fill="none" stroke="#1d4f91" stroke-width="3.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+      <text x="60" y="121" font-size="13" font-weight="700" fill="#1d4f91">Ax</text>
+      <!-- B: westbound straight -->
+      <path d="M640,272 L40,272" fill="none" stroke="#c98a06" stroke-width="3.2" marker-end="url(#ah)"/>
+      <text x="612" y="266" font-size="13" font-weight="700" fill="#c98a06" text-anchor="end">B</text>
+      <!-- Bx: westbound, turns right up into the gate, crossing A -->
+      <path d="M640,226 L420,226 Q372,226 372,190 L372,30" fill="none" stroke="#c98a06" stroke-width="3.2" marker-end="url(#ah)"/>
+      <text x="612" y="220" font-size="13" font-weight="700" fill="#c98a06" text-anchor="end">Bx</text>
+      <!-- CA: exits gate, turns to go east, free -->
+      <path d="M356,40 L356,96 Q356,127 392,127 L640,127" fill="none" stroke="#2f8a58" stroke-width="3.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>
+      <text x="612" y="121" font-size="13" font-weight="700" fill="#2f8a58" text-anchor="end">CA</text>
+      <!-- CB: exits gate, crosses A and turns west -->
+      <path d="M324,40 L324,214 Q324,249 290,249 L40,249" fill="none" stroke="#2f8a58" stroke-width="3.2" marker-end="url(#ah)"/>
+      <text x="60" y="243" font-size="13" font-weight="700" fill="#2f8a58">CB</text>
+
+      <!-- legend -->
+      <g transform="translate(470,20)">
+        <line x1="0" y1="6" x2="34" y2="6" stroke="#1c2226" stroke-width="3"/>
+        <text x="42" y="10" font-size="10.5" fill="#1c2226">has a traffic light</text>
+        <line x1="0" y1="28" x2="34" y2="28" stroke="#1c2226" stroke-width="3" stroke-dasharray="7 5"/>
+        <text x="42" y="32" font-size="10.5" fill="#1c2226">no traffic light</text>
+      </g>
+    </svg>
+    <figcaption>The six movements. A and B go straight along the main road. Ax and Bx turn into the university; CB and CA turn out of it. Only four have a traffic light. Ax and CA are left turns that cross nobody, so by normal practice they get no signal.</figcaption>
+  </figure>
+
+  <h3>What we measured, and what was wrong</h3>
+  <p>The project proposal assumed the light ran on 30 seconds per direction. We timed it three different ways and found a <strong>107-second cycle</strong> instead. We also measured how quickly cars leave a queue at this exact junction: one every <span class="num">2.31</span> seconds, after <span class="num">2.95</span> seconds lost while the first car gets going. Both are slower than textbook values, largely because motorcycles filter to the front and have to clear before the cars can move.</p>
+
+  <table class="avoid">
+    <tr><th>Movement</th><th class="r">Green it gets</th><th class="r">Green it needs</th><th class="r">Demand &divide; capacity</th><th>What happens</th></tr>
+    <tr><td><strong>Bx</strong> right turn in</td><td class="r num">20 s</td><td class="r num">28.6 s</td><td class="r num bad">1.51</td><td>Queue grows 3.7 cars every cycle</td></tr>
+    <tr><td><strong>A</strong> straight through</td><td class="r num">40 s</td><td class="r num">12.3 s</td><td class="r num good">0.25</td><td>Holds three times what it needs</td></tr>
+  </table>
+
+  <p>A demand-to-capacity ratio above 1.0 means more cars arrive than the green can clear, so the queue never settles. The Bx queue has room for about twelve cars before it backs into the next junction, 78 metres up the road, and at 3.7 extra cars a cycle it fills that space in <strong>5.7 minutes</strong>.</p>
+
+  <div class="box avoid">
+    <p><strong>The busiest movement has no light at all.</strong> Cars turning left into the university (Ax) outnumber cars going straight by 3.5 to 1. They share the outer lane with some straight-through traffic, and a single straight-through car stopped at red blocks every left-turner behind it, even though the left-turners have no red light to wait for. That is why the guard waves cars in by hand. No signal controller can give Ax more green, because it has no signal. The only lever is to clear the lane that blocks it faster.</p>
+  </div>
+</section>
+
+<!-- ============================================================ HOW IT FITS -->
+<section class="page">
+  <div class="kicker">The system</div>
+  <h2>Three parts, one loop</h2>
+  <p class="lede">A camera watches the queues, an algorithm decides, and the lights change. A simulation lets us test that loop without touching a real road.</p>
+
+  <figure>
+    <svg viewBox="0 0 680 290" role="img" aria-label="Pipeline from camera to counting to algorithm to traffic lights, with simulation testing the loop">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1c2226"/></marker>
+      </defs>
+      <!-- camera -->
+      <g transform="translate(10,40)">
+        <rect width="120" height="110" rx="4" fill="#fff" stroke="#dcd8cf"/>
+        <rect x="42" y="18" width="36" height="24" rx="3" fill="#1c2226"/>
+        <circle cx="60" cy="30" r="7" fill="#fff"/><circle cx="60" cy="30" r="3.5" fill="#1c2226"/>
+        <line x1="60" y1="42" x2="60" y2="66" stroke="#1c2226" stroke-width="3"/>
+        <text x="60" y="86" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c2226">Camera</text>
+        <text x="60" y="100" text-anchor="middle" font-size="9.5" fill="#646e75">on a pole at the junction</text>
+      </g>
+      <line x1="134" y1="95" x2="168" y2="95" stroke="#1c2226" stroke-width="1.6" marker-end="url(#ar)"/>
+      <!-- part 1 -->
+      <g transform="translate(172,24)">
+        <rect width="150" height="142" rx="4" fill="#e8eef6"/>
+        <text x="14" y="26" font-size="24" font-weight="700" fill="#1d4f91">1</text>
+        <text x="14" y="50" font-size="12" font-weight="700" fill="#1c2226">Computer vision</text>
+        <text x="14" y="70" font-size="9.8" fill="#3a4349">Finds every vehicle</text>
+        <text x="14" y="84" font-size="9.8" fill="#3a4349">in each waiting zone</text>
+        <text x="14" y="108" font-size="9.8" fill="#1d4f91" font-weight="600">Output: 4 numbers,</text>
+        <text x="14" y="122" font-size="9.8" fill="#1d4f91" font-weight="600">one per traffic light</text>
+      </g>
+      <line x1="326" y1="95" x2="356" y2="95" stroke="#1c2226" stroke-width="1.6" marker-end="url(#ar)"/>
+      <text x="341" y="86" text-anchor="middle" font-size="8.6" fill="#646e75">every 1 s</text>
+      <!-- part 2 -->
+      <g transform="translate(360,24)">
+        <rect width="150" height="142" rx="4" fill="#e8eef6"/>
+        <text x="14" y="26" font-size="24" font-weight="700" fill="#1d4f91">2</text>
+        <text x="14" y="50" font-size="12" font-weight="700" fill="#1c2226">The algorithm</text>
+        <text x="14" y="70" font-size="9.8" fill="#3a4349">Decides who goes next</text>
+        <text x="14" y="84" font-size="9.8" fill="#3a4349">and for how long</text>
+        <text x="14" y="108" font-size="9.8" fill="#1d4f91" font-weight="600">Output: which lights</text>
+        <text x="14" y="122" font-size="9.8" fill="#1d4f91" font-weight="600">go green, and when</text>
+      </g>
+      <line x1="514" y1="95" x2="548" y2="95" stroke="#1c2226" stroke-width="1.6" marker-end="url(#ar)"/>
+      <!-- lights -->
+      <g transform="translate(552,40)">
+        <rect width="118" height="110" rx="4" fill="#fff" stroke="#dcd8cf"/>
+        <rect x="45" y="10" width="28" height="62" rx="5" fill="#1c2226"/>
+        <circle cx="59" cy="22" r="7" fill="#c0402f"/><circle cx="59" cy="41" r="7" fill="#5a4a1c"/><circle cx="59" cy="60" r="7" fill="#1e3d2c"/>
+        <text x="59" y="88" text-anchor="middle" font-size="11.5" font-weight="700" fill="#1c2226">Traffic lights</text>
+        <text x="59" y="102" text-anchor="middle" font-size="9.5" fill="#646e75">change on command</text>
+      </g>
+      <!-- feedback -->
+      <path d="M611,154 L611,176 L70,176 L70,154" fill="none" stroke="#646e75" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+      <text x="340" y="170" text-anchor="middle" font-size="9.4" fill="#646e75">cars move, queues change, the camera sees it</text>
+      <!-- part 3 -->
+      <g transform="translate(10,196)">
+        <rect width="660" height="84" rx="4" fill="#fff" stroke="#1d4f91" stroke-width="1.6" stroke-dasharray="6 4"/>
+        <text x="16" y="30" font-size="24" font-weight="700" fill="#1d4f91">3</text>
+        <text x="46" y="28" font-size="12" font-weight="700" fill="#1c2226">Unity simulation test</text>
+        <text x="46" y="46" font-size="9.8" fill="#3a4349">A 3D copy of the junction runs the whole loop above, with simulated cars instead of real ones.</text>
+        <text x="46" y="61" font-size="9.8" fill="#3a4349">It plays the same traffic twice, once under the old fixed timer and once under our algorithm, and compares.</text>
+      </g>
+    </svg>
+    <figcaption>Parts 1 and 2 are the system that would be installed. Part 3 is how we tested it, since an experiment on a live public road was not an option.</figcaption>
+  </figure>
+
+  <h3>Why the parts are separate</h3>
+  <p>Each part talks to the next through a simple, fixed format: a handful of numbers. That let three people build them in parallel, test each on its own, and swap the simulation's perfect car counts for the camera's real ones without rewriting the algorithm.</p>
+
+  <table>
+    <tr><th>Part</th><th>Built by</th><th>Takes in</th><th>Gives out</th></tr>
+    <tr><td><strong>1 · Computer vision</strong></td><td>Ratchanon P. · Warachai A.</td><td>video</td><td>vehicle counts</td></tr>
+    <tr><td><strong>2 · The algorithm</strong></td><td>Ratchanon P. · Warachai A.</td><td>vehicle counts</td><td>which lights are green, and for how long</td></tr>
+    <tr><td><strong>3 · Unity simulation test</strong></td><td>Badin B.</td><td>the algorithm's decisions</td><td>waiting times, queue lengths, cars cleared</td></tr>
+  </table>
+</section>
+
+<!-- ============================================================ PART 1 -->
+<section class="page">
+  <div class="opener">
+    <div class="partnum">1</div>
+    <div>
+      <div class="kicker">Part one</div>
+      <h2 style="margin:0">Computer vision: teaching a computer to count cars from above</h2>
+      <div class="who">Ratchanon Puwapattarapokin · Warachai Aranchot</div>
+    </div>
+  </div>
+
+  <p class="lede">Before we could fix the timing, we needed to know how much traffic really uses each movement. Counting by hand for hours is slow and error-prone, so we trained a model to do it.</p>
+
+  <h3>1 · Film the junction</h3>
+  <p>We flew a drone over each approach at three times of day, morning, midday and evening, across July and August 2026: about <strong>6.6 hours of video in 20 flights</strong>. A drone battery lasts 20 to 25 minutes, so each flight is its own recording.</p>
+  <p>The drone is only a measuring tool. A real installation would use a fixed camera on a pole at a similar height, since nobody can fly a drone over a junction all day.</p>
+
+  <h3>2 · Label thousands of examples</h3>
+  <p>A model learns what a car looks like from examples. We took a frame every 3.5 seconds and two people drew a box around every vehicle by hand: <strong>6,585 images</strong> holding <strong>57,260 labelled vehicles</strong>.</p>
+  <p>We started with five kinds of vehicle and ended with three. From overhead, the open bed that tells a pickup from a saloon car is only a few pixels wide, so even the human labellers disagreed. We grouped them the way traffic engineers already do, by how much road space each takes.</p>
+
+  <figure class="avoid">
+    <svg viewBox="0 0 680 92" role="img" aria-label="Bar showing the share of each vehicle class">
+      <rect x="0" y="14" width="530" height="34" fill="#1d4f91"/>
+      <rect x="530" y="14" width="142" height="34" fill="#6f95c7"/>
+      <rect x="672" y="14" width="8" height="34" fill="#c98a06"/>
+      <text x="10" y="36" font-size="12" font-weight="700" fill="#fff">Car · 77.9%</text>
+      <text x="540" y="36" font-size="11.5" font-weight="700" fill="#fff">Motorcycle · 20.9%</text>
+      <text x="680" y="70" text-anchor="end" font-size="10.5" font-weight="700" fill="#c98a06">Heavy · 1.1%</text>
+      <line x1="676" y1="50" x2="676" y2="58" stroke="#c98a06" stroke-width="1.4"/>
+      <text x="0" y="70" font-size="9.8" fill="#646e75">Counted in car-equivalents: car 1.0 · motorcycle 0.33 · heavy vehicle 2.0</text>
+    </svg>
+    <figcaption>The 57,260 labelled vehicles by class. Motorcycles are one in five, and also the hardest to see: from above, a distant one is about twenty pixels across.</figcaption>
+  </figure>
+
+  <h3>3 · Train the model</h3>
+  <p>We used <strong>YOLOv8</strong>, a widely used object detector, and taught it in four steps, each building on the last: first on everyday photos, then on drone footage from other cities, then on our first ABAC dataset, and finally on the full one. Starting from a model that already understands aerial views needs far less of our own data.</p>
+  <p>We kept the images at 1280 pixels wide rather than the usual 640. Shrinking further would have turned distant motorcycles into dots too small to detect, and they are a fifth of the traffic.</p>
+
+  <h3>4 · Test it fairly</h3>
+  <p>Frames taken 3.5 seconds apart are nearly identical. If we had shuffled them randomly into training and test sets, the model would be tested on pictures it had practically already seen, and would look far better than it is. So we held back <strong>entire flights</strong>: the four test flights were recorded on different days, in different light, and the model never saw a single frame of them.</p>
+</section>
+
+<section class="page">
+  <h3 style="margin-top:0">5 · How well it works</h3>
+  <p>The standard score for a detector is <strong>mAP</strong>, roughly how well its boxes line up with the human ones. On the unseen test flights:</p>
+
+  <table class="avoid">
+    <tr><th>Vehicle</th><th class="r">Test examples</th><th class="r">mAP@50</th><th class="r">Finds</th><th class="r">Right when it says so</th></tr>
+    <tr><td>Car</td><td class="r num">4,066</td><td class="r num">0.972</td><td class="r num">92%</td><td class="r num">94%</td></tr>
+    <tr><td>Motorcycle</td><td class="r num">1,281</td><td class="r num">0.911</td><td class="r num">85%</td><td class="r num">93%</td></tr>
+    <tr><td>Heavy vehicle</td><td class="r num">70</td><td class="r num">0.766</td><td class="r num">71%</td><td class="r num">77%</td></tr>
+    <tr class="hl"><td>All vehicles</td><td class="r num">5,417</td><td class="r num">0.883</td><td></td><td></td></tr>
+  </table>
+
+  <p>But mAP is not the number this project needs. We need <strong>counts</strong>. So we counted one 15-minute stretch of video by hand and ran the counter on the same footage.</p>
+
+  <div class="tiles">
+    <div class="tile"><div class="stat">298</div><div class="lbl">vehicles counted by a person</div></div>
+    <div class="tile"><div class="stat">303</div><div class="lbl">vehicles counted by the model</div></div>
+    <div class="tile"><div class="stat">1.7%</div><div class="lbl">difference: accurate enough to feed the simulation directly</div></div>
+  </div>
+
+  <p>Counting beats what mAP suggests because the two ask different questions. mAP penalises a box drawn two pixels too wide, even around the right car. The counter only asks whether a car's centre crossed a line, and a slightly loose box still answers that correctly.</p>
+
+  <h3>What we learned the hard way</h3>
+  <p>Five separate bugs made the counter wrong on the way here. One counted each car about thirty times as it drove across the frame. Another quietly filed every heavy vehicle as a car. <strong>None of them showed up in the model's own score.</strong> Every one produced believable numbers and was caught only by comparing against a hand count. That is why hand-counting stayed part of the project to the end.</p>
+  <p>The taxis that queue along the kerb waiting to be called in never move, so the counter ignores any vehicle that has not travelled at least 60 pixels. We learned about the taxis by interviewing the security guard, and wrote the filter before counting, not after.</p>
+
+  <h3>Two different jobs for the camera</h3>
+  <div class="cols">
+    <div class="box" style="margin-top:0">
+      <h4 style="margin-top:0">Measuring traffic, offline</h4>
+      <p>To count a whole hour of drone video, the counter follows each vehicle from frame to frame with a tracker so it is counted exactly once. This runs on a laptop after filming, and speed does not matter.</p>
+    </div>
+    <div class="box" style="margin-top:0">
+      <h4 style="margin-top:0">Running the lights, live</h4>
+      <p>The controller in Part 2 does not follow individual cars. Once a second it asks only <em>how many vehicles are inside this box right now?</em> That needs no tracker, so it can run on cheap hardware beside the road.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ PART 2 -->
+<section class="page">
+  <div class="opener">
+    <div class="partnum">2</div>
+    <div>
+      <div class="kicker">Part two</div>
+      <h2 style="margin:0">The algorithm: deciding who goes next, and for how long</h2>
+      <div class="who">Ratchanon Puwapattarapokin · Warachai Aranchot · named SODA, Sampled-Observation Demand-Adaptive control</div>
+    </div>
+  </div>
+
+  <p class="lede">A fixed timer asks nothing and follows its schedule. Our controller asks one question every second: how many vehicles are waiting at each light?</p>
+
+  <h3>What it can see</h3>
+  <p>The junction has seven lanes but only <strong>four traffic lights</strong>, and the controller works light by light. Once a second it reads four numbers, the vehicle count in each light's waiting zone. Nothing else: no speeds, no number plates, no idea which car is which. Everything it decides comes from those four numbers.</p>
+  <p>Keeping its view that simple is deliberate. It is exactly what a camera with a basic detector can supply in real time, so the controller could actually be installed.</p>
+
+  <h3>Its three states</h3>
+  <figure class="avoid">
+    <svg viewBox="0 0 680 150" role="img" aria-label="Three controller states in a loop">
+      <defs><marker id="as" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1c2226"/></marker></defs>
+      <g transform="translate(10,22)">
+        <rect width="190" height="90" rx="5" fill="#fff" stroke="#c0402f" stroke-width="2"/>
+        <text x="95" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="#c0402f">ALL RED</text>
+        <text x="95" y="52" text-anchor="middle" font-size="10" fill="#3a4349">Nobody is waiting.</text>
+        <text x="95" y="67" text-anchor="middle" font-size="10" fill="#3a4349">Every light red, watching.</text>
+      </g>
+      <line x1="204" y1="67" x2="240" y2="67" stroke="#1c2226" stroke-width="1.6" marker-end="url(#as)"/>
+      <text x="222" y="58" text-anchor="middle" font-size="8.8" fill="#646e75">a car</text>
+      <text x="222" y="84" text-anchor="middle" font-size="8.8" fill="#646e75">arrives</text>
+      <g transform="translate(244,22)">
+        <rect width="190" height="90" rx="5" fill="#fff" stroke="#c98a06" stroke-width="2"/>
+        <text x="95" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="#c98a06">COLLECT</text>
+        <text x="95" y="52" text-anchor="middle" font-size="10" fill="#3a4349">Wait up to 7 s to see</text>
+        <text x="95" y="67" text-anchor="middle" font-size="10" fill="#3a4349">who else is coming.</text>
+      </g>
+      <line x1="438" y1="67" x2="474" y2="67" stroke="#1c2226" stroke-width="1.6" marker-end="url(#as)"/>
+      <g transform="translate(478,22)">
+        <rect width="190" height="90" rx="5" fill="#fff" stroke="#2f8a58" stroke-width="2"/>
+        <text x="95" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="#2f8a58">SERVE</text>
+        <text x="95" y="52" text-anchor="middle" font-size="10" fill="#3a4349">Give green, then decide</text>
+        <text x="95" y="67" text-anchor="middle" font-size="10" fill="#3a4349">again, until nobody waits.</text>
+      </g>
+      <path d="M573,114 L573,138 L105,138 L105,114" fill="none" stroke="#646e75" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#as)"/>
+      <text x="340" y="133" text-anchor="middle" font-size="9.2" fill="#646e75">all queues empty</text>
+    </svg>
+    <figcaption>COLLECT ends early if two lights already have cars, or one has three, so a single car is not left waiting seven seconds for nothing.</figcaption>
+  </figure>
+
+  <h3>Two separate questions</h3>
+  <p>The core idea is to keep two decisions apart.</p>
+
+  <div class="cols">
+    <div class="box" style="margin-top:0">
+      <h4 style="margin-top:0">Who goes next?</h4>
+      <p>The light whose queue <strong>started forming first</strong>, however many cars it holds. Each light keeps a clock that starts when its first car arrives and resets when it is served. It is first-come, first-served, by lane.</p>
+      <p>If it chose the longest queue instead, a quiet lane would wait forever behind a busy one.</p>
+    </div>
+    <div class="box" style="margin-top:0">
+      <h4 style="margin-top:0">For how long?</h4>
+      <p>Long enough for the cars actually waiting, using the two numbers we measured at this junction:</p>
+      <p class="num" style="font-size:10.5pt;margin:2mm 0">green = 2.95 + 2.31 &times; cars</p>
+      <p>kept between 8 and 45 seconds. <span class="num">2.95</span> s is the time lost while the first car gets moving; <span class="num">2.31</span> s is the gap between each car after that.</p>
+    </div>
+  </div>
+
+  <div class="note avoid">
+    <p><strong>Worked example.</strong> Eight cars are waiting at light B. It gets <span class="num">2.95 + 2.31 &times; 8 = 21.4</span> seconds of green. With one car it would get the 8-second minimum; with twenty it would hit the 45-second ceiling.</p>
+  </div>
+</section>
+
+<section class="page">
+  <h3 style="margin-top:0">Who can go at the same time</h3>
+  <p>Some movements cross each other and must never be green together; others can safely share. The controller knows six clashing pairs. Once it has chosen who goes next, it adds every other waiting light that clashes with nobody already chosen, so as many cars as possible move at once.</p>
+
+  <table class="avoid">
+    <tr><th>Cannot be green together</th><th>Why</th></tr>
+    <tr><td><strong>A</strong> and <strong>Bx</strong></td><td>Bx turns right across A's path into the university</td></tr>
+    <tr><td><strong>A</strong> and <strong>CB</strong></td><td>CB crosses A's lanes to reach the far side</td></tr>
+    <tr><td><strong>B</strong> and <strong>CB</strong></td><td>CB merges straight into the lane B is using</td></tr>
+    <tr><td><strong>Bx</strong> and <strong>CB</strong></td><td>their paths cross in the middle of the junction</td></tr>
+    <tr><td><strong>A2</strong> with Bx and CB</td><td>A2 shares A's light, so it clashes with whatever A clashes with</td></tr>
+  </table>
+  <p class="muted" style="font-size:9.4pt">A2 is straight-through traffic in the outer lane, shared with the Ax left turn. It uses the same physical light as A, so A and A2 are always green together.</p>
+
+  <h3>Three safety valves</h3>
+  <p>The green time from the formula is a ceiling, not a promise. A phase can end early:</p>
+  <ol class="steps">
+    <li><strong>Gap-out.</strong> If every lane in the green group reads empty on two readings in a row, the green ends. There is no point holding green for nobody.</li>
+    <li><strong>Anti-starvation.</strong> If another light has waited 40.5 seconds and the current green has run at least 20, the current green is cut. No lane waits forever.</li>
+    <li><strong>Maximum green.</strong> No group stays green for more than 90 seconds straight.</li>
+  </ol>
+
+  <h3>Why this should beat a fixed timer</h3>
+  <ul class="plain">
+    <li><strong>It skips empty lanes.</strong> A timer gives a lane its green even when nobody is there.</li>
+    <li><strong>It sizes green to the queue.</strong> A busy lane gets more; a quiet one gets less.</li>
+    <li><strong>It avoids needless amber.</strong> A lane that stays green into the next phase is not stopped and restarted, saving the five seconds of amber and all-red every change costs.</li>
+  </ul>
+
+  <div class="box avoid">
+    <p>An adaptive controller should also find, without being told, the fix our measurements pointed to: move green time from the over-served through road A to the starved right turn Bx. Part 3 tests whether it does.</p>
+  </div>
+</section>
+
+<!-- ============================================================ PART 3 -->
+<section class="page">
+  <div class="opener">
+    <div class="partnum">3</div>
+    <div>
+      <div class="kicker">Part three</div>
+      <h2 style="margin:0">Unity test: a digital twin to race the two controllers</h2>
+      <div class="who">Badin Bangsen</div>
+    </div>
+  </div>
+
+  <p class="lede">You cannot experiment on a public road. So we rebuilt the junction in the Unity game engine, filled it with simulated cars, and ran both controllers on it.</p>
+
+  <h3>What the twin contains</h3>
+  <p>The same geometry as the real junction: seven lanes, four traffic lights, the shared outer lane where straight-through traffic blocks left-turners, and the left turn into the university that must give way while the right turn is moving. The fixed timer runs the <strong>real measured plan</strong>, not an invented one:</p>
+
+  <table class="avoid">
+    <tr><th>Stage</th><th>Green</th><th class="r">Length</th></tr>
+    <tr><td class="num">1</td><td>A, A2 and B (straight through both ways)</td><td class="r num">40 s</td></tr>
+    <tr><td class="num">2</td><td>B and Bx (right turn into the university)</td><td class="r num">20 s</td></tr>
+    <tr><td class="num">3</td><td>CB (out of the university)</td><td class="r num">31 s</td></tr>
+    <tr><td></td><td class="muted">Amber and all-red between stages: 3 s + 2 s, three times</td><td class="r num">15 s</td></tr>
+    <tr class="hl"><td></td><td>Full cycle, within about a second of the 107 s measured on site</td><td class="r num">106 s</td></tr>
+  </table>
+
+  <h3>Cars that behave like real ones</h3>
+  <p>Every simulated car has one of three driver temperaments: careful, normal or aggressive. Each has its own reaction time, braking and willingness to run an amber. Cars keep a safe following distance that grows with speed, and when the light turns green a queue does not leave all at once. Each driver waits to see the car in front move first, so the queue pulls away car by car, as it does on a real road.</p>
+
+  <div class="note avoid">
+    <p><strong>The most important check in the whole project.</strong> Our first simulation let a queue leave at one car every <span class="num">0.72</span> seconds. The real junction manages one every <span class="num">2.31</span>. The virtual junction could move <strong>3.2 times</strong> as much traffic as the real one, which made every result it produced too optimistic. We found it because a teammate watching the simulation said the cars were leaving too close together. After fixing it, the simulation discharges at <span class="num">2.28</span> seconds per car, within 1.5% of reality, and an automated test now keeps it there.</p>
+  </div>
+
+  <h3>Checked against the real video</h3>
+  <p>We rebuilt one real 107-second cycle from the drone footage, car by car, and played it through the simulation under the real timer. On the main through lane, the cars that arrived during the green crossed the stop line within <strong><span class="num">0.37</span> seconds</strong> of when they did in real life, on average. The four cars already queued at the start left a few seconds early, because in the video a cluster of motorcycles sat ahead of them, and the simulation has no motorcycles.</p>
+
+</section>
+
+<section class="page">
+  <h3 style="margin-top:0">A fair race</h3>
+  <p>If the fixed timer got an easy stream of cars and our controller a hard one, the comparison would be meaningless. So every race is a <strong>pair</strong>: the same random seed produces exactly the same cars, arriving at exactly the same moments, for both controllers. Any difference in waiting time comes from the controller alone.</p>
+
+  <h3>Four kinds of traffic</h3>
+  <table class="avoid">
+    <tr><th>Scenario</th><th>What it represents</th><th>Where the numbers come from</th></tr>
+    <tr><td><strong>Morning peak</strong></td><td>heavy traffic into the university</td><td>measured from drone video</td></tr>
+    <tr><td><strong>Midday</strong></td><td>ordinary traffic on every approach</td><td>measured from drone video</td></tr>
+    <tr><td><strong>Evening peak</strong></td><td>heavy traffic out of the university</td><td>partly measured, partly estimated</td></tr>
+    <tr><td><strong>Campus event</strong></td><td>heavy in and out at once, as on graduation day</td><td>estimated</td></tr>
+  </table>
+
+  <h3>The experiment</h3>
+  <div class="tiles">
+    <div class="tile"><div class="stat">216</div><div class="lbl">simulation runs: 4 scenarios &times; 27 repeats &times; 2 controllers</div></div>
+    <div class="tile"><div class="stat">30 min</div><div class="lbl">of simulated traffic per run, after a 2-minute warm-up</div></div>
+    <div class="tile"><div class="stat">11.5 h</div><div class="lbl">of computer time, running at ten times real speed</div></div>
+  </div>
+
+  <h3 style="margin-top:4mm">Testing the test</h3>
+  <p>A simulation with a bug gives confident wrong answers. We wrote <strong>11 sets of automated tests</strong> that check the code outside Unity: that clashing lights are never green together, that no lane can be locked out forever, that the car model discharges at the measured rate, that the scene's settings match the code's, and more. Several real bugs were caught this way before they could reach the results, including a clock that let one busy lane win every decision and a Unity setting that silently kept old values in the scene file.</p>
+
+  <h3 style="margin-top:4mm">Measuring the result</h3>
+  <p>For each pair of runs we recorded how long every car waited, the longest wait of all, and how many cars got through. We then used the standard statistical tests for paired data to check whether the differences were real or could have happened by chance.</p>
+
+  <figure>
+    <img src="unity_summary.jpg" alt="Screenshot of the Unity simulation's experiment summary screen" style="max-height:52mm;width:auto;margin:0 auto">
+    <figcaption>The simulation's own results screen at the end of the final experiment: 216 runs across four traffic scenarios, compared scenario by scenario.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ RESULTS -->
+<section class="page">
+  <div class="kicker">Results</div>
+  <h2>What the race showed</h2>
+
+  <div class="tiles">
+    <div class="tile"><div class="stat">&minus;42.5%</div><div class="lbl">Longest wait. 187.2 s &rarr; 107.6 s<br>p = 2 &times; 10<sup>&minus;20</sup> · large effect</div></div>
+    <div class="tile"><div class="stat">&minus;55.3%</div><div class="lbl">Wait on Bx, the starved right turn. 118.1 s &rarr; 52.8 s, with 32% more Bx cars through</div></div>
+    <div class="tile"><div class="stat">+7.7%</div><div class="lbl">Vehicles cleared per run.<br>1,094 &rarr; 1,177 · p = 0.0095</div></div>
+  </div>
+
+  <p>The average wait fell from <span class="num">38.4</span> to <span class="num">30.6</span> seconds, <span class="num">20.3%</span>, when each run counts equally (p = 7 &times; 10<sup>&minus;9</sup>). Counting every car individually instead, it fell from <span class="num">40.8</span> to <span class="num">35.7</span> seconds, <span class="num">12.6%</span>. The two figures differ because the busier scenarios hold more cars, and those are where the new controller gains least.</p>
+
+  <figure class="avoid">
+    <svg viewBox="0 0 680 250" role="img" aria-label="Average wait per scenario for the fixed timer and the adaptive controller">
+      <text x="0" y="14" font-size="10.5" font-weight="700" fill="#1c2226">Average wait per scenario, seconds</text>
+      <rect x="440" y="4" width="11" height="11" fill="#9aa7b3"/><text x="456" y="14" font-size="10" fill="#3a4349">Fixed timer</text>
+      <rect x="540" y="4" width="11" height="11" fill="#1d4f91"/><text x="556" y="14" font-size="10" fill="#3a4349">Our controller</text>
+      <!-- grid: 0..60 s over 130..600 px => 7.833 px/s -->
+      <g stroke="#e3e0d8" stroke-width="1">
+        <line x1="130" y1="30" x2="130" y2="226"/><line x1="208.3" y1="30" x2="208.3" y2="226"/>
+        <line x1="286.7" y1="30" x2="286.7" y2="226"/><line x1="365" y1="30" x2="365" y2="226"/>
+        <line x1="443.3" y1="30" x2="443.3" y2="226"/><line x1="521.7" y1="30" x2="521.7" y2="226"/>
+        <line x1="600" y1="30" x2="600" y2="226"/>
+      </g>
+      <g font-size="9" fill="#646e75" text-anchor="middle">
+        <text x="130" y="242">0</text><text x="208.3" y="242">10</text><text x="286.7" y="242">20</text>
+        <text x="365" y="242">30</text><text x="443.3" y="242">40</text><text x="521.7" y="242">50</text><text x="600" y="242">60</text>
+      </g>
+      <!-- Morning 37.52 / 13.77 -->
+      <text x="0" y="56" font-size="10.5" font-weight="600" fill="#1c2226">Morning peak</text>
+      <rect x="130" y="40" width="293.9" height="14" fill="#9aa7b3"/><text x="429" y="51" font-size="9.4" fill="#3a4349">37.5</text>
+      <rect x="130" y="56" width="107.9" height="14" fill="#1d4f91"/><text x="244" y="67" font-size="9.4" fill="#1d4f91" font-weight="700">13.8</text>
+      <text x="680" y="61" text-anchor="end" font-size="10.5" font-weight="700" fill="#2f8a58">&minus;63.3%</text>
+      <!-- Midday 26.29 / 15.68 -->
+      <text x="0" y="104" font-size="10.5" font-weight="600" fill="#1c2226">Midday</text>
+      <rect x="130" y="88" width="205.9" height="14" fill="#9aa7b3"/><text x="342" y="99" font-size="9.4" fill="#3a4349">26.3</text>
+      <rect x="130" y="104" width="122.8" height="14" fill="#1d4f91"/><text x="259" y="115" font-size="9.4" fill="#1d4f91" font-weight="700">15.7</text>
+      <text x="680" y="109" text-anchor="end" font-size="10.5" font-weight="700" fill="#2f8a58">&minus;40.4%</text>
+      <!-- Event 42.64 / 41.82 -->
+      <text x="0" y="152" font-size="10.5" font-weight="600" fill="#1c2226">Campus event</text>
+      <rect x="130" y="136" width="334" height="14" fill="#9aa7b3"/><text x="470" y="147" font-size="9.4" fill="#3a4349">42.6</text>
+      <rect x="130" y="152" width="327.6" height="14" fill="#1d4f91"/><text x="464" y="163" font-size="9.4" fill="#1d4f91" font-weight="700">41.8</text>
+      <text x="680" y="157" text-anchor="end" font-size="10.5" font-weight="700" fill="#646e75">&minus;1.9%</text>
+      <!-- Evening 47.12 / 51.09 -->
+      <text x="0" y="200" font-size="10.5" font-weight="600" fill="#1c2226">Evening peak</text>
+      <rect x="130" y="184" width="369.1" height="14" fill="#9aa7b3"/><text x="505" y="195" font-size="9.4" fill="#3a4349">47.1</text>
+      <rect x="130" y="200" width="400.2" height="14" fill="#1d4f91"/><text x="536" y="211" font-size="9.4" fill="#1d4f91" font-weight="700">51.1</text>
+      <text x="680" y="205" text-anchor="end" font-size="10.5" font-weight="700" fill="#c0402f">+8.4%</text>
+    </svg>
+    <figcaption>27 paired runs per scenario. The morning and midday gains are overwhelming (p &lt; 10<sup>&minus;23</sup>). The campus-event difference is too small to be distinguished from chance (p = 0.75). The evening loss is real (p = 0.001).</figcaption>
+  </figure>
+
+  <h3>Where the gain comes from</h3>
+  <p>In the morning and at midday, some lanes are often empty. The new controller skips them, skipping over <strong>200 empty lights per run</strong>, and ends a green the moment its queue has cleared. A fixed timer cannot do either.</p>
+</section>
+
+<section>
+  <h3>Why the evening is worse</h3>
+  <p>In the evening peak every direction is full at once. That removes both of the new controller's advantages at a stroke: there is no empty lane to skip (it skipped <span class="num">7</span> per run, against over <span class="num">200</span> in the morning) and no queue ever clears, so a green never ends early.</p>
+  <p>What remains is its cost. With every lane waiting, some lane always crosses the 40.5-second fairness limit, so the anti-starvation rule cuts <strong>94%</strong> of greens the moment it is allowed to, at 20 seconds. The controller ends up rotating green every twenty seconds and pays the five seconds of amber and all-red, plus the start-up delay, on every switch.</p>
+
+  <table class="avoid">
+    <tr><th>Per 30-minute evening run</th><th class="r">Fixed timer</th><th class="r">Our controller</th></tr>
+    <tr><td>Phases</td><td class="r num">51</td><td class="r num">72</td></tr>
+    <tr><td>Time spent on amber and all-red</td><td class="r num">255 s</td><td class="r num">381 s</td></tr>
+    <tr><td>Time lost to cars getting started</td><td class="r num">150 s</td><td class="r num">212 s</td></tr>
+    <tr class="hl"><td>Extra time lost to switching</td><td class="r"></td><td class="r num">+188 s &nbsp;(10.4% of the run)</td></tr>
+  </table>
+
+  <p>That lost tenth of the junction's capacity is why the evening average is worse. But the controller is spending it on something: <strong>fairness</strong>. Even in the evening, the right turn Bx waits <span class="num">43%</span> less, and the longest wait anywhere falls <span class="num">23%</span>. The time comes out of the two straight-through lanes A and B, which together carry more than four times as many cars as Bx, so the average across all cars goes up.</p>
+
+  <div class="box avoid">
+    <p><strong>What this means.</strong> The new controller does not lower the average wait in every condition. When the whole junction is saturated at once, it trades about a tenth of its capacity for fairness: the worst waits drop and the starved lane recovers, while the average rises. The setting that controls that trade, the 20-second minimum before a green can be cut, is a candidate for tuning in future work.</p>
+  </div>
+
+  <h3>Did it find the fix?</h3>
+  <p>Our measurements said the junction would work better if green moved from the through road A to the right turn Bx. Nobody told the controller that. Across all four scenarios it did exactly that on its own: Bx waited <span class="num">55%</span> less and moved <span class="num">32%</span> more cars, while A waited longer. The algorithm reached the same conclusion as the field measurements.</p>
+
+</section>
+
+<section class="page">
+  <div class="kicker">Being honest about the limits</div>
+  <h2>What this project does not show</h2>
+  <ul class="plain">
+    <li><strong>It is a simulation.</strong> The controller has not run a real traffic light. The simulation is calibrated to the real junction and checked against real video, but it is still a model.</li>
+    <li><strong>Some traffic volumes are estimates.</strong> The morning and midday scenarios are measured. The evening and campus-event scenarios are partly or wholly estimated, and the campus-event volumes were scaled down after the first version proved more than the junction could physically carry.</li>
+    <li><strong>No motorcycles in the simulation.</strong> They are one in five real vehicles. Their effect is folded into the measured start-up delay rather than simulated one by one.</li>
+    <li><strong>Daylight and dry weather only.</strong> The camera was never trained on rain or night footage.</li>
+    <li><strong>The busiest movement has no light.</strong> Ax can only be helped indirectly, by clearing the lane that blocks it. A lasting fix for Ax is a separate left-turn lane, which is a road-building question, not a signal-timing one.</li>
+    <li><strong>6 of the 216 runs jammed completely</strong> under both controllers, all in the heaviest scenarios. They are included in the figures above.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ GLOSSARY -->
+<section class="page">
+  <div class="kicker">Reference</div>
+  <h2>Terms used in this document</h2>
+  <dl class="gloss">
+    <dt>Movement</dt><dd>One route through the junction, such as "straight through from the west" (A) or "right turn into the university" (Bx).</dd>
+    <dt>Signal head</dt><dd>One physical traffic light. The junction has four, and one of them (A's) also controls the A2 lane.</dd>
+    <dt>Cycle</dt><dd>One full round of the fixed timer, from a given light turning green until it turns green again. Measured at 107 seconds here.</dd>
+    <dt>Saturation headway</dt><dd>The gap between cars crossing the stop line when a queue is leaving on green. Measured at 2.31 seconds per car at this junction.</dd>
+    <dt>Start-up lost time</dt><dd>Time lost at the start of each green while the first car reacts and gets moving. Measured at 2.95 seconds.</dd>
+    <dt>Demand &divide; capacity (v/c)</dt><dd>How many cars arrive compared with how many the green can clear. Above 1.0, the queue keeps growing.</dd>
+    <dt>Gap-out</dt><dd>Ending a green early because nobody is left waiting for it.</dd>
+    <dt>Anti-starvation</dt><dd>A rule that cuts a long green if another light has waited too long, so no lane is ignored indefinitely.</dd>
+    <dt>Object detector</dt><dd>A model that finds and draws boxes around objects in an image. This project used YOLOv8.</dd>
+    <dt>mAP</dt><dd>The standard score for an object detector: how closely its boxes match human-drawn ones. 1.0 is perfect.</dd>
+    <dt>Digital twin</dt><dd>A simulation built to match a specific real place closely enough to test changes on it first.</dd>
+    <dt>Paired design</dt><dd>Running both controllers on exactly the same traffic, so any difference comes from the controller alone.</dd>
+    <dt>p-value</dt><dd>Roughly, the chance of seeing a difference this large if the controllers were really equal. Below 0.05 is conventionally treated as a real difference.</dd>
+    <dt>Effect size (Cohen's d)</dt><dd>How large a difference is compared with the natural variation between runs. Around 0.5 is medium, 0.8 and above is large.</dd>
+    <dt>Scenario</dt><dd>A traffic pattern the simulation plays, such as "morning peak", defined by how often cars arrive on each movement.</dd>
+  </dl>
+
+  <hr>
+  <p class="muted" style="font-size:9pt">Figures in this document come from the project's fourth and final experiment batch (216 runs, completed 19 September 2026) and from the field measurements in the project report. The full method, every intermediate result and the complete record of defects found and fixed are in the project report and its technical baseline, <span class="num">SODA_BASELINE.md</span>.</p>
+</section>
+
+</body>
+</html>
