@@ -108,7 +108,10 @@ public class ConflictTest
             if (tc.mode == ArrivalMode.Scripted) scripted++; else poisson++;
             Check(!string.IsNullOrEmpty(tc.name), $"'{tc.name}' has a name");
             Check(!string.IsNullOrEmpty(tc.description), $"'{tc.name}' has a description");
-            Check(tc.suggestedDuration > 0, $"'{tc.name}' has a run length");
+            if (tc.name == "ForeverTest")
+                Check(tc.suggestedDuration == 0f && tc.mode == ArrivalMode.Poisson, "'ForeverTest' is Poisson with no time limit");
+            else
+                Check(tc.suggestedDuration > 0, $"'{tc.name}' has a run length");
 
             if (tc.mode == ArrivalMode.Scripted)
             {
