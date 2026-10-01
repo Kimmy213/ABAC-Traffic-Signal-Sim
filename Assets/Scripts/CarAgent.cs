@@ -145,6 +145,33 @@ public class CarAgent : MonoBehaviour
     /// <summary>The car ahead must exceed this before a follower starts its reaction timer</summary>
     public const float LEADER_MOVING_SPEED = 0.5f;
 
+    // ===== Stopping at a red (closed loop, see ApproachStopSpeed) =====
+    /// <summary>A car held short of its stop point by more than this rolls up to it during the red, in metres</summary>
+    public const float CREEP_MIN_GAP = 1f;
+    /// <summary>Speed a car rolls up to the stop line at during a red, in m/s (about 11 km/h)</summary>
+    public const float CREEP_SPEED = 3f;
+    /// <summary>Slower than this counts as stopped at the line (the threshold the red branch always used)</summary>
+    const float STOPPED_SPEED = 0.05f;
+
+    // ===== Lane change before the stop line (A2 into the shared lane, see UpdateLaneChange) =====
+    /// <summary>Gap acceptance: the car behind in the target lane must be at least this many seconds of its own travel away</summary>
+    public const float MERGE_ACCEPT_TIME_GAP = 1f;
+    /// <summary>While changing lane the car aims at a point this far ahead on the target lane, in metres</summary>
+    public const float LANE_CHANGE_LOOKAHEAD = 8f;
+    /// <summary>The lane change is complete within this distance of the target lane centre, in metres...</summary>
+    public const float LANE_CHANGE_DONE_OFFSET = 0.25f;
+    /// <summary>...and within this many degrees of the lane direction</summary>
+    public const float LANE_CHANGE_DONE_ANGLE = 2f;
+    /// <summary>Width of the car body in metres: the car model scaled to carLength (= ABACSceneBuilder.CAR_WIDTH)</summary>
+    public const float BODY_WIDTH = 2.15f;
+    /// <summary>Sideways margin added to the body-overlap test used while a car is changing lane, in metres</summary>
+    public const float SIDE_MARGIN = 0.1f;
+
+    private bool laneChangeStarted = false;     // a gap was accepted; the car is moving across
+    private bool laneChangeBlocked = false;     // no gap at the last check: hold at the end of the merge zone
+    private bool laneChangeRequesting = false;  // blocked inside the merge zone: asking the target lane to let it in
+    private bool watchTargetLane = false;       // cars in the target lane also count as the car ahead
+
     void OnEnable()  { allCars.Add(this); }
     void OnDisable() { allCars.Remove(this); }
 
@@ -233,6 +260,7 @@ public class CarAgent : MonoBehaviour
             signedDistToStopPoint = Vector3.Dot(stopPoint - frontPos, transform.forward);
         }
 
+        UpdateLaneChange();
         DecideSpeed();
         Steer();
         MoveForward();
@@ -279,6 +307,12 @@ public class CarAgent : MonoBehaviour
             return;
         }
 
+        if (InLaneChange())
+        {
+            SteerLaneChange();
+            return;
+        }
+
         Vector3 toTarget = CurrentWaypointTarget() - transform.position;
         toTarget.y = 0f;
 
@@ -322,10 +356,18 @@ public class CarAgent : MonoBehaviour
         {
             if (!lightIsGreen)
             {
-                // ===== No snapping to 0 any more: follow decelRate continuously, which gives a natural slide =====
-                float speed = currentSpeed - decelRate * stepDt;
-                speed = Mathf.Max(0f, speed);
-                if (speed <= 0.05f) isStopped = true;
+                float speed = ApproachStopSpeed(signedDistToStopPoint);
+                if (speed <= STOPPED_SPEED)
+                {
+                    // a fresh stop: the reaction delay counts again from the next green. Without this reset a car
+                    // that stopped twice before clearing the line kept the timer of the first green and left at once.
+                    if (!isStopped) reactionTimer = 0f;
+                    isStopped = true;
+                }
+                else
+                {
+                    isStopped = false;   // rolling up to the line
+                }
                 return speed;
             }
             else
@@ -349,8 +391,37 @@ public class CarAgent : MonoBehaviour
         {
             isStopped = false;
             reactionTimer = 0f;
-            return approachSpeed;
+            // Accelerate at the profile's rate, like every other branch. This used to return approachSpeed
+            // outright, so the moment car-following let go (the car ahead turned off, or an A2 car angled out of
+            // its lane and lost sight of it) the speed jumped to full in a single 0.02 s step.
+            return Mathf.MoveTowards(currentSpeed, approachSpeed, acceleration * stepDt);
         }
+    }
+
+    /// <summary>
+    /// Speed for this step when the car has to stop at a point dist metres ahead: its stop line at a red,
+    /// or the end of the merge zone for a lane changer with no gap. Closed loop - it aims at the point.
+    ///
+    /// This used to be open loop: brake at decelRate from wherever the car entered its braking zone, a zone
+    /// sized for arriving at approachSpeed. A car arriving slower stopped (approachSpeed^2 - v^2) / (2 decelRate)
+    /// short - 11 m for a Normal driver at 6 m/s, 26 m for a Cautious one - and then never moved until green,
+    /// because its speed could only go down. That was the "CB waits far from the line" report (24 Sep 2026):
+    /// a CB queue leaves behind cars turning at 6.7 m/s, so the car left over when the amber comes is slow.
+    /// </summary>
+    float ApproachStopSpeed(float dist)
+    {
+        // fastest speed from which decelRate still stops exactly at the point
+        float curve = Mathf.Sqrt(2f * decelRate * Mathf.Max(0f, dist));
+
+        // on or above the curve: brake as before (if that is not enough the car slides past, as it always did)
+        if (currentSpeed > curve) return Mathf.Max(0f, currentSpeed - decelRate * stepDt);
+
+        // standing at the point: stay
+        if (currentSpeed <= STOPPED_SPEED && dist <= CREEP_MIN_GAP) return 0f;
+
+        // short of the point: keep rolling (roll up at CREEP_SPEED if slower), never above the curve
+        float target = Mathf.Max(currentSpeed, CREEP_SPEED);
+        return Mathf.Min(Mathf.MoveTowards(currentSpeed, target, acceleration * stepDt), curve);
     }
 
     // ===== Fastest speed that still keeps the car inside the intended turning circle =====
@@ -416,6 +487,13 @@ public class CarAgent : MonoBehaviour
             desiredSpeed = Mathf.Min(desiredSpeed, eased);
         }
 
+        // ---- lane changer with no gap: wait in its own lane at the end of the merge zone ----
+        if (laneChangeBlocked)
+        {
+            float toMergeEnd = Vector3.Dot(pathWaypoints[0].position - GetFrontPosition(), LaneChangeAxis());
+            desiredSpeed = Mathf.Min(desiredSpeed, ApproachStopSpeed(toMergeEnd));
+        }
+
         float gapAhead;
         CarAgent carAhead = GetCarAhead(out gapAhead);
 
@@ -468,8 +546,16 @@ public class CarAgent : MonoBehaviour
                 // decelRate of 9-22 m/s^2 that happily allows 2 m at 15 m/s = 0.4 s headway, which is impossible.
                 // Real drivers keep a time gap: gap = minGap + T x v.
                 // Inverted into a speed cap: v <= (gap - minGap) / T.
+                //
+                // The time gap is a comfort target, not a physical limit (maxSafeSpeed above is the physical
+                // one), so close in on it at the normal braking rate rather than in one step. When a car cuts in,
+                // or a lane changer first sees the queue in its new lane, cushion / T can be far below the
+                // current speed, and applying it at once is an instant stop.
                 if (desiredTimeHeadway > 0.01f)
-                    desiredSpeed = Mathf.Min(desiredSpeed, cushion / desiredTimeHeadway);
+                {
+                    float comfortSpeed = cushion / desiredTimeHeadway;
+                    desiredSpeed = Mathf.Min(desiredSpeed, Mathf.Max(comfortSpeed, currentSpeed - decelRate * stepDt));
+                }
             }
         }
 
@@ -496,8 +582,19 @@ public class CarAgent : MonoBehaviour
             if (forwardDist <= 0f) continue;
             if (forwardDist > maxLook) continue;
 
+            // lookAheadAngle assumes both cars are centred in their lanes. While either one is changing lane
+            // that fails: a car angled across lanes still overlaps our path after its centre has left
+            // lookAheadAngle, and the more it is angled the further it reaches sideways. So test the bodies:
+            // our half width, plus the other car's extent across our path at the angle between us.
+            float sideLimit = lookAheadAngle;
+            if (IsCrossingLanes() || other.IsCrossingLanes())
+            {
+                float rel = Vector3.Angle(transform.forward, other.transform.forward) * Mathf.Deg2Rad;
+                sideLimit = BODY_WIDTH / 2f + BODY_WIDTH / 2f * Mathf.Abs(Mathf.Cos(rel))
+                          + other.carLength / 2f * Mathf.Abs(Mathf.Sin(rel)) + SIDE_MARGIN;
+            }
             float lateralDist = Vector3.Cross(transform.forward, toOther).magnitude;
-            if (lateralDist > lookAheadAngle) continue;
+            if (lateralDist > sideLimit) continue;
 
             float g = forwardDist - (other.carLength / 2f);
             if (g < closestGap)
@@ -506,8 +603,224 @@ public class CarAgent : MonoBehaviour
                 closest = other;
             }
         }
+
+        // ===== Lane changer: cars in the target lane count as "ahead" too =====
+        // The test above looks along the nose, and the nose swings during a lane change: the car ahead in the
+        // old lane drops out of view and the queue in the new lane appears only once the nose points at it,
+        // already close. Measured on A2 in LaneBehaviourTest (24 Sep 2026): a jump to full speed, then an instant
+        // stop (+371 / -524 m/s^2 against limits of +3 / -13.5). Scanning the target lane along its own direction
+        // shows that queue in time, whatever the heading.
+        if (watchTargetLane)
+        {
+            Vector3 axis = LaneChangeAxis();
+            Vector3 lanePoint = pathWaypoints[0].position;
+            foreach (CarAgent other in allCars)
+            {
+                if (other == this) continue;
+                float ahead = Vector3.Dot(other.transform.position - frontPos, axis);
+                if (ahead <= 0f || ahead > maxLook) continue;
+                if (DistanceFromLane(other.transform.position, lanePoint, axis) > lookAheadAngle) continue;
+
+                float g = ahead - (other.carLength / 2f);
+                // Before the car commits, a target-lane car too close to stop for comfortably is not followed:
+                // it only closes the gap (FindMergeBlocker) and this car stays in its lane. Following it anyway
+                // made the car brake at -250 to -400 m/s^2 the moment planning began beside a busy Ax stream.
+                if (!laneChangeStarted && !CanStopComfortablyFor(g)) continue;
+                if (g < closestGap)
+                {
+                    closestGap = g;
+                    closest = other;
+                }
+            }
+        }
+
+        // ===== A car merging into our lane counts as already in it =====
+        // A lane changer that has started across, or is waiting in the merge zone for a gap, is placed on its
+        // target lane for the cars behind it there. Otherwise a car behind cannot see it until its centre is
+        // nearly in the lane, by which time the bodies overlap. A car only asking for a gap is let in only by a
+        // driver who can stop for it comfortably; one that cannot drives on, and the next one lets it in.
+        foreach (CarAgent other in allCars)
+        {
+            if (other == this || !other.IsMergingIntoTargetLane()) continue;
+            Vector3 axis = other.LaneChangeAxis();
+            Vector3 lanePoint = other.pathWaypoints[0].position;
+            if (DistanceFromLane(transform.position, lanePoint, axis) > lookAheadAngle) continue;   // not our lane
+
+            float ahead = Vector3.Dot(other.transform.position - frontPos, axis);
+            if (ahead <= 0f || ahead > maxLook) continue;
+            float g = ahead - (other.carLength / 2f);
+            if (!other.laneChangeStarted && !CanStopComfortablyFor(g)) continue;
+
+            if (g < closestGap)
+            {
+                closestGap = g;
+                closest = other;
+            }
+        }
+
         gap = closestGap;
         return closest;
+    }
+
+    // =====================================================================================
+    // Lane change before the stop line (A2 moving from lane A into the lane it shares with Ax)
+    //
+    // Waypoint 0 is the merge point on the target lane; the last waypoint gives the lane's direction.
+    //   1) Approach: drive in the current lane.
+    //   2) From steerStartDistance + look-ahead distance before the merge point, watch the target lane's traffic
+    //      as the car ahead too, and check it for a gap (FindMergeBlocker). Without a gap, keep to the current
+    //      lane and brake for the end of the merge zone; inside the zone, ask the target lane to let it in.
+    //   3) Within steerStartDistance of the merge point, a gap starts the lane change and the car is committed.
+    //   4) Steer onto the lane (SteerLaneChange). Once centred and aligned, go on to waypoint 1 as before.
+    //
+    // Before 24 Sep 2026 the car just turned towards waypoint 0 when it came within steerStartDistance,
+    // with no look at the target lane. An Ax car alongside was invisible to it (it sees only cars ahead of its
+    // own nose), and it was invisible to the Ax car until the two were already overlapping; in a sweep of
+    // A2/Ax encounters 115 of 567 ended with the bodies overlapping, the worst by a full car width.
+    // Waiting at the end of the merge zone (instead of carrying on in lane A) is deliberate: the car must
+    // reach the shared lane to be counted by ROI_Ax, the detector that sees A2.
+    // =====================================================================================
+
+    bool InLaneChange()
+    {
+        return steerBeforeStopLine && !hasCleared && !reachedEndOfPath
+            && pathWaypoints != null && pathWaypoints.Length >= 2
+            && waypointIndex == 0 && pathWaypoints[0] != null;
+    }
+
+    /// <summary>Could this driver stop at its normal braking rate and still keep minGap to a car whose rear is
+    /// gapToRear metres ahead? Decides which lane-change cars are followed or let in, and which gaps are taken.</summary>
+    bool CanStopComfortablyFor(float gapToRear)
+    {
+        return currentSpeed * currentSpeed / (2f * Mathf.Max(0.1f, decelRate)) <= gapToRear - minGap;
+    }
+
+    /// <summary>Moving across between lanes right now</summary>
+    bool IsCrossingLanes() => laneChangeStarted && InLaneChange();
+
+    /// <summary>Moving across, or waiting in the merge zone for a gap: cars in the target lane behind it treat it as there</summary>
+    bool IsMergingIntoTargetLane() => (laneChangeStarted || laneChangeRequesting) && InLaneChange();
+
+    /// <summary>Direction of the lane being changed into: from the merge point to the end of the path, flat</summary>
+    Vector3 LaneChangeAxis()
+    {
+        int last = pathWaypoints.Length - 1;
+        while (last > 0 && pathWaypoints[last] == null) last--;
+        Vector3 d = last > 0 ? pathWaypoints[last].position - pathWaypoints[0].position : transform.forward;
+        d.y = 0f;
+        return d.magnitude > 0.01f ? d.normalized : transform.forward;
+    }
+
+    /// <summary>Sideways distance of a point from the lane through lanePoint along axis (axis is flat and unit length)</summary>
+    static float DistanceFromLane(Vector3 point, Vector3 lanePoint, Vector3 axis)
+    {
+        Vector3 d = point - lanePoint;
+        d.y = 0f;
+        return Vector3.Cross(axis, d).magnitude;
+    }
+
+    void UpdateLaneChange()
+    {
+        laneChangeBlocked = false;
+        laneChangeRequesting = false;
+        watchTargetLane = false;
+        if (!InLaneChange()) return;
+
+        if (laneChangeStarted)
+        {
+            watchTargetLane = true;
+            return;
+        }
+
+        // Start planning as far back as the car can see. Planning only from its braking distance was too late
+        // for an Aggressive driver (6.3 m): a slower car in the target lane then appeared 3 m ahead of it.
+        float toMergePoint = Vector3.Dot(pathWaypoints[0].position - transform.position, LaneChangeAxis());
+        bool lateMerge = steerStartDistance > 0f;
+        float planFrom = steerStartDistance + Mathf.Max(GetRequiredBrakeDistance(), lookAheadDistance);
+        if (lateMerge && toMergePoint > planFrom) return;   // too early to plan
+
+        // Watch the target lane whether or not there is a gap: a car there that is too close ahead to merge in
+        // front of must stay in view, or it flickers in and out as the gap opens and closes and the speed jumps.
+        watchTargetLane = true;
+        laneChangeBlocked = FindMergeBlocker() != null;
+        bool inMergeZone = !lateMerge || toMergePoint <= steerStartDistance;
+        if (!laneChangeBlocked && inMergeZone) laneChangeStarted = true;
+        // Waiting in the merge zone: a car behind in the target lane that can stop comfortably lets it in
+        // (see GetCarAhead). Without this an A2 car could wait over a minute for a gap in a busy Ax stream,
+        // holding lane A behind it the whole time (ABACEvent stress run, 24 Sep 2026).
+        laneChangeRequesting = laneChangeBlocked && inMergeZone;
+    }
+
+    /// <summary>
+    /// A car in the target lane that leaves no room to move across now, or null if there is a gap.
+    /// Ahead: we must be able to stop behind it at our decelRate and keep minGap. Behind: its driver must be
+    /// able to slow to our speed with its decelRate and still have MERGE_ACCEPT_TIME_GAP seconds of travel in hand.
+    /// </summary>
+    CarAgent FindMergeBlocker()
+    {
+        Vector3 axis = LaneChangeAxis();
+        Vector3 lanePoint = pathWaypoints[0].position;
+        // Without a green this car is going to stop at its line, so the car behind has to be able to stop too.
+        // Judging by the current speed instead let the gap close as this car slowed for the red, too late for
+        // it to stop before the end of the merge zone (a Cautious driver needs 32 m).
+        float speedToMatch = lightIsGreen ? currentSpeed : 0f;
+        foreach (CarAgent other in allCars)
+        {
+            if (other == this) continue;
+            if (DistanceFromLane(other.transform.position, lanePoint, axis) > lookAheadAngle) continue;
+
+            float s = Vector3.Dot(other.transform.position - transform.position, axis);   // + = the other car is ahead
+            float bodies = (carLength + other.carLength) / 2f + minGap;
+            // Ahead (or alongside, nose in front): we must be able to stop comfortably behind it. This is the same
+            // rule GetCarAhead uses to decide whether to follow a target-lane car before committing, so a gap
+            // accepted here is behind a car already being followed, never one that appears as the lane change starts.
+            if (s > 0f)
+            {
+                if (CanStopComfortablyFor(s - (carLength + other.carLength) / 2f)) continue;
+                return other;
+            }
+
+            float slowDown = Mathf.Max(0f, other.currentSpeed * other.currentSpeed - speedToMatch * speedToMatch)
+                             / (2f * Mathf.Max(0.1f, other.decelRate));
+            float behind = bodies + slowDown + MERGE_ACCEPT_TIME_GAP * other.currentSpeed;
+            if (s <= -behind) continue;
+
+            return other;
+        }
+        return null;
+    }
+
+    void SteerLaneChange()
+    {
+        if (!laneChangeStarted) return;   // keep to the current lane until a gap is accepted
+
+        Vector3 axis = LaneChangeAxis();
+        Vector3 lanePoint = pathWaypoints[0].position;
+        Vector3 rel = transform.position - lanePoint;
+        rel.y = 0f;
+        float along = Vector3.Dot(rel, axis);
+        Vector3 heading = transform.forward;
+        heading.y = 0f;
+
+        if (DistanceFromLane(transform.position, lanePoint, axis) <= LANE_CHANGE_DONE_OFFSET
+            && Vector3.Angle(heading, axis) <= LANE_CHANGE_DONE_ANGLE)
+        {
+            waypointIndex++;   // in the lane: the rest of the path is followed as before
+            return;
+        }
+
+        // aim at the merge point, and once that is nearer than LANE_CHANGE_LOOKAHEAD, at a point that far
+        // ahead on the lane, so the car settles onto the centre instead of crossing it at an angle
+        Vector3 toAim = lanePoint + axis * Mathf.Max(0f, along + LANE_CHANGE_LOOKAHEAD) - transform.position;
+        toAim.y = 0f;
+        if (toAim.magnitude < 0.01f) return;
+
+        // A car cannot turn on the spot: its heading may change no faster than speed / turnRadius, so a slow
+        // car follows a curve no tighter than turnRadius and a stopped one keeps its heading. (The old code
+        // used steerRate at any speed, and an A2 car held in a queue pivoted where it stood.)
+        float maxYawRate = Mathf.Min(steerRate, currentSpeed / Mathf.Max(0.1f, turnRadius) * Mathf.Rad2Deg);
+        transform.rotation = Quaternion.RotateTowards(
+            transform.rotation, Quaternion.LookRotation(toAim.normalized, Vector3.up), maxYawRate * stepDt);
     }
 
     /// <summary>
