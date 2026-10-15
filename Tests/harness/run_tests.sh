@@ -59,6 +59,8 @@ run t5 SharedLaneTest.cs      SharedLaneTest ""                     gamecode.dll
 run t6 GeometryTest.cs        GeometryTest   "-define:UNITY_EDITOR" all_ed.dll
 run_nostub t10 HeadwayTest.cs HeadwayTest    gamecode.dll
 run_nostub t11 Compare101Test.cs Compare101Test gamecode.dll
+# A2 lane change into the shared lane and stopping at a red, on the scene geometry (needs ABACSceneBuilder, so all_ed.dll)
+run_nostub t12 LaneBehaviourTest.cs LaneBehaviourTest all_ed.dll
 
 # Compares ".unity against .cs", not ".cs against .cs" - the one that actually catches scene-serialization bugs
 run t7 ../SceneAuditTest.cs   SceneAuditTest ""                     gamecode.dll "$SCENE"

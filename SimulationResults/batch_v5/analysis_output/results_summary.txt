@@ -1,0 +1,97 @@
+==================================================================
+ABAC TRAFFIC SIGNAL SIMULATION - ANALYSIS RESULTS
+==================================================================
+total runs in the summary file : 216
+Fixed-Adaptive pairs matched   : 108
+scenarios found                : ABACEvent, EveningPeak, MiddayNormal, MorningPeak
+
+
+### 1. AVERAGE WAITING TIME (primary measure) ###
+
+------------------------------------------------------------------
+Average waiting time (seconds)   (n = 108 pairs)
+------------------------------------------------------------------
+  Fixed     : mean =   42.025   sd =  12.890
+  Adaptive  : mean =   33.622   sd =  21.260
+  difference (Fixed - Adaptive) = +8.403  (+20.0% for Adaptive)
+  95% CI of the difference     = [5.707, 11.100]
+  paired t-test            : t(107) = 6.1775,  p = 1.19877e-08
+  Wilcoxon signed-rank     : W = 1161.0,  p = 4.70579e-08
+  Cohen's d (paired)       : 0.594  (medium)
+  Shapiro-Wilk on differences  : p = 0.00489722  (differences not normal -> cite Wilcoxon as well)
+  => Adaptive significantly better
+
+
+### 2. MAXIMUM WAITING TIME (worst case) ###
+
+------------------------------------------------------------------
+Maximum waiting time (seconds)   (n = 108 pairs)
+------------------------------------------------------------------
+  Fixed     : mean =  204.236   sd =  71.994
+  Adaptive  : mean =  119.304   sd =  78.151
+  difference (Fixed - Adaptive) = +84.932  (+41.6% for Adaptive)
+  95% CI of the difference     = [74.566, 95.299]
+  paired t-test            : t(107) = 16.2412,  p = 1.21078e-30
+  Wilcoxon signed-rank     : W = 114.0,  p = 4.27243e-18
+  Cohen's d (paired)       : 1.563  (large)
+  Shapiro-Wilk on differences  : p = 0.00104843  (differences not normal -> cite Wilcoxon as well)
+  => Adaptive significantly better
+
+
+### 3. THROUGHPUT (vehicles cleared) ###
+
+------------------------------------------------------------------
+Vehicles cleared per run   (n = 108 pairs)
+------------------------------------------------------------------
+  Fixed     : mean = 1161.944   sd = 471.926
+  Adaptive  : mean = 1198.398   sd = 485.932
+  difference (Fixed - Adaptive) = -36.454  (+3.1% for Adaptive)
+  95% CI of the difference     = [-74.525, 1.618]
+  paired t-test            : t(107) = -1.8982,  p = 0.0603707
+  Wilcoxon signed-rank     : W = 1481.5,  p = 1.21455e-05
+  Cohen's d (paired)       : -0.183  (negligible)
+  Shapiro-Wilk on differences  : p = 1.30365e-10  (differences not normal -> cite Wilcoxon as well)
+  => no significant difference (p >= 0.05)
+
+
+### 4. STARVATION EVENTS (success criteria) ###
+  Fixed    : 0 events in total
+  Adaptive : 7266 events in total  (occurring in 65/108 runs)
+
+  Important: in this system a starvation event means the anti-starvation mechanism fired
+  (cutting a phase for a lane that had waited), not that a lane was actually starved.
+  Above 0 means the mechanism did its job. For a zero-starvation claim, check MaxWaitTime instead.
+  -> runs where Adaptive MaxWaitTime exceeded 60s : 55/108
+
+
+### 5. BY SCENARIO ###
+  Scenario         n    Fixed    Adapt   Cut %          p      d
+  --------------------------------------------------------------
+  ABACEvent       27    46.49    46.13    0.8%    0.87786   0.03
+  EveningPeak     27    55.81    59.33   -6.3%    0.08087  -0.35
+  MiddayNormal    27    25.58    15.27   40.3%   6.67e-21   5.37
+  MorningPeak     27    40.22    13.76   65.8%   3.94e-25   7.87
+
+
+### 6. BY LANE (from the detailed CSV) ###
+  Lane        Fixed   Adaptive    Cut %
+  -----------------------------------
+  A           66.28      83.65   -26.2%
+  Ax          20.11      19.00     5.5%
+  B           24.21      28.32   -17.0%
+  Bx         137.80      63.53    53.9%
+  CB          63.54      62.62     1.4%
+  CA          11.78      11.30     4.0%
+  A2          24.33      33.67   -38.4%
+
+  Sanity check: the free lanes Ax and CA should be near 0 (no signal to wait at)
+
+
+==================================================================
+Ready-made sentence for the report or abstract
+==================================================================
+Across 108 pairs (paired design, shared seeds), the adaptive controller cut
+the mean waiting time from 42.03 seconds to 33.62 seconds (a mean difference
+of 8.40 seconds, or 20.0%, 95% CI [5.71, 11.10]) which is statistically
+significant (paired t-test: t(107) = 6.18, p = 1.199e-08, Cohen's d = 0.59,
+considered medium)
