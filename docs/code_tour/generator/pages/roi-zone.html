@@ -1,0 +1,65 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">A detection zone: a 100 m trigger box laid back from a stop line. It stands in for the camera the project proposes. The file has two jobs that must not mix. It is the controller's <b>only input</b>, a count, and it is also the experiment's <b>measuring tape</b>, each car's wait. The split between what the controller may use and what is measurement-only is the core idea of the file.</p>
+<ul class="resp">
+  <li><b>Track</b> which cars are inside, with the time each entered (Unity trigger events).</li>
+  <li><b>Count</b>: <code>GetSampledCount()</code>, the only method <code>AdaptiveController</code> may call.</li>
+  <li><b>Measure</b>: when a car leaves, report its time inside to <code>DataLogger</code>, under the car's own lane name.</li>
+  <li><b>Show</b>: the lane card on screen, the yellow gizmo in the editor, and the green box on cars inside.</li>
+</ul>
+<div class="outline">
+  <section><h5>Triggers</h5><ul><li><a href="#triggers">OnTriggerEnter</a></li><li><a href="#triggers">OnTriggerExit</a></li><li><a href="#lanes">Accepts</a></li><li><a href="#triggers">ClearAll</a></li></ul></section>
+  <section><h5>For the controller</h5><ul><li><a href="#api">GetSampledCount</a></li></ul></section>
+  <section><h5>Ground truth only</h5><ul><li><a href="#api">GetVehicleCount (both)</a></li><li><a href="#api">GetOldestArrivalTime</a></li><li><a href="#api">GetLongestWaitTime</a></li><li><a href="#api">GetCarsInZone</a></li></ul></section>
+  <section><h5>Display</h5><ul><li><a href="#variables">DisplayName</a></li><li><a href="#variables">OnDrawGizmos</a></li><li><a href="#variables">OnGUI</a></li></ul></section>
+</div>
+
+<h2 id="api"><span class="n">02</span>What the controller may see</h2>
+<excerpt file="Assets/Scripts/ROIZone.cs" lines="90-119" expect="// =====" hl="107-111" caption="The API split, as the file states it"/>
+<div class="tw"><table class="plain">
+  <thead><tr><th>Method</th><th>Needs a tracker?</th><th>Who calls it</th></tr></thead>
+  <tbody>
+    <tr><td class="vn">GetSampledCount()</td><td>No: "how many cars in frame now"</td><td><code>AdaptiveController</code> (the only one it may use)</td></tr>
+    <tr><td class="vn">GetVehicleCount()</td><td>No, but it ignores the test override</td><td>display, control panel lane table</td></tr>
+    <tr><td class="vn">GetVehicleCount(lane)</td><td>Yes: tells movements apart</td><td>inspection and debugging</td></tr>
+    <tr><td class="vn">GetOldestArrivalTime()</td><td>Yes: per-car timestamps</td><td>measurement only</td></tr>
+    <tr><td class="vn">GetLongestWaitTime()</td><td>Yes</td><td>display, control panel "Oldest car" column</td></tr>
+    <tr><td class="vn">GetCarsInZone()</td><td>Yes: identities</td><td>measurement only</td></tr>
+  </tbody>
+</table></div>
+<p class="prose"><code>SodaTest</code> scans <code>AdaptiveController.cs</code> and fails if it ever calls one of the three tracker methods. That is the test that keeps the simulated controller installable with the hardware the project can afford.</p>
+
+<div class="whatif">
+  <h4>What the snapshot sees</h4>
+  <p>The grey line is the true number of cars in a zone at every moment. The blue dots are what <code>Snapshot()</code> reads, once per <code>snapshotInterval</code>. The arrival and departure times in this drawing are made up for illustration; the sampling rule is the code's. Widen the interval and watch the rising edge, which sets <code>queueStart</code>, arrive later.</p>
+  <div data-widget="sampling"></div>
+</div>
+
+<h2 id="triggers"><span class="n">03</span>Entering and leaving</h2>
+<excerpt file="Assets/Scripts/ROIZone.cs" lines="37-72" expect="void OnTriggerEnter(Collider other)" hl="41,45,59,65" caption="OnTriggerEnter and OnTriggerExit"/>
+<p class="prose">The wait recorded is the time from entering the zone to leaving it. Every waiting-time figure in the project, including the v5 result, is this number, averaged. Two consequences follow from the code:</p>
+<ul class="resp">
+  <li>A car is logged only when it <b>leaves</b> the zone. A car still inside when the run ends is not counted.</li>
+  <li>Waits are counted only inside the 100 m zone. When a queue is longer than the zone, the time spent queuing behind it is not in the figure. This matters most in an oversaturated scenario such as EveningPeak, where queues reach beyond the zone.</li>
+</ul>
+<p class="prose small muted">Triggers fire because every car carries a kinematic <code>Rigidbody</code>, added by <a href="car-prefab-builder.html"><code>CarPrefabBuilder</code></a>. Trigger timing is frame-grained: about ±0.17 s per car at 10× speed, which the <code>ScenarioManager</code> comment judges small against the 2 s snapshot used when it was written.</p>
+
+<h2 id="lanes"><span class="n">04</span>One zone, two movements</h2>
+<p class="prose">A2 (through) and Ax (turning in) share the outer eastbound lane, and a camera cannot tell which car will turn. So they share one zone, <code>ROI_Ax</code>, with <code>alsoCountLanes = ["A2"]</code>. The controller sees their total; the statistics still separate them by the car's own <code>assignedLane</code>.</p>
+<excerpt file="Assets/Scripts/ROIZone.cs" lines="10-28" expect="Lane Identity" hl="19,24-26" caption="laneName, alsoCountLanes and Accepts"/>
+
+<h2 id="variables"><span class="n">05</span>Every variable</h2>
+<p class="prose">Saved values are read from the six zones in <code>SampleScene.unity</code>. <code>guiSlot</code> differs per zone by design: it is the row of each card on screen.</p>
+<vartable for="ROIZone">
+  <v n="laneName" k="code">The zone's main lane.<eff>Must match the lane that points at this zone, or <code>ValidateConfiguration</code> reports "demand will always read 0".</eff></v>
+  <v n="alsoCountLanes" k="code">Other lanes counted by the same zone: A2 on <code>ROI_Ax</code>.<eff>Remove A2 and its cars would be invisible to the controller. A separate A2 zone would give the controller information a real camera cannot have (the old overlapping <code>ROI_A2</code> was deleted for that reason).</eff></v>
+  <v n="showDebugGUI" k="code">The lane card on screen.<eff>Display only; turned off during a batch.</eff></v>
+  <v n="guiSlot" k="code">Row of the card on screen, 0 at the top.<eff>Display only; keep unique per zone.</eff></v>
+  <v n="simulatedCountOverride" k="code">Tests only: −1 = off, 0 or more = the count every snapshot returns.<eff>Must stay −1 in a batch, which never touches it. Any other value would freeze what the controller sees.</eff></v>
+</vartable>
+<p class="prose small muted">Two private constants only scale the on-screen card: <code>BarFullCars = 15</code> (a full bar) and <code>WaitCritical = 45</code> s (red), the latter taken from <code>AdaptiveController.maxWaitTime</code>.</p>
+
+<h2 id="issues"><span class="n">06</span>Known issues</h2>
+<ul class="issues">
+  <li><b class="tag">Limitation</b>Detection is assumed perfect. Field accuracy of the detector was 98.3% (298 of 303 cars, lane A, 13 July 2026). A miss shifts <code>queueStart</code> by a whole snapshot interval, so ordering suffers more than counting.<span class="src"><code>SODA_BASELINE</code> L5</span></li>
+  <li><b class="tag">Note</b><code>Analysis/analyze_results.py</code> prints "free lanes Ax and CA should be near 0". At this junction that is not expected: Ax stops while Bx is green and queues behind A2 in the shared lane. Batch v5 shows 19-20 s for Ax and 11-12 s for CA.<span class="src"><code>results_summary.txt</code> section 6</span></li>
+</ul>

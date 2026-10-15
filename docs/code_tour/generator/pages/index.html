@@ -1,0 +1,144 @@
+<header class="file-head">
+  <p class="eyebrow">ABAC Smart Traffic Light · Module C · Unity digital twin</p>
+  <h1>How the 19 files work together</h1>
+  <p class="lede">The simulator is 19 C# files: 16 that run in Play mode and 3 Editor tools that build the scene. This page shows what each file does and how they connect. Each file then has its own page, which starts with the whole file and then goes into its parts and every variable.</p>
+  <nav class="toc" id="toc" aria-label="On this page"><b>On this page</b></nav>
+</header>
+
+<h2 id="junction" data-short="The junction">The junction being simulated</h2>
+<p class="prose">The ABAC entrance on Bangna-Trad Road is a T-junction with <b>seven movements</b> and <b>four signal heads</b>. Everything below is drawn from the constants and waypoint tables in <a href="abac-scene-builder.html"><code>ABACSceneBuilder</code></a> (x runs east, z runs north, in metres). Pick a lane to see which other lanes it may share a green with, according to the conflict list in <a href="intersection-config.html"><code>IntersectionConfig</code></a>.</p>
+<figure class="fig">
+  <div data-widget="junction"></div>
+  <figcaption>Lane colours are the ones the scene paints its cars with (<code>UITheme.LaneA/B/C</code>): A-group blue, B-group orange, C-group green. Dashed amber boxes are the detection zones, which really run 100 m back from each stop line. The four squares are the signal heads; H_A drives both A and A2.</figcaption>
+</figure>
+<div class="tw"><table class="plain">
+  <thead><tr><th>Head</th><th>Lanes on it</th><th>Zone it counts</th><th>Free lanes (no head)</th></tr></thead>
+  <tbody>
+    <tr><td class="vn">H_A</td><td>A, A2</td><td><code>ROI_A</code> + <code>ROI_Ax</code></td><td rowspan="4">Ax: left turn in, yields to Bx (reads the Bx light inverted)<br>CA: left turn out, crosses nobody</td></tr>
+    <tr><td class="vn">H_B</td><td>B</td><td><code>ROI_B</code></td></tr>
+    <tr><td class="vn">H_Bx</td><td>Bx</td><td><code>ROI_Bx</code></td></tr>
+    <tr><td class="vn">H_CB</td><td>CB</td><td><code>ROI_CB</code></td></tr>
+  </tbody>
+</table></div>
+<p class="prose small muted">Source: <code>SODA_BASELINE.md</code> §2.1 and <code>AdaptiveController.BuildHeads</code>, which merges lanes that point at the same <code>TrafficLight</code> object into one head. Only three green groups are possible: {A, A2, B}, {B, Bx}, or any lane alone.</p>
+
+<h2 id="files" data-short="The 19 files">The 19 files, by layer</h2>
+<p class="prose">The files fall into seven layers. The table gives each file's job in one sentence. The line counts are read from the files on branch <code>sim/1s-with-reset-fix</code>, which is the code batch v5 ran on.</p>
+<roles/>
+
+<h2 id="map" data-short="File map">Who calls whom</h2>
+<p class="prose">Each arrow is a real reference in the code: a method call, a field of that type, or a <code>FindFirstObjectByType</code>. Names that only appear in comments are left out. <code>UITheme</code> is used for drawing by nine files, so it has no arrows; see <a href="ui-theme.html">its page</a>. Start with the simulation path, then switch on the other two sets.</p>
+<figure class="fig">
+  <filemap/>
+  <figcaption>Point at a file, or Tab to it, to label every call in and out of it. Click to open its page.</figcaption>
+</figure>
+<div class="cols">
+  <div>
+    <h3>The simulation path</h3>
+    <p>Cars come from <code>CarSpawner</code> and drive as <code>CarAgent</code>. A <code>ROIZone</code> counts them. A controller, Fixed or Adaptive, turns that count (or nothing, for Fixed) into <code>TrafficLight</code> states, and the light tells the cars. <code>IntersectionConfig</code> is the shared description of the junction that every part looks lanes up in.</p>
+  </div>
+  <div>
+    <h3>The measurement path</h3>
+    <p><code>ROIZone</code> reports each car's wait to <code>DataLogger</code> as it leaves the zone, and <code>AdaptiveController</code> reports each phase. <code>ScenarioManager</code> drives 216 runs and asks <code>DataLogger</code> for the results. The controller itself never reads the measurement.</p>
+  </div>
+</div>
+
+<h2 id="loop" data-short="The control loop">One car through the control loop</h2>
+<p class="prose">This is the same loop in motion, for one car on one adaptive head. Step through it to see which file is working at each stage.</p>
+<figure class="fig">
+  <div data-widget="loop"></div>
+  <figcaption>The timing on screen is shortened for display; the rules in each caption are the code's. With one car, Q4 gives 2.95 + 1 × 2.31 = 5.26 s, which <code>gMin</code> raises to 8 s.</figcaption>
+</figure>
+
+<h2 id="lifecycle" data-short="Lifecycle">What runs when</h2>
+<p class="prose">Unity calls a few methods on every component at fixed moments. The table lists what each file does at each one. The order of <code>Awake</code> calls between components is not guaranteed, so files that depend on <code>IntersectionConfig</code> call its <code>EnsureBuilt()</code> themselves.</p>
+<div class="vt-wrap"><table>
+  <thead><tr><th>Moment</th><th>What happens</th></tr></thead>
+  <tbody>
+    <tr><td class="vn">Awake</td><td><code>IntersectionConfig.Build</code> builds the conflict matrix · <code>AdaptiveController</code> enforces the measured 2.95 / 2.31, then groups lanes into heads · <code>FixedController</code> resolves lane names to signal indices · <code>ScenarioManager</code> enforces <code>a2Share</code> = 0.054 · <code>DataLogger.Instance = this</code> · the panels find their references</td></tr>
+    <tr><td class="vn">Start</td><td>Both controllers start at Play: Fixed starts <code>RunCycle</code>, Adaptive starts <code>SnapshotLoop</code> and <code>RunSoda</code> · <code>CarSpawner</code> starts its spawn loop unless the panel already did · <code>CarAgent</code> loads its driver profile · <code>SimulationControlPanel.StartRun</code> (with <code>autoStartOnPlay</code>) then stops both controllers and restarts only the selected one</td></tr>
+    <tr><td class="vn">Update</td><td><code>CarAgent</code> moves in ≤ 0.02 s sub-steps · <code>SimulationControlPanel</code> advances the run clock and stops it when the road is clear · <code>RoiHighlight</code> keeps its box in sync</td></tr>
+    <tr><td class="vn">Physics</td><td><code>ROIZone.OnTriggerEnter / Exit</code> when a car's collider crosses a zone boundary (the car carries a kinematic Rigidbody so these fire)</td></tr>
+    <tr><td class="vn">LateUpdate</td><td><code>CameraDirector</code> eases the camera towards the current shot</td></tr>
+    <tr><td class="vn">OnGUI</td><td>Every panel draws itself, wrapped in <code>UITheme.Begin / End</code>; key presses are read here too</td></tr>
+    <tr><td class="vn">Coroutines</td><td><code>SnapshotLoop</code>, <code>RunSoda</code>, <code>RunCycle</code>, <code>SpawnLoop</code>, <code>PendingReleaseLoop</code>, <code>DespawnWhenFar</code>, <code>RunAllExperiments</code>: long-running loops that wait with <code>yield</code></td></tr>
+  </tbody>
+</table></div>
+
+<div class="cols">
+  <div>
+    <h3>A single run (control panel)</h3>
+    <ol class="steps">
+      <li><code>ApplyTestCase</code> sets each lane to Poisson or a schedule</li>
+      <li>Seed: <code>randomSeed</code> for Poisson cases, a fixed 20260820 for scripted ones</li>
+      <li><code>ResetAllLanes(seed)</code> clears every lane, then reseeds and restarts it</li>
+      <li><code>DataLogger.ResetRun</code></li>
+      <li><code>ApplyController</code>: stop both, enable one, <code>RestartCycle</code></li>
+      <li>Scripted cases stop the clock when every car is released and the road is empty</li>
+    </ol>
+  </div>
+  <div>
+    <h3>One run of a batch (ScenarioManager)</h3>
+    <ol class="steps">
+      <li>seed = <code>StableHash(scenario)</code> + rep × 31, the same for Fixed and Adaptive</li>
+      <li>Poisson rates for the scenario, then <code>ResetAllLanes(seed)</code></li>
+      <li>Stop both controllers, enable one, restart it</li>
+      <li>120 s warm-up, then clear the data</li>
+      <li>1,800 s measured at 10× speed</li>
+      <li>Record the result, write three CSV files</li>
+    </ol>
+  </div>
+</div>
+
+<h2 id="scene" data-short="Scene overrides code">The scene overrides the code</h2>
+<p class="prose">Read this before any variable table. When a component sits in <code>SampleScene.unity</code>, Unity saves the value of every public field into the scene file. On load, those saved values replace the defaults written in the <code>.cs</code> file. Editing a default in code therefore changes nothing for a component already in the scene.</p>
+<figure class="fig"><div class="canvas">
+  <svg viewBox="0 0 900 190" width="900" role="img" aria-label="Code default, saved scene value, runtime value">
+    <g font-size="13">
+      <rect x="10" y="40" width="240" height="90" rx="8" fill="var(--paper)" stroke="var(--rule)"/>
+      <text x="26" y="66" font-weight="700">1 · Code default</text>
+      <text x="26" y="90" font-family="var(--f-mono)" font-size="12">despawnDistance = 80f;</text>
+      <text x="26" y="112" font-size="11" fill="var(--muted)">CarSpawner.cs line 80</text>
+      <rect x="330" y="40" width="240" height="90" rx="8" fill="var(--paper)" stroke="var(--stop)" stroke-width="2"/>
+      <text x="346" y="66" font-weight="700">2 · Saved in the scene</text>
+      <text x="346" y="90" font-family="var(--f-mono)" font-size="12">despawnDistance: 300</text>
+      <text x="346" y="112" font-size="11" fill="var(--muted)">SampleScene.unity, all 7 spawners</text>
+      <rect x="650" y="40" width="240" height="90" rx="8" fill="var(--accent-tint)" stroke="var(--accent)" stroke-width="2"/>
+      <text x="666" y="66" font-weight="700">3 · Used at runtime</text>
+      <text x="666" y="90" font-family="var(--f-mono)" font-size="12">300</text>
+      <text x="666" y="112" font-size="11" fill="var(--muted)">the scene wins</text>
+      <path d="M250 85 L322 85" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 4"/>
+      <text x="286" y="76" text-anchor="middle" font-size="11" fill="var(--muted)">ignored</text>
+      <path d="M570 85 L642 85" stroke="var(--accent)" stroke-width="2.5"/>
+      <path d="M636 79 L644 85 L636 91" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+      <text x="450" y="170" text-anchor="middle" font-size="12" fill="var(--ink2)">ABACSceneBuilder writes 300 (its DESPAWN constant) into every spawner, so the scene and the code disagree on purpose here.</text>
+    </g>
+  </svg>
+</div>
+<figcaption>A real example: <code>CarSpawner.despawnDistance</code> is <dv c="CarSpawner" f="despawnDistance"/> in the code and <sv c="CarSpawner" f="despawnDistance"/> in the scene.</figcaption></figure>
+<p class="prose">That is fine when it is deliberate, as with the per-lane spawner settings. It has also gone wrong: the scene once held <code>startupLostTime = 1</code>, <code>saturationHeadway = 2.5</code>, <code>repetitionsPerScenario = 1</code> and <code>a2Share = 0.18</code> after the code had moved on (the header of <code>SceneParameterAudit.cs</code>). Three guards now stop that from reaching a result:</p>
+<ol class="steps">
+  <li><b>Constants as the source of truth.</b> <code>MEASURED_STARTUP_LOST_TIME</code>, <code>BATCH_REPETITIONS</code> and the like cannot be overridden, because <code>const</code> fields are never saved into the scene.</li>
+  <li><b>Correct on load.</b> <code>AdaptiveController.EnforceMeasuredParameters</code> and <code>ScenarioManager.EnforceMeasuredShare</code> run in <code>Awake</code>, put the measured values back and log an error.</li>
+  <li><b>Check the file.</b> <a href="scene-parameter-audit.html"><code>SceneParameterAudit</code></a> compares the scene with the code inside Unity, and <code>SceneAuditTest</code> reads <code>SampleScene.unity</code> itself in the test suite.</li>
+</ol>
+<p class="prose">Every variable table on the file pages has a <b>Saved value</b> column read from <code>SampleScene.unity</code>, or from <code>Car.prefab</code> for <code>CarAgent</code> and <code>RoiHighlight</code>, which live on the car prefab. Values in <span style="color:var(--stop);font-weight:700">red</span> differ from the code default. For the controllers and <code>ScenarioManager</code> there are none, as of this build.</p>
+
+<h2 id="how-to-read" data-short="How to read the pages">How to read a file page</h2>
+<p class="prose">Every file page follows the same order. It opens with the big picture: the file's job, where it sits, and an outline of its methods. Then comes the deep dive, one section per group of methods, each with the real code and its line numbers. It ends with the variable table and a list of known issues. Each claim about changing a variable is marked with what it rests on:</p>
+<div class="legend-kinds">
+  <span><span class="kind measured" style="display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.05rem .4rem;border-radius:3px;color:var(--paper)">measured</span> a recorded result exists and is cited</span>
+  <span><span class="kind code" style="display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.05rem .4rem;border-radius:3px;color:var(--paper)">from the code</span> it follows directly from the code; not measured</span>
+  <span><span class="kind unknown" style="display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.05rem .4rem;border-radius:3px;color:var(--paper)">unknown</span> depends on traffic and has not been run</span>
+</div>
+<p class="prose">Numbers come from three places only: the code, the baseline documents (<code>docs/soda/SODA_BASELINE.md</code> and <code>docs/unity/Unity_BASELINE.md</code>), and batch v5 (<code>SimulationResults/batch_v5</code>).</p>
+
+<h2 id="result" data-short="What it produced">What the simulator produced</h2>
+<p class="prose">Batch v5 (1-2 Oct 2026): 216 runs, 108 Fixed/Adaptive pairs on shared seeds. Across all four scenarios, SODA cut the mean wait from <b>42.03 s to 33.62 s (−20.0%, paired t-test p = 1.2 × 10⁻⁸)</b> and the worst wait in a run from <b>204.2 s to 119.3 s (−41.6%)</b>. Throughput rose 3.1%, which the t-test does not find significant (p = 0.060). The result splits sharply by scenario:</p>
+<figure class="fig">
+  <div data-widget="v5bars"></div>
+  <figcaption>Source: <code>SimulationResults/batch_v5/analysis_output/results_summary.txt</code>, section 5. Morning −65.8% and Midday −40.3% are significant. Evening (+6.3% worse, p = 0.08) and ABACEvent (−0.8%, p = 0.88) are not. The <a href="adaptive-controller.html#v-AdaptiveController-minGreenBeforeInterrupt"><code>minGreenBeforeInterrupt</code></a> row on the SODA page explains the Evening case.</figcaption>
+</figure>
+
+<h2 id="index" data-short="All files">All files</h2>
+<fileindex/>

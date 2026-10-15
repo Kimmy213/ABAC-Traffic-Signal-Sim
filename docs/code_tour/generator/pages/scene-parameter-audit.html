@@ -1,0 +1,17 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">Menu <i>ABAC &gt; Verify Scene Against Code</i>. It answers one question: does the scene still hold the values the code intends? The problem it guards against is described on <a href="index.html#scene">the overview page</a>. The scene saves every public field and overrides the code on load, and that once left a batch running on stale values.</p>
+<excerpt file="Assets/Editor/SceneParameterAudit.cs" lines="8-21" expect="/// &lt;summary&gt;" caption="Why it exists"/>
+
+<h2 id="how"><span class="n">02</span>How it checks</h2>
+<p class="prose">A <code>MonoBehaviour</code> cannot be created with <code>new</code>, so the audit adds a throwaway copy of the component to a hidden object. That copy carries the code's defaults. Reflection then compares every public number and switch with the one in the scene. Because it walks every field rather than a list of known ones, the next drift is caught too.</p>
+<excerpt file="Assets/Editor/SceneParameterAudit.cs" lines="59-102" expect="static int AuditType&lt;T&gt;" hl="69-70,75,79,83-85,91" caption="AuditType"/>
+<excerpt file="Assets/Editor/SceneParameterAudit.cs" lines="24-38" expect="/// &lt;summary&gt;Fields allowed to differ" hl="27,36-38" caption="What it checks, and what it lets differ"/>
+<p class="prose">It audits <code>AdaptiveController</code>, <code>ScenarioManager</code> and <code>FixedController</code>, the three whose numbers decide results. Lists and references are skipped. It allows five fields to differ on purpose: the debug switches, the panel switch and the logger's run labels.</p>
+<div class="cols">
+  <div><h3>Inside Unity</h3><p>This menu item, on the open scene, with a dialog that says how to fix any drift.</p></div>
+  <div><h3>Outside Unity</h3><p><code>Tests/SceneAuditTest.cs</code> reads <code>SampleScene.unity</code> as text in the test suite. It also checks values this audit skips, such as the scenario rates.</p></div>
+</div>
+<p class="prose">As of this build the scene agrees with the code on every audited field. This tour's variable tables run the same comparison over every component, and the only differences they show are per-lane spawner and zone settings that <code>ABACSceneBuilder</code> sets on purpose.</p>
+
+<h2 id="variables"><span class="n">03</span>Variables</h2>
+<p class="prose">None that can be set: the class is static, and its one field, the <code>Allowed</code> set above, is private.</p>

@@ -1,0 +1,79 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The junction written down as data. Both controllers and <code>ScenarioManager</code> look lanes up here and nowhere else, so a lane can be added or removed without touching controller code. The same file also resets every lane at the start of a run and turns a scenario name into reproducible random seeds.</p>
+<ul class="resp">
+  <li><b>Describe</b>: seven <code>ApproachLane</code>s, each with its light, zone and spawner, plus six <code>ConflictPair</code>s.</li>
+  <li><b>Index</b>: number the five signalised lanes 0-4 and build a 5 × 5 conflict matrix from the pairs.</li>
+  <li><b>Answer</b> controllers' questions: <code>SignalLight</code>, <code>SignalRoi</code>, <code>AreConflicting</code>, <code>IsCompatibleWithGroup</code>.</li>
+  <li><b>Reset</b> every lane for a run, with a seed per lane, so Fixed and Adaptive see exactly the same cars.</li>
+</ul>
+<div class="outline">
+  <section><h5>Data types</h5><ul><li><a href="#types">ApproachLane</a></li><li><a href="#types">ConflictPair</a></li></ul></section>
+  <section><h5>Build</h5><ul><li><a href="#build">Awake, EnsureBuilt, Build</a></li></ul></section>
+  <section><h5>Queries</h5><ul><li><a href="#queries">SignalCount, GetSignalLane, SignalName, SignalLight, SignalRoi</a></li><li><a href="#queries">SignalIndexOf, FindLane</a></li><li><a href="#queries">AreConflicting, IsCompatibleWithGroup, DescribeGroup</a></li></ul></section>
+  <section><h5>Lane control</h5><ul><li><a href="#reset">ResetAllLanes</a></li><li><a href="#reset">ClearAllCars, ResetSpawnCounts</a></li><li><a href="#reset">ApplyTestCase</a></li><li><a href="#reset">GetTotalSpawned, GetActiveCarCount, AllScheduledSpawned</a></li></ul></section>
+  <section><h5>Seeds</h5><ul><li><a href="#seeds">StableHash</a></li></ul></section>
+  <section><h5>Editor</h5><ul><li><a href="#preset">LoadABACPreset</a></li><li><a href="#preset">ValidateConfiguration</a></li><li><a href="#preset">SetRoiDebugGUI</a></li></ul></section>
+</div>
+
+<h2 id="types"><span class="n">02</span>The two data types</h2>
+<excerpt file="Assets/Scripts/IntersectionConfig.cs" lines="4-40" expect="/// &lt;summary&gt;" hl="12,15,18,21,24,36-37" caption="ApproachLane and ConflictPair"/>
+
+<h2 id="preset"><span class="n">03</span>The ABAC preset</h2>
+<p class="prose"><code>LoadABACPreset</code> writes the seven lanes and six conflicts. <a href="abac-scene-builder.html"><code>ABACSceneBuilder</code></a> calls it, then wires each lane to its light, zone and spawner. The movement descriptions in it are the clearest statement in the code of how each lane behaves:</p>
+<excerpt file="Assets/Scripts/IntersectionConfig.cs" lines="375-406" expect="Load ABAC T-Junction Preset" hl="381-382,391-396,399-402" caption="LoadABACPreset"/>
+<figure class="fig">
+  <conflictmatrix/>
+  <figcaption>The matrix that <code>Build</code> produces, drawn from the pairs in the code above. A and A2 have no pair on purpose: they are one physical light and must always be green together, so anything that conflicts with A also conflicts with A2.</figcaption>
+</figure>
+
+<h2 id="build"><span class="n">04</span>Building the matrix</h2>
+<p class="prose">Unity does not guarantee the order of <code>Awake</code> calls between components, so a controller may ask a question before this component has built itself. Every accessor therefore calls <code>EnsureBuilt()</code> first.</p>
+<excerpt file="Assets/Scripts/IntersectionConfig.cs" lines="60-109" expect="void Awake()" hl="81,87-89,106-107" caption="Awake, EnsureBuilt and Build"/>
+<div class="callout"><p>Note line 89. <code>isBuilt</code> is set <i>before</i> the conflict loop, because the loop calls <code>SignalIndexOf</code>, which calls <code>EnsureBuilt</code>, which would call <code>Build</code> again and never end.</p></div>
+
+<h2 id="queries"><span class="n">05</span>The questions controllers ask</h2>
+<excerpt file="Assets/Scripts/IntersectionConfig.cs" lines="113-178" expect="/// &lt;summary&gt;Number of signal-controlled lanes" hl="126-127,159,163-170" caption="Accessors"/>
+<p class="prose">Signal indices count only signalised lanes, in list order: A = 0, A2 = 1, B = 2, Bx = 3, CB = 4. Ax and CA have no index; they are found with <code>FindLane</code>.</p>
+
+<h2 id="reset"><span class="n">06</span>Resetting the lanes for a run</h2>
+<excerpt file="Assets/Scripts/IntersectionConfig.cs" lines="182-215" expect="/// &lt;summary&gt;" hl="198-205,207-214" caption="ResetAllLanes: two passes, and why they must stay two"/>
+<p class="prose">A scripted burst at second 0 spawns its first car inside <code>RestartSpawning</code>, and that car registers with its light at once. Clearing the light's registrations later in the same loop would leave that car never hearing that its light turned green. Hence: clear everything first, then restart.</p>
+<excerpt file="Assets/Scripts/IntersectionConfig.cs" lines="266-285" expect="/// &lt;summary&gt;Applies the selected TestCase" caption="ApplyTestCase: Poisson rate or schedule, per lane"/>
+
+<h2 id="seeds"><span class="n">07</span>Seeds that survive a restart</h2>
+<p class="prose">The paired t-test needs Fixed and Adaptive to see exactly the same cars. Each lane's random stream is seeded from the run seed plus a hash of the lane's name. .NET does not promise that <code>string.GetHashCode()</code> gives the same value in every session, so the code uses its own FNV-1a hash:</p>
+<excerpt file="Assets/Scripts/IntersectionConfig.cs" lines="294-310" expect="/// &lt;summary&gt;" caption="StableHash"/>
+<div class="whatif">
+  <h4>Try it: the seeds of one batch run</h4>
+  <p>This is <code>StableHash</code> ported to JavaScript and checked against the compiled C#: both give 1879586320 for "MorningPeak". The run seed formula is <a href="scenario-manager.html#batch"><code>ScenarioManager.RunSingleExperiment</code></a>'s. Lane seeds overflow and wrap around just as C# <code>int</code> addition does.</p>
+  <div data-widget="seeds"></div>
+</div>
+
+<h2 id="variables"><span class="n">08</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (object <code>_Intersection</code>). The scene holds the seven lanes and six pairs.</p>
+<vartable for="IntersectionConfig">
+  <v n="lanes" k="code">Every movement: the five signalised lanes and the two free ones.<eff>The order fixes the signal indices. Adding a lane needs a light, a zone and a spawner, or <code>ValidateConfiguration</code> reports it.</eff></v>
+  <v n="conflicts" k="code">Lane pairs that may never be green together.<eff>Removing a pair lets both controllers open crossing streams together. Adding one shrinks the groups SODA can form, and makes <code>FixedController</code> drop a lane from any phase that holds both.</eff></v>
+</vartable>
+<h3 id="vars-lane">ApproachLane</h3>
+<vartable for="ApproachLane">
+  <v n="laneName" k="code">The lane's name.<eff>Must match the name in its <code>CarSpawner</code> and be accepted by its <code>ROIZone</code>, or demand reads 0 (<code>ValidateConfiguration</code> checks both).</eff></v>
+  <v n="isSignalized" k="code">Has a signal of its own (A, A2, B, Bx, CB) or flows freely (Ax, CA).<eff>Only signalised lanes get an index, a place in the conflict matrix and green time. Ax is false although it does stop: it yields to Bx through <code>CarSpawner.lightIsInverted</code>.</eff></v>
+  <v n="trafficLight" k="code">The lamp. A and A2 point at the same object.<eff>Pointing A2 at its own light would make SODA treat it as a fifth head.</eff></v>
+  <v n="roi" k="code">The detection zone that counts this lane. A2 and Ax share <code>ROI_Ax</code>.<eff>This is what the controllers see. A missing zone means the lane always reads empty.</eff></v>
+  <v n="spawner" k="code">The lane's spawner.<eff>Without one, no cars appear in the lane.</eff></v>
+  <v n="movementDescription" k="code">Plain-language description for the report.<eff>No effect on logic.</eff></v>
+</vartable>
+<h3 id="vars-pair">ConflictPair</h3>
+<vartable for="ConflictPair">
+  <v n="laneA" k="code">First lane of the pair.<eff>A name that is not a signalised lane is skipped with a warning.</eff></v>
+  <v n="laneB" k="code">Second lane. Order does not matter; <code>Build</code> fills both directions.<eff>As above.</eff></v>
+  <v n="reason" k="code">Why the two cross, for the report.<eff>No effect on logic.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">09</span>Known issues</h2>
+<ul class="issues">
+  <li><b class="tag">Note</b>The six <code>reason</code> strings saved in <code>SampleScene.unity</code> are the older Thai wording; the preset in the code has the English text shown above. They are labels for the report and do not affect any decision. Pressing <i>Load ABAC T-Junction Preset</i> and saving the scene would replace them, but the scene is not edited as part of this documentation.<span class="src">Read from <code>SampleScene.unity</code>, object <code>_Intersection</code>, at build time</span></li>
+  <li><b class="tag">Note</b>The comment on <code>SignalCount</code> says "ABAC = 4: A, B, Bx, CB". Since A2 was added the preset has five signalised lanes (A, A2, B, Bx, CB) on four lights, so <code>SignalCount</code> returns 5. The four lights are what SODA counts as heads.<span class="src"><code>IntersectionConfig.cs</code> line 113 against the preset at lines 378-387</span></li>
+  <li><b class="tag">Limitation</b>H_A's count includes Ax cars, because A2 and Ax share one zone, as a real camera would. Ax's share of the outer lane is not separately measured.<span class="src"><code>SODA_BASELINE</code> L4</span></li>
+</ul>

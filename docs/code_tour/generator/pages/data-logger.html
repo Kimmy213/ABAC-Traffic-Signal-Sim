@@ -1,0 +1,68 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The measuring instrument. During a run it collects one record per car that leaves a detection zone and one per adaptive green. At the end it writes the three CSV files that <code>Analysis/analyze_results.py</code> turns into every figure in the report. It is a singleton (<code>DataLogger.Instance</code>), so zones and the controller can report to it without a reference.</p>
+<ul class="resp">
+  <li><b>Vehicles</b>: <code>LogVehicle</code> from <code>ROIZone</code>: lane, driver type, wait.</li>
+  <li><b>Phases</b>: <code>LogPhase</code> from <code>AdaptiveController</code>: group, G given, G used, why it ended, when each lane emptied.</li>
+  <li><b>Events</b>: <code>LogStarvationEvent</code>, also from the controller.</li>
+  <li><b>Export</b>: a detailed CSV per run, a phase CSV per Adaptive run, and one line per run appended to <code>summary_all_runs.csv</code>.</li>
+</ul>
+<div class="outline">
+  <section><h5>Records</h5><ul><li><a href="#records">VehicleRecord, PhaseRecord</a></li><li><a href="#records">LogVehicle, LogPhase, LogStarvationEvent</a></li><li><a href="#records">ResetRun, SetTotalSpawned</a></li></ul></section>
+  <section><h5>Results</h5><ul><li><a href="#results">GetAverageWaitTime, GetMaxWaitTime</a></li><li><a href="#results">GetVehicleCount, GetStarvationCount</a></li><li><a href="#results">GetIdleLaneSeconds, GetPhaseCount</a></li></ul></section>
+  <section><h5>Files</h5><ul><li><a href="#files">ExportDetailedCSV</a></li><li><a href="#files">ExportSummaryCSV</a></li><li><a href="#files">ExportPhaseCSV</a></li><li><a href="#files">GetExportFolder</a></li></ul></section>
+</div>
+
+<h2 id="records"><span class="n">02</span>What is recorded</h2>
+<excerpt file="Assets/Scripts/DataLogger.cs" lines="19-47" expect="private struct VehicleRecord" hl="21,42-46" caption="VehicleRecord and PhaseRecord"/>
+<p class="prose">PhaseRecord exists to measure <i>idle green</i>. Gap-out ends a green only when every lane in the group is empty, so a lane that empties early stays green with nothing to serve. For {B = 10, Bx = 3}, G is 26.05 s but Bx is empty after about 9.9 s, and A is blocked the whole time because it conflicts with Bx. <code>idleLaneSeconds</code> adds up those seconds.</p>
+<excerpt file="Assets/Scripts/DataLogger.cs" lines="72-114" expect="public void LogVehicle(" caption="LogVehicle, LogPhase, GetIdleLaneSeconds, LogStarvationEvent"/>
+
+<h2 id="results"><span class="n">03</span>The numbers a run is judged by</h2>
+<excerpt file="Assets/Scripts/DataLogger.cs" lines="116-132" expect="public int GetVehicleCount()" caption="Mean wait, worst wait, cars cleared"/>
+<p class="prose"><code>GetAverageWaitTime</code> is the mean over the cars that left a zone in that run. The batch headline (42.03 → 33.62 s) is the mean of those 108 run means per controller, compared pair by pair.</p>
+
+<h2 id="files"><span class="n">04</span>The three files</h2>
+<div class="tw"><table class="plain">
+  <thead><tr><th>File</th><th>One row per</th><th>Columns</th></tr></thead>
+  <tbody>
+    <tr><td class="vn">detailed_&lt;ctrl&gt;_&lt;scenario&gt;_&lt;time&gt;.csv</td><td>car</td><td><code>ControllerType, Scenario, Timestamp, Lane, DriverType, WaitTime</code></td></tr>
+    <tr><td class="vn">phases_&lt;ctrl&gt;_&lt;scenario&gt;_&lt;time&gt;.csv</td><td>adaptive green</td><td><code>ControllerType, Scenario, PhaseIndex, StartTime, Group, GreenGiven, GreenUsed, EndReason, LaneEmptyAt, IdleLaneSeconds</code></td></tr>
+    <tr><td class="vn">summary_all_runs.csv</td><td>run (appended)</td><td><code>ControllerType, Scenario, RunTimestamp, TotalSpawned, VehiclesCleared, AvgWaitTime, MaxWaitTime, StarvationEvents, StartupLostTime, SaturationHeadway, SnapshotInterval, CollectCount, CollectDuration, SkippedHeads, QueueStartResets, IdleLaneSeconds, TieBreaksApplied, TieBreaksExcludingBx</code></td></tr>
+  </tbody>
+</table></div>
+<p class="prose">The summary carries the controller constants actually used in each run, so each row shows whether it ran on the measured 2.95 / 2.31 or on textbook values. If the header ever changes, the old file is archived rather than appended to, so pandas never meets rows of two widths:</p>
+<excerpt file="Assets/Scripts/DataLogger.cs" lines="166-229" expect="// ===== Current header row" hl="178-179,208,214-218" caption="ExportSummaryCSV: the header and the archive rule"/>
+<excerpt file="Assets/Scripts/DataLogger.cs" lines="274-282" expect="Reset Run Data" caption="ResetRun: called at the start of a run and again after the warm-up"/>
+
+<h2 id="variables"><span class="n">05</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController). <code>controllerType</code> and <code>scenarioName</code> are rewritten at the start of every run, and <code>SceneParameterAudit</code> allows them to differ.</p>
+<vartable for="DataLogger">
+  <v n="controllerType" k="code">Which controller the current run uses; written into every row and file name.<eff>Set by <code>ScenarioManager</code> or the control panel, never by hand.</eff></v>
+  <v n="scenarioName" k="code">Scenario and repetition, e.g. "MorningPeak_Rep3".<eff>As above.</eff></v>
+  <v n="showDebugGUI" k="code">The "Measurements" card at the bottom left.<eff>Display only; hidden during a batch.</eff></v>
+  <v n="Instance" k="code">The one logger every zone and the controller report to.<eff>Set in <code>Awake</code>. A second <code>DataLogger</code> in the scene would take over the reports.</eff></v>
+</vartable>
+<h3 id="vars-records">VehicleRecord and PhaseRecord</h3>
+<vartable for="VehicleRecord">
+  <v n="waitTime" k="code">Seconds from entering the zone to leaving it.<eff>The primary measure of the project.</eff></v>
+  <v n="lane" k="code">The car's own lane (A2 and Ax kept apart).<eff>Per-lane results depend on it.</eff></v>
+  <v n="driverType" k="code">Aggressive, Normal or Cautious.<eff>Allows per-profile analysis.</eff></v>
+  <v n="timestamp" k="code">Seconds since the run (or warm-up) reset.<eff>When the car left the zone.</eff></v>
+</vartable>
+<vartable for="PhaseRecord">
+  <v n="index" k="code">Phase number in the run.<eff>Was 0 throughout before 11 Sep, when the decision panel was hidden.</eff></v>
+  <v n="startTime" k="code">When green opened, relative to the run.<eff>Timeline position.</eff></v>
+  <v n="group" k="code">Lanes in the green, e.g. "A+A2+B".<eff>Which groups SODA forms.</eff></v>
+  <v n="greenGiven" k="code">G from the formula.<eff>Compare with <code>greenUsed</code> to see how often greens end early.</eff></v>
+  <v n="greenUsed" k="code">Seconds the green actually lasted.<eff>Shorter than G after a gap-out or a cut.</eff></v>
+  <v n="endReason" k="code">completed, gap-out, starvation or max-green.<eff>The shares per scenario are on <a href="adaptive-controller.html#interrupts">the SODA page</a>.</eff></v>
+  <v n="laneEmptyAt" k="code">Second at which each lane first read empty, e.g. "B=25.1;Bx=9.9" (nan = never).<eff>Input to idle green.</eff></v>
+  <v n="idleLaneSeconds" k="code">Seconds lanes stayed green while empty, summed over the group.<eff>Measures what a per-lane gap-out could save.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">06</span>Known issues</h2>
+<ul class="issues">
+  <li><b class="tag">Note</b>The SODA counters in each summary row (<code>CollectCount</code>, <code>SkippedHeads</code>, <code>QueueStartResets</code>, <code>TieBreaks…</code>) are read from <code>AdaptiveController</code>, which clears them in <code>ForceStop</code> / <code>RestartCycle</code>, before the warm-up. <code>ResetRun</code> after the warm-up does not touch them. They therefore cover 1,920 s, while the phase CSV and the waits cover the measured 1,800 s. In v5 EveningPeak, for example, ties were counted in 2,041 phases while the phase files hold 1,931.<span class="src">From the code: <code>ScenarioManager.RunSingleExperiment</code> lines 436-462 and <code>ResetRun</code>; counts from <code>batch_v5</code></span></li>
+  <li><b class="tag">Note</b><code>StarvationEvents</code> counts one episode twice: the cut and the override.<span class="src"><code>SODA_BASELINE</code> L13</span></li>
+  <li><b class="tag">Note</b>Idle green as a fix was weighed and set aside: measured on batch v2, only 6.1% of it was recoverable by the cheap change, and 49.9% sat in phases where a lane never empties.<span class="src"><code>SODA_BASELINE</code> §8.4</span></li>
+</ul>

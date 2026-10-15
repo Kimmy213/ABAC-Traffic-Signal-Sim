@@ -1,0 +1,46 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">Preset camera shots, a button bar to switch between them, and a mode that follows a car. Every shot is computed by <a href="abac-scene-builder.html#shots"><code>ABACSceneBuilder.MakeShots</code></a> from the lane coordinates, so moving a lane and rebuilding moves the cameras with it.</p>
+<excerpt file="Assets/Scripts/CameraDirector.cs" lines="4-12" expect="/// &lt;summary&gt;" caption="The class header"/>
+<div class="whatif">
+  <h4>The six shots</h4>
+  <p>All approach shots stand on one point in the middle of the junction and only turn and rise, like one camera on a mast. That is the camera the project proposes to install; the drone was only for collecting data.</p>
+  <div data-widget="cameraShots"></div>
+</div>
+
+<h2 id="move"><span class="n">02</span>Moving the camera</h2>
+<excerpt file="Assets/Scripts/CameraDirector.cs" lines="87-135" expect="void LateUpdate()" hl="98-102,108-109,126-128" caption="LateUpdate: ease towards the shot, or follow a car"/>
+<p class="prose">The easing factor is <code>k = 1 − e^(−Δt / moveTime × 3)</code> per frame, using <i>unscaled</i> time, so the camera glides at the same pace at 1× and 10×. In follow mode it picks the car of the shot's lane nearest the shot's position (<code>CarAgent.NearestInLane</code>) and re-picks every 0.4 s.</p>
+<excerpt file="Assets/Scripts/CameraDirector.cs" lines="137-152" expect="void OnGUI()" caption="Keys: [ ] V C B"/>
+
+<h2 id="variables"><span class="n">03</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController). Key codes are Unity's numbers: 93 = ], 91 = [, 118 = V, 99 = C, 98 = B.</p>
+<vartable for="CameraDirector">
+  <v n="targetCamera" k="code">The camera to move. Falls back to <code>Camera.main</code>.<eff>Display only.</eff></v>
+  <v n="shots" k="code">The shot list, written by <code>ABACSceneBuilder</code>.<eff>Display only.</eff></v>
+  <v n="moveTime" k="code">Seconds to glide to a new shot; 0 cuts.<eff>Display only.</eff></v>
+  <v n="followMode" k="code">Follow a car in the shot's lane.<eff>Display only; switched off for shots that cannot follow.</eff></v>
+  <v n="reacquireInterval" k="code">Seconds between picking a car to follow.<eff>Shorter: the camera jumps between cars more.</eff></v>
+  <v n="showBar" k="code">The shot bar at the bottom.<eff>Display only.</eff></v>
+  <v n="keyNext" k="code">Next shot.<eff>Chosen to avoid the panel's keys.</eff></v>
+  <v n="keyPrev" k="code">Previous shot.<eff>As above.</eff></v>
+  <v n="keyFollow" k="code">Toggle follow mode.<eff>As above.</eff></v>
+  <v n="keyOverview" k="code">Back to the overview.<eff>As above.</eff></v>
+  <v n="keyRoiBoxes" k="code">Toggle the detection boxes (<code>RoiHighlight.ShowAll</code>).<eff>As above.</eff></v>
+</vartable>
+<h3 id="vars-shot">Shot</h3>
+<vartable for="Shot">
+  <v n="label" k="code">Button text.<eff>Display only.</eff></v>
+  <v n="lane" k="code">Lane the shot watches; drives the button colour and follow mode.<eff>Blank: cannot follow.</eff></v>
+  <v n="position" k="code">Camera position, world metres.<eff>Display only.</eff></v>
+  <v n="euler" k="code">Pitch, yaw, roll in degrees.<eff>Display only.</eff></v>
+  <v n="fov" k="code">Field of view, degrees.<eff>Display only.</eff></v>
+  <v n="followBack" k="code">Follow mode: distance behind the car.<eff>Display only.</eff></v>
+  <v n="followUp" k="code">Follow mode: height above the car.<eff>Display only.</eff></v>
+  <v n="canFollow" k="code">Whether follow mode is allowed (not for the overview).<eff>Display only.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">04</span>Known issues</h2>
+<ul class="issues">
+  <li><b class="tag">Note</b>A comment in <code>LateUpdate</code> says a batch pushes the time scale to 20×. The batch runs at 10× (<code>ScenarioManager.BATCH_SIM_SPEED</code>); 20× is only the control panel's top speed key.<span class="src">Line 124 against <code>ScenarioManager.cs</code> line 99</span></li>
+  <li><b class="tag">Note</b>The build log says "8 camera shots"; <code>MakeShots</code> returns six.<span class="src"><code>ABACSceneBuilder.cs</code> line 332 against lines 551-583</span></li>
+</ul>

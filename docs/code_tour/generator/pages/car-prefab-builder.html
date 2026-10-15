@@ -1,0 +1,29 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">Menu <i>ABAC &gt; Rebuild Car Prefab</i>, also run by every scene build. It turns the 3D model <code>car_low_poly.fbx</code> into <code>Car.prefab</code>, working everything out from the model instead of hard-coding it. Swapping the model file and pressing the menu again just works.</p>
+<excerpt file="Assets/Editor/CarPrefabBuilder.cs" lines="6-16" expect="/// &lt;summary&gt;" caption="The class header"/>
+
+<h2 id="steps"><span class="n">02</span>The seven steps</h2>
+<ol class="steps">
+  <li><b>Strip</b> the cameras and lights Blender leaves in the file, or every car would carry its own.</li>
+  <li><b>Align</b> the long axis with z, Unity's forward.</li>
+  <li><b>Find the body</b>: the largest part, and within it the material slot covering the most area, which is the only slot painted per lane.</li>
+  <li><b>Face forward</b>: find the reddest material slot (the tail lights) and turn the car 180° if they are at the front.</li>
+  <li><b>Scale</b> to exactly 4 m long, matching <code>CarAgent.carLength</code>.</li>
+  <li><b>Ground</b> it, so the wheels touch the road when spawned at <code>CAR_Y</code> = 0.5.</li>
+  <li><b>Equip</b>: collider, kinematic Rigidbody, the detection outline, <code>RoiHighlight</code> and <code>CarAgent</code>; then save the prefab.</li>
+</ol>
+<excerpt file="Assets/Editor/CarPrefabBuilder.cs" lines="73-145" expect="// ---------- 1) Align" hl="75-77,82-84,91-95,101-102,108,118-121,136-139" caption="Rebuild, steps 1-7"/>
+<div class="callout"><p><b>Why a Rigidbody on a car moved by script.</b> Unity fires trigger events only when one of the two colliders has a Rigidbody. Without it, <code>ROIZone.OnTriggerEnter</code> never fires and no car is ever counted (comment at line 121).</p></div>
+
+<h2 id="wirebox"><span class="n">03</span>The detection outline</h2>
+<p class="prose">The green box <code>RoiHighlight</code> shows is twelve thin opaque bars, sized from the car's own bounds plus 6 cm. A translucent solid box was tried first, but in a stopped queue you could see through one box into the next and the queue read as one green mass. Thin bars keep every car countable. The padding is kept tiny so two outlines never touch at the 2 m queue gap.</p>
+<excerpt file="Assets/Editor/CarPrefabBuilder.cs" lines="171-202" expect="static GameObject BuildWireBox" caption="BuildWireBox"/>
+
+<h2 id="variables"><span class="n">04</span>Every constant</h2>
+<vartable for="CarPrefabBuilder">
+  <v n="FbxPath" k="code">Where the 3D model is read from.<eff>Missing file: the build keeps the existing prefab and logs a warning.</eff></v>
+  <v n="PrefabPath" k="code">Where the prefab is written.<eff>Every spawner points here.</eff></v>
+  <v n="TargetLength" k="code">Car length after scaling, m.<eff>Must equal <code>CarAgent.carLength</code>, or queue spacing and following distances no longer match the body.</eff></v>
+  <v n="RoiEdgeThickness" k="code">Thickness of one bar of the outline, m.<eff>Display only.</eff></v>
+  <v n="RoiBoxPadding" k="code">How far the outline sits outside the body, m.<eff>Display only; larger risks outlines touching in a queue.</eff></v>
+</vartable>

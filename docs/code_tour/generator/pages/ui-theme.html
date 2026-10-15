@@ -1,0 +1,36 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The shared look of every on-screen panel. It is a static class, not a component, and it uses a small trick: <code>Begin()</code> swaps Unity's whole <code>GUI.skin</code> for a themed copy and <code>End()</code> puts the old one back. Every existing <code>GUI.Box</code>, <code>Label</code> and <code>Button</code> between the two is themed without changing a line at the call site. Nine files call it.</p>
+<excerpt file="Assets/Scripts/UITheme.cs" lines="141-152" expect="/// &lt;summary&gt;Starts drawing" caption="Begin and End"/>
+<p class="prose">All textures are made in memory on first use, so there are no image files to lose, and <code>Ensure()</code> rebuilds them if Unity reclaims them when Play mode switches.</p>
+
+<h2 id="palette"><span class="n">02</span>The palette</h2>
+<p class="prose">Read from the source at build time. The lane colours match the car paint in the scene, and the signal colours are shared by the scene and every panel, so green means the same thing everywhere. This tour uses the same three lane hues, adjusted slightly for contrast on paper.</p>
+<palette/>
+<excerpt file="Assets/Scripts/UITheme.cs" lines="229-246" expect="/// &lt;summary&gt;Colour for a signal state" caption="SignalColor and LaneColor: lane colour from the first letter of the lane's name"/>
+
+<h2 id="widgets"><span class="n">03</span>Small drawing helpers</h2>
+<p class="prose"><code>Panel</code>, <code>Rule</code>, <code>Pill</code>, <code>Dot</code>, <code>Bar</code> and <code>Row</code> draw the recurring pieces: a titled box, a divider, a status capsule, a signal dot, a meter, and a name-value row. The text styles are <code>Title</code>, <code>H2</code>, <code>Body</code>, <code>Dim</code>, <code>Value</code>, <code>Mono</code>, <code>PillText</code> and <code>Right</code>.</p>
+
+<h2 id="variables"><span class="n">04</span>Every variable</h2>
+<p class="prose">All display-only; none is in the scene. Changing any of them changes how panels look and nothing else.</p>
+<vartable for="UITheme">
+  <v n="BgPanel" k="code">Panel background.<eff>Display only.</eff></v>
+  <v n="BgRaised" k="code">Buttons and raised cards.<eff>Display only.</eff></v>
+  <v n="BgSunken" k="code">Text fields, sliders, bar tracks.<eff>Display only.</eff></v>
+  <v n="Line" k="code">Dividers.<eff>Display only.</eff></v>
+  <v n="TextHi" k="code">Headings and values.<eff>Display only.</eff></v>
+  <v n="TextMid" k="code">Body text.<eff>Display only.</eff></v>
+  <v n="TextDim" k="code">Secondary text.<eff>Display only.</eff></v>
+  <v n="Accent" k="code">Primary buttons, the active decision step.<eff>Display only.</eff></v>
+  <v n="AccentDark" k="code">Badges such as the cycle length.<eff>Display only.</eff></v>
+  <v n="SigGreen" k="code">Green signal, and "good".<eff>Display only.</eff></v>
+  <v n="SigYellow" k="code">Yellow signal, and "watch".<eff>Display only.</eff></v>
+  <v n="SigRed" k="code">Red signal, and "over the limit".<eff>Display only.</eff></v>
+  <v n="Neutral" k="code">Inactive or unknown.<eff>Display only.</eff></v>
+  <v n="LaneA" k="code">A-group lanes (A, A2, Ax): the colour of their cars.<eff>Display only.</eff><cpl>The scene material <code>Car_LaneA</code>, created by <code>ABACSceneBuilder</code> with the same RGB.</cpl></v>
+  <v n="LaneB" k="code">B-group lanes (B, Bx).<eff>Display only.</eff><cpl><code>Car_LaneB</code>.</cpl></v>
+  <v n="LaneC" k="code">C-group lanes (CB, CA).<eff>Display only.</eff><cpl><code>Car_LaneC</code>.</cpl></v>
+  <v n="Pad" k="code">Standard inner padding, px.<eff>Display only.</eff></v>
+  <v n="RowH" k="code">Standard row height, px.<eff>Display only.</eff></v>
+  <v n="Radius" k="code">Corner radius of panels and buttons, px.<eff>Display only.</eff></v>
+</vartable>

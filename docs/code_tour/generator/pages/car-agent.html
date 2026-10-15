@@ -1,0 +1,147 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">One car. It is the largest file after SODA because the traffic both controllers are measured on is only as good as this model. <code>docs/unity/Unity_BASELINE.md</code> is the reference for how it behaves; this page walks the code behind it.</p>
+<ul class="resp">
+  <li><b>Profile</b>: each car draws Aggressive, Normal or Cautious at spawn, which fixes its speed, acceleration, braking, reaction time and amber behaviour.</li>
+  <li><b>Speed</b>: every step it takes the lowest of several limits: free road, stopping at the line, the curve ahead, the car ahead and the comfortable time gap.</li>
+  <li><b>Signal</b>: it reads its light every step and decides at amber whether it is too close to stop.</li>
+  <li><b>Path</b>: turning lanes follow waypoints after the stop line; A2 changes lane into the shared lane before it.</li>
+</ul>
+<p class="prose">Each frame runs the same short pipeline, in steps of at most 0.02 s:</p>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="238-267" expect="void Update()" hl="244-245,254,263-266" caption="Update and Step: the whole car, one step at a time"/>
+<div class="outline">
+  <section><h5>Setup</h5><ul><li><a href="#profiles">Start, SetProfileParameters</a></li><li><a href="#step">Update, Step, SubStepsFor</a></li></ul></section>
+  <section><h5>Speed</h5><ul><li><a href="#speed">ComputeDesiredSpeed</a></li><li><a href="#stop">ApproachStopSpeed</a></li><li><a href="#follow">DecideSpeed</a></li><li><a href="#follow">GetCarAhead</a></li><li><a href="#turns">TurnSpeedLimit</a></li></ul></section>
+  <section><h5>Signal</h5><ul><li><a href="#signal">SyncLightState</a></li><li><a href="#signal">OnLightStateChanged</a></li></ul></section>
+  <section><h5>Path</h5><ul><li><a href="#turns">Steer, CurrentWaypointTarget</a></li><li><a href="#turns">LookAheadLimit, PathTurnsAway</a></li><li><a href="#a2">UpdateLaneChange, FindMergeBlocker, SteerLaneChange</a></li><li><a href="#step">MoveForward</a></li></ul></section>
+  <section><h5>Static helpers</h5><ul><li><a href="#helpers">NearestInLane</a></li><li><a href="#helpers">IsSpaceOccupied</a></li></ul></section>
+</div>
+
+<h2 id="profiles"><span class="n">02</span>Driver profiles</h2>
+<p class="prose">Profiles are private values set in <code>Start</code>, so the scene cannot override them. <a href="car-spawner.html"><code>CarSpawner</code></a> draws the type with the 25 / 60 / 15 mix.</p>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="183-211" expect="void SetProfileParameters()" caption="SetProfileParameters"/>
+<div class="tw"><table class="plain">
+  <thead><tr><th>Profile</th><th>Share</th><th>approachSpeed</th><th>acceleration</th><th>decelRate</th><th>emergency ×</th><th>reactionDelay</th><th>stopOvershoot</th><th>dilemma factor</th><th>Braking distance</th></tr></thead>
+  <tbody>
+    <tr><td>Aggressive</td><td class="num">25%</td><td class="num">16.67 m/s</td><td class="num">5.0</td><td class="num">22</td><td class="num">1.3</td><td class="num">0.2 s</td><td class="num">+0.5 m</td><td class="num">1.6</td><td class="num">6.3 m</td></tr>
+    <tr><td>Normal</td><td class="num">60%</td><td class="num">15.28 m/s</td><td class="num">3.0</td><td class="num">9</td><td class="num">1.5</td><td class="num">0.8 s</td><td class="num">0 m</td><td class="num">1.1</td><td class="num">13.0 m</td></tr>
+    <tr><td>Cautious</td><td class="num">15%</td><td class="num">13.89 m/s</td><td class="num">2.5</td><td class="num">3</td><td class="num">1.8</td><td class="num">1.5 s</td><td class="num">−1.0 m</td><td class="num">0.7</td><td class="num">32.2 m</td></tr>
+  </tbody>
+</table></div>
+<p class="prose small muted">Acceleration and braking in m/s². Braking distance = approachSpeed² / (2 × decelRate), from <code>GetRequiredBrakeDistance</code>. 16.67 / 15.28 / 13.89 m/s are 60 / 55 / 50 km/h.</p>
+
+<h2 id="step"><span class="n">03</span>Sub-stepping: speed-independent motion</h2>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="228-236" expect="// ===== Sub-stepping" caption="Why every frame is cut into 0.02 s steps"/>
+<p class="prose">A batch runs at 10× speed. Without sub-steps a car at 14 m/s would move 2.3 m per frame, overshooting stop lines and lanes. With them, a car decides every 0.02 simulated seconds at any speed. The 1×/5×/10× check on one seed agreed within 3.2% for Adaptive and 0.45% for Fixed (<code>SODA_BASELINE</code> §8.6).</p>
+
+<h2 id="speed"><span class="n">04</span>Speed: free road and the stop line</h2>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="339-399" expect="float ComputeDesiredSpeed()" hl="346-349,355,357-359,375-385,397" caption="ComputeDesiredSpeed"/>
+<h3 id="stop">Stopping at a red, closed loop</h3>
+<p class="prose">Until 24 Sep the stop was open loop. A car that arrived slower than <code>approachSpeed</code> braked from too far back and stopped short of the line, and could not move again until green. CB showed it worst: up to 27.5 m short for an all-Cautious queue. Now the car aims at the point and rolls up to it:</p>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="401-425" expect="/// &lt;summary&gt;" hl="414,417,420,423-424" caption="ApproachStopSpeed"/>
+<p class="prose small muted"><code>LaneBehaviourTest</code> §4: the new head of a 12-car CB queue cut off by the amber now waits 0.00-0.04 m from its stop point. Before, it waited 10.6 m (all Normal), 18.8 m (mixed) and 27.5 m (all Cautious) back.</p>
+
+<h2 id="follow"><span class="n">05</span>Car following and the startup wave</h2>
+<p class="prose">This is the part that makes the simulated junction discharge at the real rate. On 15 Sep, Badin noticed queued cars "all pull away at once". <code>HeadwayTest</code> measured 0.72 s per car against the 2.31 s measured on site, which gave the model 3.2 times the real capacity. Two fixes followed:</p>
+<ol class="steps">
+  <li><b>Startup wave.</b> A stopped car starts its reaction timer when <i>the car ahead</i> moves, not when the light changes, so the queue leaves car by car.</li>
+  <li><b>Time gap.</b> The gap to the car ahead grows with speed: gap = <code>minGap</code> + <code>desiredTimeHeadway</code> × speed, applied as a speed cap.</li>
+</ol>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="477-563" expect="void DecideSpeed()" hl="509-519,529,534,541,556-557" caption="DecideSpeed: the lowest of every limit wins"/>
+
+<div class="whatif">
+  <h4>What if: change desiredTimeHeadway</h4>
+  <p>This is real output, not a sketch. Ten <code>CarAgent</code> instances were run outside Unity exactly as <code>HeadwayTest</code> runs them: stopped at a red, green at t = 0, the test's driver mix. The animation replays their recorded positions; the chart shows the mean headway at the stop line for every T from 0 to 3 s. At the code's 1.9 s the queue leaves 2.28 s apart, inside the 2.31 ± 0.15 band. Below about 1 s the headway stops falling, because reaction delays dominate.</p>
+  <div data-widget="discharge"></div>
+  <p class="small muted">Source: <code>docs/code_tour/generator/measure_headway.cs</code>, which compiles against the same build as the test harness. <code>HeadwayTest</code> itself prints 1.61 / 2.28 / 3.04 s for T = 1.0 / 1.9 / 2.8, matching these runs.</p>
+</div>
+
+<p class="prose"><code>GetCarAhead</code> finds the car to follow. Normally that is the nearest car ahead of the nose within 1.5 m sideways. While either car is changing lane it switches to a body-overlap test, and a lane changer also watches its target lane:</p>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="565-605" expect="CarAgent GetCarAhead(out float gap)" hl="574,589-597" caption="GetCarAhead, the main scan"/>
+
+<h2 id="signal"><span class="n">06</span>The signal: push, poll and the amber decision</h2>
+<p class="prose">A light pushes every change to its registered cars, and each car also polls the light every step. Whichever arrives first gives the same result, so a lost registration cannot leave a car waiting forever.</p>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="277-290" expect="// ===== Read the signal state every frame" caption="SyncLightState"/>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="942-988" expect="// ===== Called by TrafficLight" hl="955-958,968-978,986" caption="OnLightStateChanged: inverted lanes, the dilemma zone, and commit-at-amber"/>
+<div class="whatif">
+  <h4>Try it: who runs the amber</h4>
+  <p>At the instant the light turns amber, a car carries on if it is within its braking distance × dilemma factor of the line. Once committed it ignores the red that follows. Ax reads the Bx light inverted and has no dilemma zone at all.</p>
+  <div data-widget="dilemma"></div>
+</div>
+
+<h2 id="turns"><span class="n">07</span>Turning lanes</h2>
+<p class="prose">Ax, Bx, CB and CA drive straight to their stop line, then follow waypoints. Speed in the curve is capped at steering rate × turn radius = 55°/s × 7 m ≈ 6.7 m/s, and the car brakes for that in advance at its own <code>decelRate</code>.</p>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="427-475" expect="// ===== Fastest speed" hl="448,452,460-471" caption="TurnSpeedLimit"/>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="839-885" expect="/// &lt;summary&gt;" hl="875,879-883" caption="LookAheadLimit: a turning car does not brake for cars beyond its turn"/>
+
+<h2 id="a2"><span class="n">08</span>The A2 lane change</h2>
+<p class="prose">A2 is through traffic that spawns in lane A and moves into the outer lane it shares with Ax. It has to get there, because <code>ROI_Ax</code> is the only detector that sees it. The 24 Sep rebuild turned a blind swerve into a planned merge with gap acceptance:</p>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="665-682" expect="// ======" caption="The design, as written in the file"/>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="722-752" expect="void UpdateLaneChange()" hl="739-740,745-747,751" caption="UpdateLaneChange: plan, check for a gap, commit"/>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="759-791" expect="CarAgent FindMergeBlocker()" hl="766,779,783-786" caption="FindMergeBlocker: gap acceptance for the car ahead and the car behind"/>
+<p class="prose small muted"><code>LaneBehaviourTest</code> §2 runs A2 against one Ax car: 3 light states × 9 driver pairs × 21 offsets = 567 runs. Overlapping bodies fell from 115 runs (worst 2.15 m, a full car width) to 0, and speed jumps from 292 to 0.</p>
+
+<h2 id="helpers"><span class="n">09</span>Static helpers</h2>
+<excerpt file="Assets/Scripts/CarAgent.cs" lines="914-935" expect="public static CarAgent NearestInLane" caption="Used by CameraDirector (follow mode) and CarSpawner (spawn safety)"/>
+
+<h2 id="variables"><span class="n">10</span>Every variable</h2>
+<p class="prose"><code>CarAgent</code> is not in the scene. It lives on <code>Assets/Prefabs/Car.prefab</code>, so the Saved value column reads the prefab. Fields marked "set at spawn" are overwritten by <a href="car-spawner.html#placecar"><code>CarSpawner.PlaceCar</code></a> for every new car, so the prefab value never reaches a running car. The 24 Sep tunables are <code>const</code>, so neither the scene nor the prefab can override them (<code>Unity_BASELINE</code> §7).</p>
+<vartable for="CarAgent">
+  <vgroup>Identity (set at spawn)</vgroup>
+  <v n="driverType" k="code">Aggressive, Normal or Cautious. Set at spawn from the spawner's mix.<eff>Changes every profile value in the table above.</eff></v>
+  <v n="assignedLane" k="code">Lane name, set at spawn.<eff><code>ROIZone</code> logs the wait under this name, which is how A2 and Ax are kept apart in the statistics although they share one zone.</eff></v>
+  <v n="startAtRest" k="code">Placed already stopped in a standing queue (scripted cases with an initial queue).<eff>Starts at speed 0 as stopped, so reaction delay still applies at green. Without it the row would skid across the line on a red: a Cautious car at 13.89 m/s slides 32 m.</eff></v>
+  <vgroup>Body</vgroup>
+  <v n="carLength" k="code">Length in metres.<eff>Spacing in queues, standing-queue pitch (length + minGap = 6 m) and the gap to the car ahead all use it.</eff><cpl>Must equal <code>CarPrefabBuilder.TargetLength</code> (4 m), which scales the model.</cpl></v>
+  <v n="BODY_WIDTH" k="code">Width of the scaled model.<eff>Used in the body-overlap test while a car is changing lane.</eff><cpl>= <code>ABACSceneBuilder.CAR_WIDTH</code> (checked by <code>LaneBehaviourTest</code> §3).</cpl></v>
+  <v n="bodyRenderer" k="code">The renderer that is painted the lane colour. Found by <code>CarPrefabBuilder</code>.<eff>Display only.</eff></v>
+  <v n="bodyMaterialIndex" k="code">Which material slot of that renderer is the body paint.<eff>Display only: a wrong slot paints glass or tyres instead.</eff></v>
+  <vgroup>Runtime state</vgroup>
+  <v n="currentSpeed" k="code">Speed now, m/s.<eff>State, not a setting. Followers read it to see when the car ahead moves.</eff></v>
+  <v n="isStopped" k="code">Standing at the line or in the queue.<eff>State. The reaction timer runs only while it is set.</eff></v>
+  <vgroup>Car following</vgroup>
+  <v n="minGap" k="code">Bumper-to-bumper gap at standstill, m.<eff>Queue density: a 100 m zone holds about 16 cars at 6 m pitch. Shrinking it packs more cars into a zone and shortens the distance each must travel to the line. Not run.</eff></v>
+  <v n="lookAheadAngle" k="code">Sideways distance still counted as the same lane, m.<eff>Lanes are 3.5 m apart, so it must stay under 1.75 m or cars in neighbouring lanes brake for each other (tooltip).</eff></v>
+  <v n="desiredTimeHeadway" k="measured">Comfortable time gap to the car ahead, s. Tuned on 15 Sep so a queue discharges at the measured rate.<eff>Measured on the real code: T = 1.0 → 1.61 s/veh, 1.9 → 2.28, 2.8 → 3.04 (see the figure in section 05). It sets the capacity of every lane for both controllers.</eff><cpl><code>AdaptiveController.saturationHeadway</code> = 2.31 assumes the same rate; <code>HeadwayTest</code> fails outside 2.31 ± 0.15.</cpl></v>
+  <v n="MEASURED_TIME_HEADWAY" k="measured">The tuned 1.9 s as a constant.<eff>As above; <code>HeadwayTest</code> also checks the constant itself.</eff></v>
+  <v n="lookAheadDistance" k="code">How far ahead to look for a car, m.<eff>Must stay above a Cautious driver's 32 m braking distance, or a car sees the queue too late to stop (tooltip).</eff></v>
+  <v n="QUEUE_SPEED_EPS" k="code">Below this speed a car counts as standing in a queue, m/s.<eff>Part of the startup wave.</eff><cpl>Must stay below <code>LEADER_MOVING_SPEED</code> (<code>HeadwayTest</code>), or a car would release itself.</cpl></v>
+  <v n="LEADER_MOVING_SPEED" k="code">The car ahead must exceed this before a follower starts its reaction timer, m/s.<eff>Higher: each follower waits longer and the wave travels back more slowly, so headways grow.</eff></v>
+  <vgroup>Stopping</vgroup>
+  <v n="REST_FRONT_MARGIN" k="code">Where the first car of a standing queue sits: this far before the line, m.<eff>Must exceed the Cautious overshoot (−1 m) plus the −0.3 m clearing threshold, or a Cautious car counts as past the line on its first frame and runs the red.</eff></v>
+  <v n="CREEP_MIN_GAP" k="code">A car held short of its stop point by more than this rolls up to it during the red, m.<eff>Larger: queues can stand further from the line.</eff></v>
+  <v n="CREEP_SPEED" k="code">Roll-up speed during a red, m/s (about 11 km/h).<eff>Display realism; it never exceeds the closed-loop braking curve.</eff></v>
+  <vgroup>Path and turning (set at spawn)</vgroup>
+  <v n="stopLineTarget" k="code">The lane's stop line. Empty for free lanes.<eff>Without one a car never stops (CA). Ax has one because it must wait while Bx is green.</eff></v>
+  <v n="pathWaypoints" k="code">Points to follow after the stop line (or before it, for A2).<eff>Empty: drive straight (A, B).</eff></v>
+  <v n="steerRate" k="code">Turning rate, degrees per second.<eff>With <code>turnRadius</code> it sets the corner speed: 55°/s × 7 m ≈ 6.7 m/s.</eff><cpl>Set at spawn from <code>CarSpawner.steerRate</code> (55 in every spawner).</cpl></v>
+  <v n="turnRadius" k="code">Target turning radius, m.<eff>Smaller: tighter but slower turns. The A2 lane change also uses it to limit how fast the heading can change.</eff><cpl>Set at spawn from <code>CarSpawner.turnRadius</code>.</cpl></v>
+  <v n="turnSlowAngle" k="code">Degrees of turn ahead before the car slows for it.<eff>Smaller: the car slows for gentler bends.</eff></v>
+  <v n="minTurnSpeed" k="code">Floor on corner speed, m/s.<eff>Stops cars crawling to a standstill in the turn.</eff></v>
+  <v n="turnBrakeMargin" k="code">Extra distance beyond the real braking distance before a turn, m.<eff>Larger: earlier, gentler slowing.</eff></v>
+  <v n="waypointReachRadius" k="code">Distance at which a waypoint counts as reached, m.<eff>A waypoint already behind the car also counts, so a wide turn cannot circle forever.</eff></v>
+  <v n="steerBeforeStopLine" k="code">May change lane before the stop line (A2 only).<eff>Turns on the A2 merge logic in section 08.</eff></v>
+  <v n="steerStartDistance" k="code">Start the lane change only within this distance of the merge point, m. 12 for A2.<eff>This is what makes A2 cut in near the head of the queue, as observed, rather than spread through it.</eff><cpl>From <code>ABACSceneBuilder.A2_MERGE_DIST</code>.</cpl></v>
+  <v n="LANE_CHANGE_LOOKAHEAD" k="code">The lane changer aims this far ahead on the target lane, m.<eff>Shorter: a sharper entry that can cross the lane centre.</eff></v>
+  <v n="LANE_CHANGE_DONE_OFFSET" k="code">Within this distance of the target lane centre the change is complete, m.<eff>Together with the angle below.</eff></v>
+  <v n="LANE_CHANGE_DONE_ANGLE" k="code">... and within this many degrees of the lane direction.<eff>As above.</eff></v>
+  <v n="MERGE_ACCEPT_TIME_GAP" k="code">Seconds of its own travel the car behind in the target lane must still have in hand.<eff>Larger: A2 waits longer for a gap and holds lane A behind it. The longest wait seen was 41 s in ABACEvent (<code>Unity_BASELINE</code> §5.4).</eff></v>
+  <v n="SIDE_MARGIN" k="code">Sideways margin added to the body-overlap test, m.<eff>Larger: more conservative while a car is crossing.</eff></v>
+  <vgroup>Signal (set at spawn)</vgroup>
+  <v n="assignedLight" k="code">The light this car obeys.<eff>Empty for CA, which is free.</eff></v>
+  <v n="lightIsInverted" k="code">Yielding lane: the light belongs to the other stream. Set for Ax, tied to Bx.<eff>Green or yellow on that light means stop; red means go.</eff></v>
+  <vgroup>Shoulder passing (disabled)</vgroup>
+  <v n="canBypassCrossLaneBlocker" k="code">May pass a blocking car on the shoulder. Drawn at spawn from <code>CarSpawner.laneBypassChance</code>, which is 0.<eff>Off in every run. The approach has no shoulder, and the share of shared-lane traffic was calibrated without passing, so enabling it would discount the same effect twice.</eff></v>
+  <v n="bypassLateralOffset" k="code">Sideways offset onto the shoulder while passing.<eff>Unused while passing is off. If re-enabled it must exceed <code>lookAheadAngle</code>, or cars drive through each other.</eff></v>
+  <vgroup>Engine</vgroup>
+  <v n="MAX_STEP" k="measured">Longest simulation step, s.<eff>Makes results independent of speed: 1×, 5× and 10× agreed within 3.2% (Adaptive) on the same seed. Larger steps bring back stop-line and lane overshoot at 10×.</eff><cpl><code>GeometryTest</code> §10.</cpl></v>
+</vartable>
+
+<h2 id="issues"><span class="n">11</span>Known issues and decisions</h2>
+<ul class="issues">
+  <li class="fixed"><b class="tag">Fixed 15 Sep</b>Queue discharge 0.72 → 2.28 s/veh (startup wave + time gap). Every batch before v3 ran on the old model.<span class="src"><code>Unity_BASELINE</code> §7; <code>SODA_BASELINE</code> §8.15; <code>HeadwayTest</code></span></li>
+  <li class="fixed"><b class="tag">Fixed 24 Sep</b>Free-road acceleration limited to the profile's rate; the comfort gap approached at <code>decelRate</code>; closed-loop red stop; A2 lane change rebuilt. Batch v5 is the first batch on this model. Where Ax traffic is heavy, A2 now really occupies the shared lane and waits for gaps, so lanes A and A2 slow down.<span class="src"><code>Unity_BASELINE</code> §6-7; <code>LaneBehaviourTest</code></span></li>
+  <li class="open"><b class="tag">Open</b>A Cautious driver behind a hard-braking Aggressive one is held harder than its own profile allows (−6.2 to −9.4 m/s²), because <code>maxSafeSpeed</code> is the physical safety limit.<span class="src"><code>Unity_BASELINE</code> §5.1</span></li>
+  <li class="open"><b class="tag">Open</b>A car spawned at full speed behind a queue that reaches the spawn point brakes hard at once (off screen, within 25 m of a spawn point).<span class="src"><code>Unity_BASELINE</code> §5.2</span></li>
+  <li class="open"><b class="tag">Open</b>Turning lanes still turn at <code>steerRate</code> at any speed, so a car stopped mid-turn could rotate in place. Only the A2 change has the speed-limited heading. No visible case found.<span class="src"><code>Unity_BASELINE</code> §5.3</span></li>
+  <li><b class="tag">Limitation</b>No motorcycles, no PCU weighting; turning-lane headway is not measured separately, only lane B's.<span class="src"><code>SODA_BASELINE</code> L9, L11</span></li>
+</ul>

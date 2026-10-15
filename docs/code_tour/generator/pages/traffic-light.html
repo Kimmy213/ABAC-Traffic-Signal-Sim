@@ -1,0 +1,57 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The smallest runtime component, and the only path from a controller's decision to the cars. A controller calls <code>SetState</code>. The light repaints itself and tells every car registered with it. Cars also read <code>currentState</code> every step, so the two routes back each other up.</p>
+<ul class="resp">
+  <li><b>Hold</b> one of three states: Red, Yellow, Green.</li>
+  <li><b>Show</b> it by swapping the lamp's material.</li>
+  <li><b>Tell</b> the registered cars, newest state first to newcomers.</li>
+</ul>
+<figure class="fig"><div class="canvas">
+  <svg viewBox="0 0 900 250" width="900" role="img" aria-label="How a state change reaches the cars">
+    <g font-size="13">
+      <rect x="20" y="30" width="180" height="56" rx="8" fill="var(--paper)" stroke="var(--l-control)" stroke-width="2"/>
+      <text x="110" y="54" text-anchor="middle" font-weight="700">Fixed / Adaptive</text>
+      <text x="110" y="73" text-anchor="middle" font-family="var(--f-mono)" font-size="11">SetState(Green)</text>
+      <rect x="300" y="30" width="200" height="56" rx="8" fill="var(--paper)" stroke="var(--l-junction)" stroke-width="2"/>
+      <text x="400" y="54" text-anchor="middle" font-weight="700">TrafficLight</text>
+      <text x="400" y="73" text-anchor="middle" font-family="var(--f-mono)" font-size="11">UpdateVisual · NotifyCars</text>
+      <rect x="610" y="30" width="270" height="56" rx="8" fill="var(--paper)" stroke="var(--l-traffic)" stroke-width="2"/>
+      <text x="745" y="54" text-anchor="middle" font-weight="700">every registered CarAgent</text>
+      <text x="745" y="73" text-anchor="middle" font-family="var(--f-mono)" font-size="11">OnLightStateChanged(state)</text>
+      <path d="M200 58 L292 58" stroke="var(--ink2)" stroke-width="2"/><path d="M286 52 L294 58 L286 64" fill="none" stroke="var(--ink2)" stroke-width="2"/>
+      <path d="M500 58 L602 58" stroke="var(--ink2)" stroke-width="2"/><path d="M596 52 L604 58 L596 64" fill="none" stroke="var(--ink2)" stroke-width="2"/>
+      <text x="551" y="48" text-anchor="middle" font-size="11" fill="var(--muted)">push</text>
+      <path d="M745 92 C745 170 400 170 400 92" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 4"/>
+      <path d="M394 100 L400 90 L406 100" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      <text x="572" y="160" text-anchor="middle" font-size="11" fill="var(--accent)">poll: each 0.02 s step, SyncLightState reads currentState</text>
+      <rect x="300" y="190" width="200" height="44" rx="8" fill="var(--paper)" stroke="var(--l-traffic)" stroke-width="2"/>
+      <text x="400" y="217" text-anchor="middle" font-family="var(--f-mono)" font-size="11">CarSpawner.PlaceCar</text>
+      <path d="M400 190 L400 96" stroke="var(--ink2)" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <text x="410" y="140" font-size="11" fill="var(--muted)">RegisterCar: added, and</text>
+      <text x="410" y="154" font-size="11" fill="var(--muted)">told the current state at once</text>
+    </g>
+  </svg>
+</div>
+<figcaption>Push and poll give the same answer. If a registration is lost, for example to <code>ClearRegistrations</code> at the start of a batch run, the poll still finds the green.</figcaption></figure>
+
+<h2 id="code"><span class="n">02</span>The whole file</h2>
+<p class="prose">At 93 lines it fits on one screen, so here it is in parts:</p>
+<excerpt file="Assets/Scripts/TrafficLight.cs" lines="4-34" expect="public class TrafficLight : MonoBehaviour" hl="29-34" caption="State, materials and SetState"/>
+<excerpt file="Assets/Scripts/TrafficLight.cs" lines="36-74" expect="void UpdateVisual()" hl="51-55,64-69" caption="Repaint, notify, register"/>
+<p class="prose"><code>NotifyCars</code> walks the list backwards, so cars that were destroyed can be removed while it walks. <code>RegisterCar</code> pushes the current state straight away, so a car spawned during a green does not wait for the next change. The three <code>TEST:</code> context-menu entries (lines 76-93) set a state by hand in Play mode.</p>
+<div class="callout"><p><b>One light, two lanes.</b> Lanes A and A2 point at the same <code>TrafficLight</code> object (<code>Light_A</code>). That shared object is what makes <a href="adaptive-controller.html#heads">SODA's <code>BuildHeads</code></a> merge them into one head, and what makes <a href="fixed-controller.html">Fixed</a> switch them together.</p></div>
+
+<h2 id="variables"><span class="n">03</span>Every variable</h2>
+<p class="prose">Saved values are read from the four lights in <code>SampleScene.unity</code>: Light_A, Light_B, Light_Bx and Light_CB.</p>
+<vartable for="TrafficLight">
+  <v n="laneName" k="code">Name for logs and display, matched to <code>IntersectionConfig</code>.<eff>No effect on logic: lanes find their light through <code>ApproachLane.trafficLight</code>, not by name.</eff></v>
+  <v n="currentState" k="code">Red, Yellow or Green now. Saved as 0 (Red).<eff>Every light starts red; the controllers set the rest. Cars poll this field.</eff></v>
+  <v n="redMat" k="code">Material shown at red.<eff>Display only.</eff></v>
+  <v n="yellowMat" k="code">Material shown at yellow.<eff>Display only.</eff></v>
+  <v n="greenMat" k="code">Material shown at green.<eff>Display only.</eff></v>
+  <v n="assignedCars" k="code">Cars to notify on each change. Filled at runtime by <code>RegisterCar</code>; empty in the scene.<eff>Cleared at the start of each batch run by <code>IntersectionConfig.ResetAllLanes</code>.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">04</span>Known issues</h2>
+<ul class="issues">
+  <li class="fixed"><b class="tag">Fixed</b>Cars used to rely on the push alone. A lost registration left a car waiting at a green forever, with its whole queue behind it. <code>CarAgent.SyncLightState</code> now polls as well.<span class="src">Comment in <code>CarAgent.cs</code>, lines 277-280</span></li>
+</ul>
