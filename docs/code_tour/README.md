@@ -6,7 +6,7 @@ methods and every variable, with the real code, the value saved in the scene, an
 
 ## Open it
 
-Open `index.html` in a browser. Everything is local (no network, no CDN), so it works offline on the
+Open `index.html` in a browser. To send it to someone, point them at [HOW_TO_OPEN.md](HOW_TO_OPEN.md). Everything is local (no network, no CDN), so it works offline on the
 presentation machine. Keys: `←` `→` previous / next section, `[` `]` previous / next file, `h` overview.
 
 ## Rebuild it

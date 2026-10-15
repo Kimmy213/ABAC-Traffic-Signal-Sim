@@ -29,7 +29,7 @@ a 14-page plain-language overview of the whole project.
 | `docs/` | The plain-language overview PDF, and `overview_source/` to re-render it. |
 | `docs/report/` | `SP1_Report_DRAFT.md`, the project report. |
 | `docs/soda/` | The algorithm's technical record. **`SODA_BASELINE.md` is the authority** on what the controller does and every defect found; the others are earlier versions and the reference trace. |
-| `docs/code_tour/` | **An HTML tour of the 19 Unity C# files** for the technical presentation: how they work together, then every file and variable. Open `docs/code_tour/index.html`; works offline. |
+| `docs/code_tour/` | **An HTML tour of the 19 Unity C# files** for the technical presentation: how they work together, then every file and variable. Open `docs/code_tour/index.html`; works offline. [How to open it](docs/code_tour/HOW_TO_OPEN.md). |
 | `docs/unity/` | The simulation's technical record. **`Unity_BASELINE.md` is the authority** on how the simulated vehicles behave (car following, stopping, turning, the A2 lane change) and every change to it. |
 | `docs/guides/` | How to build the scene, and how to use git on this project. |
 | `docs/handoff/` | Progress notes and handoffs written between sessions and between team members. |
