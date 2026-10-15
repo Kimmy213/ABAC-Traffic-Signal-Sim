@@ -181,7 +181,7 @@ public class ROIZone : MonoBehaviour
     {
         if (!showDebugGUI || !Application.isPlaying) return;
 
-        UITheme.Begin();
+        UITheme.Begin(scaled: true);
 
         const float W = 246f, H = 52f;
         Rect card = new Rect(12f, 12f + guiSlot * (H + 6f), W, H);

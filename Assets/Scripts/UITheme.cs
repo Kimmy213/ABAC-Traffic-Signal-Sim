@@ -138,17 +138,41 @@ public static class UITheme
         return s;
     }
 
+    // ===================== Panel size =====================
+    /// <summary>
+    /// Size of every panel drawn with Begin(scaled: true), 1 = original size.
+    /// const so the scene cannot override it. The signal controllers' panels call Begin() without
+    /// scaling, so their on-screen trace keeps its original size.
+    /// </summary>
+    public const float Scale = 1.5f;
+
+    /// <summary>Screen size in the units a scaled panel draws in - use these instead of Screen.width/height.</summary>
+    public static float Width  => Screen.width / Scale;
+    public static float Height => Screen.height / Scale;
+
+    static Matrix4x4 prevMatrix;
+    static bool scaledActive;
+
     /// <summary>Starts drawing with this theme - must always be paired with End().</summary>
-    public static void Begin()
+    public static void Begin(bool scaled = false)
     {
         Ensure();
         prevSkin = GUI.skin;
         GUI.skin = skin;
+
+        scaledActive = scaled;
+        if (scaled)
+        {
+            prevMatrix = GUI.matrix;
+            GUIUtility.ScaleAroundPivot(new Vector2(Scale, Scale), Vector2.zero);
+        }
     }
 
     public static void End()
     {
         GUI.skin = prevSkin;
+        if (scaledActive) GUI.matrix = prevMatrix;
+        scaledActive = false;
     }
 
     // ===================== Ready-made widgets =====================

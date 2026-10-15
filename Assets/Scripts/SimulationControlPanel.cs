@@ -359,7 +359,7 @@ public class SimulationControlPanel : MonoBehaviour
 
         // Shared theme: wrap the whole block so every GUI.Box/Label/Button line in this panel
         // matches the other panels immediately, with no per-call changes (see UITheme.Begin)
-        UITheme.Begin();
+        UITheme.Begin(scaled: true);
 
         if (!showPanel)
         {
@@ -378,7 +378,7 @@ public class SimulationControlPanel : MonoBehaviour
             GUIUtility.ScaleAroundPivot(new Vector2(uiScale, uiScale), Vector2.zero);
 
         // Keep the window from growing taller than the screen (uiScale included)
-        float maxH = Screen.height / Mathf.Max(0.1f, uiScale) - 24f;
+        float maxH = UITheme.Height / Mathf.Max(0.1f, uiScale) - 24f;
         windowRect.height = Mathf.Min(windowRect.height, maxH);
         if (windowRect.height < 260f) windowRect.height = Mathf.Min(260f, maxH);
 

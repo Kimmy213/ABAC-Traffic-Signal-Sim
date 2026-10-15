@@ -249,7 +249,7 @@ public class CustomTestCase : MonoBehaviour
         if (!showPanel || !Application.isPlaying) return;
 
         EnsureDefaults();
-        UITheme.Begin();
+        UITheme.Begin(scaled: true);
         win = GUI.Window(9318, win, DrawWindow, "");
         UITheme.End();
     }

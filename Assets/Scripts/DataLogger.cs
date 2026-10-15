@@ -285,10 +285,10 @@ public class DataLogger : MonoBehaviour
     {
         if (!showDebugGUI || !Application.isPlaying) return;
 
-        UITheme.Begin();
+        UITheme.Begin(scaled: true);
 
         const float W = 262f, H = 168f;
-        Rect card = new Rect(12f, Screen.height - H - 12f, W, H);
+        Rect card = new Rect(12f, UITheme.Height - H - 12f, W, H);
         GUI.Box(card, GUIContent.none);
 
         float x = card.x + 12f, w = W - 24f, y = card.y + 8f;

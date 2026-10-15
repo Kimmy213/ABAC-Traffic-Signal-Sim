@@ -138,14 +138,14 @@ public class BatchRunPanel : MonoBehaviour
         if (!running && !finished) { summaryDismissed = false; return; }
         if (!stylesReady) BuildStyles();
 
-        UITheme.Begin();
+        UITheme.Begin(scaled: true);
 
         Matrix4x4 old = GUI.matrix;
         if (!Mathf.Approximately(uiScale, 1f))
             GUIUtility.ScaleAroundPivot(new Vector2(uiScale, uiScale), Vector2.zero);
 
-        float sw = Screen.width / Mathf.Max(0.1f, uiScale);
-        float sh = Screen.height / Mathf.Max(0.1f, uiScale);
+        float sw = UITheme.Width / Mathf.Max(0.1f, uiScale);
+        float sh = UITheme.Height / Mathf.Max(0.1f, uiScale);
 
         if (running) DrawSidePanel(sw, sh);
         if (finished && showSummaryOnFinish) DrawSummaryOverlay(sw, sh);

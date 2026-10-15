@@ -153,14 +153,14 @@ public class CameraDirector : MonoBehaviour
 
         if (!showBar || !Application.isPlaying || shots == null || shots.Count == 0) return;
 
-        UITheme.Begin();
+        UITheme.Begin(scaled: true);
 
         // ---- Shot button bar, centred along the bottom ----
         const float BW = 108f, BH = 26f, GAP = 4f;
         const float ROI_BTN_W = 116f;
         float barW = shots.Count * BW + (shots.Count - 1) * GAP + 24f + ROI_BTN_W + GAP;
         float barH = BH + 40f;
-        Rect bar = new Rect(Screen.width / 2f - barW / 2f, Screen.height - barH - 12f, barW, barH);
+        Rect bar = new Rect(UITheme.Width / 2f - barW / 2f, UITheme.Height - barH - 12f, barW, barH);
         GUI.Box(bar, GUIContent.none);
 
         GUI.Label(new Rect(bar.x + 12f, bar.y + 6f, 200f, 16f), "CAMERA", UITheme.Title);

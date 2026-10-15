@@ -621,10 +621,10 @@ public class ScenarioManager : MonoBehaviour
     {
         if (!isRunning) return;
 
-        UITheme.Begin();
+        UITheme.Begin(scaled: true);
 
         const float W = 380f;
-        Rect card = new Rect(Screen.width / 2f - W / 2f, 10f, W, 84f);
+        Rect card = new Rect(UITheme.Width / 2f - W / 2f, 10f, W, 84f);
         GUI.Box(card, GUIContent.none);
 
         GUI.Label(new Rect(card.x + 12f, card.y + 8f, 200f, 18f), "BATCH RUN", UITheme.Title);
