@@ -1,0 +1,20 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The screen you watch during an 11-hour batch. It appears on the right when a batch starts and shows a full-screen summary when it ends. It only <i>reads</i> <a href="scenario-manager.html"><code>ScenarioManager</code></a>; the one thing it controls is the Stop button.</p>
+<ul class="resp">
+  <li><b>Side panel</b>: progress, elapsed and remaining time, speed, the run in flight, and a Fixed-against-Adaptive table per scenario.</li>
+  <li><b>Summary</b>: three headline cards and a bar per scenario, with a button that saves a text summary to <code>SimulationResults/</code>.</li>
+</ul>
+<excerpt file="Assets/Scripts/BatchRunPanel.cs" lines="131-155" expect="void OnGUI()" hl="135-138,150-151" caption="OnGUI: draw only while running or just finished"/>
+<p class="prose">Before the first run finishes, the remaining time is the theoretical one (1,920 simulated s ÷ 10 per run). After that it uses measured run times, so the number may jump once, and the panel says so:</p>
+<excerpt file="Assets/Scripts/BatchRunPanel.cs" lines="188-198" expect="// ---- timing ----" caption="Timing rows"/>
+<excerpt file="Assets/Scripts/BatchRunPanel.cs" lines="458-483" expect="void SaveSummaryFile()" caption="SaveSummaryFile"/>
+<p class="prose">The saved summary itself says it: these are means for watching, and significance comes from <code>Analysis/analyze_results.py</code> run on the CSV files. The palette (blue for Fixed, orange for Adaptive) is defined at the top of this file and not taken from <a href="ui-theme.html"><code>UITheme</code></a>.</p>
+
+<h2 id="variables"><span class="n">02</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController).</p>
+<vartable for="BatchRunPanel">
+  <v n="scenarioManager" k="code">Where all figures come from. Found automatically.<eff>Without it the panel never appears.</eff></v>
+  <v n="panelWidth" k="code">Width of the side panel, px.<eff>Display only.</eff></v>
+  <v n="uiScale" k="code">Scale for high-DPI screens.<eff>Display only.</eff></v>
+  <v n="showSummaryOnFinish" k="code">Show the full-screen summary at the end.<eff>Display only; results are written either way.</eff></v>
+</vartable>

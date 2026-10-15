@@ -1,0 +1,18 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">A display aid with one job: draw a green wireframe box around every car while it is inside a detection zone. That shows an audience, frame by frame, what the camera counts, the same question the computer-vision half of the project answers from drone footage. It changes nothing in the simulation.</p>
+<ul class="resp">
+  <li>A global switch, <code>ShowAll</code>, off by default. Press <kbd>B</kbd> or the camera bar's button to turn it on.</li>
+  <li>A per-car counter of the zones the car is in, raised and lowered by <a href="roi-zone.html"><code>ROIZone</code></a>.</li>
+</ul>
+<h2 id="code"><span class="n">02</span>The whole file</h2>
+<excerpt file="Assets/Scripts/RoiHighlight.cs" lines="13-55" expect="public class RoiHighlight : MonoBehaviour" hl="16,31,38-39,52-54" caption="RoiHighlight"/>
+<p class="prose">The box is a counter, not a flag, so a car on the boundary between two zones stays boxed until it has left both. <code>Update</code> re-checks the global switch every frame: one comparison per car.</p>
+<p class="prose">The box itself is built by <a href="car-prefab-builder.html#wirebox"><code>CarPrefabBuilder</code></a> as twelve thin opaque bars. A translucent solid box was tried first, but in a stopped queue the boxes blended into one green mass and the cars could no longer be counted by eye.</p>
+
+<h2 id="variables"><span class="n">03</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>Car.prefab</code>.</p>
+<vartable for="RoiHighlight">
+  <v n="ShowAll" k="code">Global on/off for every box.<eff>Display only. Static, so one switch covers every car.</eff></v>
+  <v n="boxRoot" k="code">The wireframe outline, created by <i>Rebuild Car Prefab</i>.<eff>Display only.</eff></v>
+  <v n="box" k="code">The old single-renderer box, kept for prefabs built before the outline. Empty on the current prefab.<eff>Display only.</eff></v>
+</vartable>

@@ -1,0 +1,83 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">Menu <i>ABAC &gt; Build 4-Phase Scene</i>. One press builds the whole junction: roads and markings, four lights, five stop lines, six detection zones, the turning paths, seven spawners, the car prefab, and every controller and panel, all wired together. It is idempotent: pressing it again reuses existing objects instead of duplicating them. Every coordinate comes from constants at the top of the file, taken from the real site.</p>
+<excerpt file="Assets/Editor/ABACSceneBuilder.cs" lines="7-23" expect="/// &lt;summary&gt;" caption="The class header: the junction in words"/>
+<div class="outline">
+  <section><h5>Build</h5><ul><li><a href="#build">BuildScene</a></li><li><a href="#build">BuildRoads, BuildLaneMarkings</a></li><li><a href="#build">BuildLight, BuildStopLine, BuildROI</a></li><li><a href="#build">BuildWaypoints, BuildSpawner</a></li><li><a href="#shots">BuildCameraRig, MakeShots</a></li></ul></section>
+  <section><h5>Check</h5><ul><li><a href="#validate">ValidateScene</a></li></ul></section>
+  <section><h5>Helpers</h5><ul><li><a href="#build">Wire, GetOrCreate, GetOrAdd, FindByName</a></li><li><a href="#build">GetOrCreateMaterial, Tex, StripCollider</a></li></ul></section>
+</div>
+
+<h2 id="geometry"><span class="n">02</span>The coordinates</h2>
+<p class="prose">x runs east along Bangna-Trad Road, z runs north into ABAC, in metres. <a href="index.html#junction">The junction plan</a> on the overview page is drawn from these numbers.</p>
+<excerpt file="Assets/Editor/ABACSceneBuilder.cs" lines="26-62" expect="// ---------- geometry ----------" hl="30-33,40,58-60" caption="Lane positions, stop lines and the A2 merge"/>
+<p class="prose">The A2 merge constants matter more than they look. Itim counted all three through cars that entered the shared lane changing lanes about five car lengths before the turn, cutting in at the head of the queue. A2 therefore merges within 12 m of a point 20 m before the stop line. Merging further back would spread A2 cars through the queue: the same average, but frequent mild blocking instead of the rare, severe blocking actually observed.</p>
+<excerpt file="Assets/Editor/ABACSceneBuilder.cs" lines="64-90" expect="// ===== Shoulder-passing mechanism" hl="77-78" caption="Shoulder passing: off, and why"/>
+
+<h2 id="build"><span class="n">03</span>What one press builds</h2>
+<ol class="steps">
+  <li>Roads, ground, buildings, lane markings (solid centre lines, dashed lane dividers, nothing across the junction box)</li>
+  <li>Four lights: <code>Light_A</code> (drives A and A2), <code>Light_B</code>, <code>Light_Bx</code>, <code>Light_CB</code></li>
+  <li>Stop lines for A, B, Bx, CB and Ax; Ax's is a real one, because Ax waits while Bx is green</li>
+  <li>Six zones, 100 m long and 3 m wide; <code>ROI_Ax</code> also counts A2</li>
+  <li>Turning paths on a 7 m arc for Ax, Bx, CB and CA, and the A2 merge path</li>
+  <li>Seven spawners with direction, light, path and lane colour; Ax tied to the Bx light, inverted</li>
+  <li>The car prefab, rebuilt from the 3D model and handed to every spawner</li>
+  <li><code>IntersectionConfig</code> preset, wired lane by lane; then the controllers, logger, batch manager, panels and camera</li>
+</ol>
+<excerpt file="Assets/Editor/ABACSceneBuilder.cs" lines="125-159" expect="// ---------- Four traffic signals ----------" hl="148,151-152,157-158" caption="Lights, stop lines and zones"/>
+<excerpt file="Assets/Editor/ABACSceneBuilder.cs" lines="197-233" expect="// ---------- spawner ----------" hl="209-210,231-233" caption="Spawners: Ax yields to Bx, A2 merges late"/>
+<excerpt file="Assets/Editor/ABACSceneBuilder.cs" lines="252-297" expect="// ---------- IntersectionConfig ----------" hl="256,259,274,282,291" caption="Wiring, and the presets that stop the scene drifting from the code"/>
+<p class="prose">Lines 274, 282 and 291 call the three presets on every build. That is the third guard against the scene overriding the code: rebuilding the scene always rewrites the measured values.</p>
+
+<h2 id="shots"><span class="n">04</span>Camera shots</h2>
+<excerpt file="Assets/Editor/ABACSceneBuilder.cs" lines="541-583" expect="public static List&lt;CameraDirector.Shot&gt; MakeShots()" caption="MakeShots: pure data, so tests can check the angles without a scene"/>
+<p class="prose">The shots are drawn on the <a href="camera-director.html">CameraDirector page</a>.</p>
+
+<h2 id="validate"><span class="n">05</span>Checking the scene</h2>
+<p class="prose">Menu <i>ABAC &gt; Validate Scene</i> checks the lanes and spawners. Every signalised lane needs a stop line. A free lane must have neither a stop line nor a light, unless it is a yielding lane like Ax. No lane may be counted by two zones, which would log its waits twice.</p>
+<excerpt file="Assets/Editor/ABACSceneBuilder.cs" lines="341-416" expect="ABAC/Validate Scene" hl="364-366,370-385,401-413" caption="ValidateScene"/>
+
+<h2 id="variables"><span class="n">06</span>Every constant</h2>
+<p class="prose">All <code>const</code>, so the scene cannot override them; they only take effect when the scene is rebuilt. Changing one moves objects in the scene, and every batch after it runs on a different junction.</p>
+<vartable for="ABACSceneBuilder">
+  <vgroup>Road and lanes</vgroup>
+  <v n="ROAD_Z" k="code">Centre line of Bangna-Trad Road, z.<eff>Moves the road; the camera shots follow.</eff></v>
+  <v n="ABAC_X" k="code">Centre line of the ABAC access road, x.<eff>The junction centre for every camera shot.</eff></v>
+  <v n="Z_AX" k="code">Outer eastbound lane (Ax, and A2 after its merge), z = 6.5.<eff>Moves a lane; its zone, stop line and spawner move with it on rebuild.</eff></v>
+  <v n="Z_A" k="code">Inner eastbound lane, z = 3.0.<eff>As above.</eff></v>
+  <v n="Z_BX" k="code">Westbound right-turn lane, z = −1.2.<eff>As above.</eff></v>
+  <v n="Z_B" k="code">Westbound through lane, z = −4.5.<eff>As above.</eff></v>
+  <v n="X_AX_IN" k="code">ABAC inbound lane fed by Ax, x = −4.0.<eff>End point of the Ax turn.</eff></v>
+  <v n="X_BX_IN" k="code">ABAC inbound lane fed by Bx, x = −1.8.<eff>End point of the Bx turn.</eff></v>
+  <v n="X_CB" k="code">ABAC exit lane turning west, x = 1.5.<eff>CB's spawner, zone and stop line.</eff></v>
+  <v n="X_CA" k="code">ABAC exit lane turning east, x = 3.8.<eff>CA's spawner and zone.</eff></v>
+  <v n="ROAD_WIDTH" k="code">Width of the main road, m.<eff>Checks that a shoulder offset would stay on the road.</eff></v>
+  <vgroup>Stop lines</vgroup>
+  <v n="STOP_A_X" k="code">Stop line of the eastbound approach, x = −10.5.<eff>Where A, A2 and Ax stop.</eff></v>
+  <v n="AX_STOP_X" k="code">Ax's stop line, tied to A's: one approach, one line.<eff>A 0.5 m offset once showed as two staggered lines; a test now locks them equal.</eff></v>
+  <v n="AX_TURN_X" k="code">Where Ax starts its turn: at its stop line.<eff>First waypoint of the Ax path.</eff></v>
+  <v n="STOP_B_X" k="code">Stop line of the westbound approach, x = 9.5.<eff>Where B and Bx stop.</eff></v>
+  <v n="STOP_C_Z" k="code">Stop line of the ABAC exit, z = 10.9.<eff>Where CB stops.</eff></v>
+  <vgroup>The A2 merge</vgroup>
+  <v n="SHARED_LANE_LENGTH" k="code">Length of the shared outer lane before the junction, about 5 car lengths (32 m), confirmed by Itim.<eff>The A2 lane change must fit inside it.</eff></v>
+  <v n="A2_MERGE_X" k="code">Where A2's merge completes: 20 m before the stop line (x = −30.5), from Itim's count of where the three A2 cars changed lane.<eff>Further back would spread A2 cars through the queue instead of putting them at its head.</eff></v>
+  <v n="A2_MERGE_DIST" k="code">Lane change may start within 12 m of the merge point (32 − 20).<eff>Copied to the A2 spawner as <code>steerStartDistance</code>.</eff></v>
+  <vgroup>Zones, spawning, cars</vgroup>
+  <v n="ROI_LEN" k="code">Zone length, m.<eff>Longer zones count longer queues and lengthen every logged wait. A real camera's view limits it.</eff></v>
+  <v n="ROI_WIDTH" k="code">Zone width, m.<eff>Must cover one lane without reaching the next.</eff></v>
+  <v n="ROI_WIDTH_SHARED" k="code">Width of the shared-lane zone; equal to <code>ROI_WIDTH</code> now that there is no shoulder row.<eff>As above.</eff></v>
+  <v n="SPAWN_FAR" k="code">Spawn points 200 m out.<eff>Also sets the 12.29 s spawn-to-line time used by Compare-101 (<code>GeometryTest</code> §13).</eff></v>
+  <v n="DESPAWN" k="code">Despawn distance written into every spawner, m.<eff>See <code>CarSpawner.despawnDistance</code>.</eff></v>
+  <v n="CAR_WIDTH" k="code">Car width from the 3D model scaled to 4 m long.<eff>= <code>CarAgent.BODY_WIDTH</code>.</eff></v>
+  <v n="CAR_Y" k="code">Height at which cars spawn; the prefab is shifted so wheels touch the road.<eff>Used by <code>CarPrefabBuilder</code>.</eff></v>
+  <vgroup>Shoulder passing (off)</vgroup>
+  <v n="AX_BYPASS_OFFSET_Z" k="code">Shoulder offset for passing cars: 0.<eff>Off.</eff></v>
+  <v n="AX_BYPASS_CHANCE" k="code">Chance of passing: 0.<eff>Off; see the reasons above.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">07</span>Known issues</h2>
+<ul class="issues">
+  <li><b class="tag">Note</b>The confirmation dialog says the Fixed preset is a "107s cycle ... B+Bx 21". The preset it calls gives 106 s with Bx at 20 s.<span class="src">Line 103 against <code>FixedController.LoadABACPreset</code></span></li>
+  <li><b class="tag">Note</b>The shoulder-passing comment refers to the share of shared-lane traffic as 18%. That figure was replaced by the counted 5.4%; the conclusion (no passing) is unchanged.<span class="src">Lines 69-72 against <code>ScenarioManager.MEASURED_A2_SHARE</code></span></li>
+  <li><b class="tag">Note</b>The build log promises "8 camera shots"; there are six.<span class="src">Line 332</span></li>
+</ul>

@@ -1,0 +1,94 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The vocabulary for traffic patterns, and the built-in set of them. The file holds no <code>MonoBehaviour</code>: it defines the data types every other part passes around (<code>ArrivalMode</code>, <code>ScheduledBurst</code>, <code>LaneSchedule</code>, <code>LaneArrivalRate</code>, <code>TestCase</code>), plus <code>TestCasePresets</code>, the cases the control panel offers.</p>
+<ul class="resp">
+  <li><b>Scripted</b> cases (T1-T7, T13, Compare-101) release fixed cars at fixed times: identical every run, for demonstrations and logic checks.</li>
+  <li><b>Poisson</b> cases (T8-T12, ForeverTest) release random cars at given mean intervals, like the batch.</li>
+</ul>
+<div class="outline">
+  <section><h5>Types</h5><ul><li><a href="#types">ArrivalMode</a></li><li><a href="#types">ScheduledBurst</a></li><li><a href="#types">LaneSchedule</a></li><li><a href="#types">LaneArrivalRate</a></li><li><a href="#types">TestCase</a></li></ul></section>
+  <section><h5>Presets</h5><ul><li><a href="#cases">BuildDefault</a></li><li><a href="#poisson">Poisson, RateSummary</a></li><li><a href="#compare">Compare101, Spawn</a></li><li><a href="#cases">Forever</a></li></ul></section>
+</div>
+
+<h2 id="types"><span class="n">02</span>The data types</h2>
+<excerpt file="Assets/Scripts/TestCaseLibrary.cs" lines="13-48" expect="/// &lt;summary&gt;" hl="21,24,27,30" caption="ScheduledBurst: release N cars at second X, Y seconds apart"/>
+<excerpt file="Assets/Scripts/TestCaseLibrary.cs" lines="57-65" expect="/// &lt;summary&gt;" caption="LaneSchedule.initialQueue: cars already standing at second 0"/>
+<excerpt file="Assets/Scripts/TestCaseLibrary.cs" lines="100-150" expect="/// &lt;summary&gt;" hl="112,115,122,125,128" caption="TestCase"/>
+
+<h2 id="cases"><span class="n">03</span>The built-in cases</h2>
+<div class="vt-wrap"><table>
+  <thead><tr><th>Case</th><th>Mode</th><th>Cars per lane</th><th>Length</th><th>What it checks</th></tr></thead>
+  <tbody>
+    <tr><td class="vn">T1 · Single lane, 10 cars</td><td>Scripted</td><td>A 10, 1.5 s apart</td><td class="num">120 s</td><td>one queue discharging</td></tr>
+    <tr><td class="vn">T2 · All lanes equal</td><td>Scripted</td><td>8 in each of the 7 lanes</td><td class="num">180 s</td><td>every lane at once</td></tr>
+    <tr><td class="vn">T3 · Bx vs CB conflict</td><td>Scripted</td><td>A 6 · Bx 12 · CB 12</td><td class="num">180 s</td><td>two conflicting turns competing</td></tr>
+    <tr><td class="vn">T4 · Starvation test</td><td>Scripted</td><td>A 40 · B 40 · CB 1 (at 5 s)</td><td class="num">180 s</td><td>one CB car must not wait forever behind A + B</td></tr>
+    <tr><td class="vn">T5 · Campus event in/out</td><td>Scripted</td><td>Ax 20 · Bx 20 · A 10 · B 10, then CB 20 · CA 20 at 90 s</td><td class="num">300 s</td><td>inbound rush, then outbound</td></tr>
+    <tr><td class="vn">T6 · Unsignalised lanes</td><td>Scripted</td><td>Ax 15 · CA 15</td><td class="num">120 s</td><td>free lanes; Ax yielding to Bx</td></tr>
+    <tr><td class="vn">T7 · Driver profiles</td><td>Scripted</td><td>A 6 Aggressive, then 6 Cautious at 40 s · B 6</td><td class="num">150 s</td><td>profiles side by side</td></tr>
+    <tr><td class="vn">T13 · Shared Lane Blocking Demo</td><td>Scripted</td><td>A2 30 · Ax 40 · B 15</td><td class="num">300 s</td><td>A2 blocking Ax in the shared lane</td></tr>
+    <tr><td class="vn">T8 · MorningPeak</td><td>Poisson</td><td>same rates as the batch scenario</td><td class="num">300 s</td><td>measured morning traffic</td></tr>
+    <tr><td class="vn">T9 · EveningPeak</td><td>Poisson</td><td>same as the batch</td><td class="num">300 s</td><td>assumed evening traffic</td></tr>
+    <tr><td class="vn">T10 · MiddayNormal</td><td>Poisson</td><td>as the batch, except CB and CA at 7 s</td><td class="num">300 s</td><td>see the issue below</td></tr>
+    <tr><td class="vn">T11 · ABACEvent</td><td>Poisson</td><td>same as the batch (rescaled 18 Sep)</td><td class="num">300 s</td><td>assumed event traffic</td></tr>
+    <tr><td class="vn">T12 · Night</td><td>Poisson</td><td>15 s on every lane</td><td class="num">300 s</td><td>light traffic (not in the batch)</td></tr>
+    <tr><td class="vn">Compare-101</td><td>Scripted</td><td>36 cars from one real cycle</td><td class="num">107 s</td><td>the model against the clip</td></tr>
+    <tr><td class="vn">ForeverTest</td><td>Poisson</td><td>A+A2 13.2 s, others 13.3-18.9 s</td><td class="num">no limit</td><td>leave the sim running on a screen</td></tr>
+  </tbody>
+</table></div>
+<p class="prose small muted">From <code>BuildDefault</code>, lines 209-359. T1-T13 cannot be deleted from the panel, because documents and tests refer to them by name.</p>
+
+<h2 id="poisson"><span class="n">04</span>Poisson cases and the A/A2 split</h2>
+<excerpt file="Assets/Scripts/TestCaseLibrary.cs" lines="494-520" expect="static TestCase Poisson(string name," hl="501-502" caption="Poisson(): the combined A rate split between A and A2"/>
+<excerpt file="Assets/Scripts/TestCaseLibrary.cs" lines="196-207" expect="// Share of through traffic" hl="207" caption="A2_SHARE, and why rare-but-severe blocking matters"/>
+
+<h2 id="compare"><span class="n">05</span>Compare-101: one real cycle</h2>
+<p class="prose">One full signal cycle (107.17 s) from the overhead drone clip of 24 Aug 2026, rebuilt car by car. It checks that the model's cars cross the stop line when the real ones did. Clip times are stop-line crossings, but a schedule releases cars at the spawn point. Every time is therefore moved back by the free-flow travel time from spawn to line:</p>
+<excerpt file="Assets/Scripts/TestCaseLibrary.cs" lines="375-389" expect="/// &lt;summary&gt;Free-flow travel time" hl="386,389" caption="SPAWN_TO_STOPLINE_SEC: 189.5 m at the mix-weighted 15.42 m/s"/>
+<figure class="fig">
+  <div data-widget="compare101"></div>
+  <figcaption>Every car of the case, from <code>Compare101()</code>. Lane A starts with 4 cars standing, not 9: 9 standing cars at 2.31 s would have emptied the queue by second 20, while the clip takes until 29.7. <code>Compare101Test</code> measured a mean error of 2.10 s with 4, against 5.75 s with 9.</figcaption>
+</figure>
+<excerpt file="Assets/Scripts/TestCaseLibrary.cs" lines="403-423" expect="// ---- A : 4 queued" caption="Lane A, with the reasoning for the change on 15 Sep"/>
+
+<h2 id="variables"><span class="n">06</span>Every variable</h2>
+<p class="prose">None of these types is a scene component. Test cases are built in code when the panel's list is empty, which it is in the saved scene.</p>
+<h3 id="vars-burst">ScheduledBurst</h3>
+<vartable for="ScheduledBurst">
+  <v n="atTime" k="code">Second the burst starts, from the start of the run.<eff>Later: those cars arrive later.</eff></v>
+  <v n="carCount" k="code">Cars in the burst.<eff>More demand in that lane.</eff></v>
+  <v n="spacing" k="code">Seconds between cars of the burst.<eff>Under about 2.3 s, cars arrive faster than a queue can discharge.</eff></v>
+  <v n="randomDriver" k="code">Draw each driver from the spawner's mix.<eff>False: every car uses <code>driverType</code> (T7).</eff></v>
+  <v n="driverType" k="code">The profile when <code>randomDriver</code> is false.<eff>See the profile table on the CarAgent page.</eff></v>
+</vartable>
+<h3 id="vars-lane">LaneSchedule and LaneArrivalRate</h3>
+<vartable for="LaneSchedule">
+  <v n="laneName" k="code">Lane the bursts belong to.<eff>Must match a lane name.</eff></v>
+  <v n="bursts" k="code">The bursts, sorted by time when applied.<eff>Order in the list does not matter.</eff></v>
+  <v n="initialQueue" k="code">Cars standing at the stop line at second 0.<eff>Placed at rest by <code>CarSpawner.PlaceStandingQueue</code>; used by Compare-101.</eff></v>
+</vartable>
+<vartable for="LaneArrivalRate">
+  <v n="laneName" k="code">Lane the rate belongs to.<eff>A lane with no rate falls back to the caller's default.</eff></v>
+  <v n="meanInterval" k="code">Mean seconds between cars.<eff>Smaller is heavier traffic; demand in veh/h = 3600 ÷ interval.</eff></v>
+</vartable>
+<h3 id="vars-case">TestCase</h3>
+<vartable for="TestCase">
+  <v n="name" k="code">Name shown in the panel.<eff>Also the scenario name in the CSV files of a manual run.</eff></v>
+  <v n="description" k="code">One line of car counts per lane.<eff>Display only.</eff></v>
+  <v n="mode" k="code">Scripted or Poisson.<eff>Poisson runs use the panel's <code>randomSeed</code>; scripted runs a fixed seed.</eff></v>
+  <v n="suggestedDuration" k="code">Run length, s; 0 = no limit.<eff>Scripted runs stop earlier if the road is clear.</eff></v>
+  <v n="userCreated" k="code">Built at runtime in the custom-case window.<eff>Only these get a delete button.</eff></v>
+  <v n="rates" k="code">Per-lane mean intervals (Poisson).<eff>See above.</eff></v>
+  <v n="schedules" k="code">Per-lane bursts (Scripted).<eff>See above.</eff></v>
+</vartable>
+<h3 id="vars-presets">TestCasePresets</h3>
+<vartable for="TestCasePresets">
+  <v n="A2_SHARE" k="measured">Share of through traffic in the shared outer lane, 5.4% (3 of 56 counted).<eff>Must equal <code>ScenarioManager.MEASURED_A2_SHARE</code>, or the batch and these cases split traffic differently.</eff></v>
+  <v n="SPAWN_TO_STOPLINE_SEC" k="measured">Free-flow time from spawn point to stop line: 189.5 m ÷ 15.42 m/s = 12.29 s.<eff>Shifts every Compare-101 car. <code>GeometryTest</code> §13 ties it to the scene's coordinates.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">07</span>Known issues</h2>
+<ul class="issues">
+  <li class="open"><b class="tag">Note</b>T10 MiddayNormal still gives CB and CA the old 7 s bucket. The batch scenario of the same name uses Itim's measured 10.1 s and 13.2 s, added on 10 Sep, so T10 is slightly heavier on the ABAC exits than the batch.<span class="src"><code>TestCaseLibrary.cs</code> lines 342-343 against <code>ScenarioManager.cs</code> line 583</span></li>
+  <li><b class="tag">Note</b>The comment on <code>Poisson()</code> calls the split "halving", but the code divides by <code>A2_SHARE</code> (5.4%), not 50/50; the later comment on line 498 states the current rule.<span class="src">Lines 335-337 against 497-502</span></li>
+  <li><b class="tag">Note</b>The comments on <code>ArrivalMode</code> and on the presets still mention "the 135-scenario statistical experiment". The batch is now 4 scenarios × 27 repetitions = 108 pairs.<span class="src">Lines 7 and 185</span></li>
+</ul>

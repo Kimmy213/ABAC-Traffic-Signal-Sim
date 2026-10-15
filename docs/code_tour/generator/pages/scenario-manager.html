@@ -1,0 +1,113 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The experiment itself. One press of <i>Start batch run</i> plays every scenario 27 times under each controller: 4 × 27 × 2 = <b>216 runs</b>, about 11.5 hours at 10× speed. Each Fixed run and its Adaptive partner share a seed, so both face exactly the same cars and the difference between them is the controller alone.</p>
+<ul class="resp">
+  <li><b>Hold</b> the batch settings and the four scenarios' arrival rates.</li>
+  <li><b>Run</b>: for every scenario and repetition, a Fixed run and then an Adaptive run with the same seed.</li>
+  <li><b>Collect</b> mean wait, worst wait, cars cleared and starvation events per run, and write three CSV files per run.</li>
+  <li><b>Report</b> progress and an ETA to <a href="batch-run-panel.html"><code>BatchRunPanel</code></a>.</li>
+</ul>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="5-9" expect="/// &lt;summary&gt;" caption="The class header"/>
+<div class="outline">
+  <section><h5>Settings</h5><ul><li><a href="#settings">Run settings and constants</a></li><li><a href="#settings">LoadBatchPreset, EnforceMeasuredShare</a></li><li><a href="#settings">MarkDirty</a></li></ul></section>
+  <section><h5>Scenarios</h5><ul><li><a href="#scenarios">LoadABACScenarioPreset</a></li><li><a href="#scenarios">MakeScenario</a></li><li><a href="#scenarios">ApplyArrivalRates</a></li></ul></section>
+  <section><h5>The batch</h5><ul><li><a href="#batch">StartBatchRun, StopBatchRun</a></li><li><a href="#batch">RunAllExperiments</a></li><li><a href="#batch">RunSingleExperiment</a></li><li><a href="#batch">DisableAllGUI, RestoreAllGUI</a></li></ul></section>
+  <section><h5>Results</h5><ul><li><a href="#results">RecordResult, GetAggregate, GetOverall</a></li><li><a href="#eta">Progress01, EstimatedRemaining</a></li><li><a href="#results">LogFinalSummary</a></li></ul></section>
+</div>
+
+<h2 id="batch"><span class="n">02</span>One batch, one run</h2>
+<figure class="fig">
+  <div data-widget="batchGrid"></div>
+  <figcaption>The order <code>RunAllExperiments</code> uses: scenario by scenario, repetition by repetition, Fixed first, then Adaptive. The seed shown is the real one, computed with the same <code>StableHash</code> as the code.</figcaption>
+</figure>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="386-423" expect="IEnumerator RunAllExperiments()" hl="398-400,405-411" caption="RunAllExperiments"/>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="425-479" expect="IEnumerator RunSingleExperiment(" hl="428,432,436-444,458-465,468-471" caption="RunSingleExperiment: seed, reset, swap controllers, warm up, measure, record"/>
+<div class="callout"><p><b>Why the warm-up.</b> A run starts on an empty road. The first 120 s are thrown away (<code>ResetRun</code> at line 461), so every measurement starts from traffic that has reached a normal state. Note that the SODA counters inside <code>AdaptiveController</code> are not cleared at that point; see <a href="data-logger.html#issues">DataLogger's issues</a>.</p></div>
+
+<h2 id="scenarios"><span class="n">03</span>The four scenarios</h2>
+<p class="prose">Rates are mean seconds between cars, per lane, as saved in the scene, which is what batch v5 ran. A and A2 come from one combined through-traffic rate split by <code>a2Share</code>; "closed" is a huge interval rather than zero, because the Poisson gap multiplies by it.</p>
+<scenariotable/>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="537-554" expect="// MorningPeak and MiddayNormal use figures measured" caption="Where the rates come from, in the code's own words"/>
+<div class="cols">
+  <div><h3>Measured</h3><p>MorningPeak and MiddayNormal: Itim's detector run over the drone clips (MiddayNormal CB/CA added 10 Sep).</p></div>
+  <div><h3>Assumed</h3><p>EveningPeak and ABACEvent were never filmed. ABACEvent was rescaled on 18 Sep, after its old rates put Bx at v/c 9.6 and gridlocked 10 of 54 runs.</p></div>
+</div>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="576-618" expect="Load ABAC Scenario Preset" hl="581-584,602-603" caption="LoadABACScenarioPreset and MakeScenario"/>
+<div class="whatif">
+  <h4>What if: the A2 share</h4>
+  <p>Through traffic on the eastbound approach is split between the inner lane (A) and the outer lane shared with Ax (A2). Itim counted 3 of 56 through vehicles in the outer lane (5.4%), replacing an 18% that had been back-calculated from a blocking rate.</p>
+  <div data-widget="a2split"></div>
+</div>
+
+<h2 id="settings"><span class="n">04</span>Settings, and how they are protected</h2>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="81-103" expect="Run Settings" hl="93,99-101" caption="Run settings and the constants they default to"/>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="268-305" expect="/// &lt;summary&gt;Resets the batch parameters" hl="277,287-290,301" caption="LoadBatchPreset, EnforceMeasuredShare and Awake"/>
+<p class="prose"><code>a2Share</code> is corrected automatically on load, because a wrong share would make the batch and the test cases split traffic differently. <code>repetitionsPerScenario</code> only triggers a warning, because lowering it is a legitimate way to run a quick test.</p>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="556-574" expect="/// &lt;summary&gt;" hl="569-572" caption="MarkDirty: why a context-menu preset must mark the scene changed"/>
+
+<h2 id="eta"><span class="n">05</span>Progress and ETA</h2>
+<p class="prose">An earlier version divided elapsed time by runs <i>started</i>, so the estimate grew while the first run was still going. Now it uses runs actually finished, and before the first run finishes it uses the theory: 1,920 simulated seconds ÷ 10. <code>EtaTest</code> checks that the estimate only ever falls.</p>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="164-223" expect="/// &lt;summary&gt;" hl="178-179,220-221" caption="MeasuredRealPerRun, CurrentRunFraction01, Progress01, EstimatedRemaining"/>
+
+<h2 id="results"><span class="n">06</span>Results</h2>
+<excerpt file="Assets/Scripts/ScenarioManager.cs" lines="248-266" expect="void RecordResult(" caption="RecordResult: four numbers per run from DataLogger"/>
+<p class="prose">These on-screen averages are for watching the batch. The statistics in the report come from the CSV files, run through <code>Analysis/analyze_results.py</code>. Batch v5's mean wait by scenario:</p>
+<figure class="fig">
+  <div data-widget="v5bars"></div>
+  <figcaption>From <code>SimulationResults/batch_v5/analysis_output/results_summary.txt</code>. Overall −20.0% (p = 1.2 × 10⁻⁸, 108 pairs). EveningPeak (+6.3%, p = 0.08) and ABACEvent (−0.8%, p = 0.88) are not significant.</figcaption>
+</figure>
+
+<h2 id="variables"><span class="n">07</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController). The scene and the code agree on every field, and the scenario list holds the four scenarios above. <code>SceneAuditTest</code> also checks MiddayNormal CB/CA = 10.1 / 13.2 and the rescaled ABACEvent rates in the scene file.</p>
+<vartable for="ScenarioManager">
+  <vgroup>References</vgroup>
+  <v n="config" k="code">The junction. Found automatically if empty.<eff>Without it the batch refuses to start.</eff></v>
+  <v n="fixedController" k="code">The Fixed controller to swap in.<eff>Required.</eff></v>
+  <v n="adaptiveController" k="code">The SODA controller to swap in.<eff>Required.</eff></v>
+  <v n="dataLogger" k="code">Where results are read from and CSVs written.<eff>Required.</eff></v>
+  <vgroup>Run settings</vgroup>
+  <v n="runDuration" k="code">Measured length of each run, simulated seconds (30 min).<eff>Longer runs: steadier averages per run, more hours per batch (the batch time scales with it).</eff></v>
+  <v n="repetitionsPerScenario" k="code">Repetitions per scenario: 27, giving 108 pairs.<eff>Fewer: a shorter batch with less statistical power. A non-standard value triggers a warning, not a correction.</eff></v>
+  <v n="simulationSpeed" k="measured">Time scale during a batch.<eff>10× was checked against 1× and 5× on one seed: Adaptive within 3.2%, Fixed within 0.45% (<code>SODA_BASELINE</code> §8.6, done at the 2 s interval). Faster still is untested.</eff></v>
+  <v n="warmupDuration" k="code">Simulated seconds discarded at the start of each run.<eff>Shorter: the empty road at the start pulls mean waits down.</eff></v>
+  <v n="BATCH_REPETITIONS" k="code">The standard 27.<eff>The value <code>LoadBatchPreset</code> restores.</eff></v>
+  <v n="BATCH_SIM_SPEED" k="code">The standard 10×.<eff>As above.</eff></v>
+  <v n="BATCH_RUN_DURATION" k="code">The standard 1,800 s.<eff>As above.</eff></v>
+  <v n="BATCH_WARMUP" k="code">The standard 120 s.<eff>As above.</eff></v>
+  <v n="disableGUIDuringBatch" k="code">Hide every debug panel during a batch, for speed.<eff>Display only, but the decision panel builds strings every phase, 216 runs over.</eff></v>
+  <vgroup>Arrival buckets</vgroup>
+  <v n="veryHigh" k="code">Mean interval for "very high" demand, s.<eff>Not used by the current four scenarios.</eff></v>
+  <v n="high" k="code">"High", s.<eff>Used for EveningPeak lane B. Only read when <code>LoadABACScenarioPreset</code> runs; the batch reads the stored scenario list.</eff></v>
+  <v n="medium" k="code">"Medium", s.<eff>EveningPeak combined A. As above.</eff></v>
+  <v n="low" k="code">"Low", s.<eff>EveningPeak Ax and Bx, and the fallback for a lane missing from a scenario (<code>ApplyArrivalRates</code>).</eff></v>
+  <v n="veryLow" k="code">"Very low", s.<eff>Not used by the current four scenarios (only by Night, which was dropped).</eff></v>
+  <v n="closed" k="code">A closed lane: a huge interval, never zero.<eff>MorningPeak CB and CA: lane C is closed 08:30-09:00, during the peak.</eff></v>
+  <vgroup>Shared lane</vgroup>
+  <v n="a2Share" k="measured">Share of eastbound through traffic in the outer lane: 5.4%, from a direct count.<eff>Corrected back to 0.054 in <code>Awake</code> if the scene differs. At the old 18%, A2 would carry about three times as many cars, each able to block the Ax turners behind it.</eff><cpl><code>TestCasePresets.A2_SHARE</code> must be equal, or the batch and T1-T13 split traffic differently.</cpl></v>
+  <v n="MEASURED_A2_SHARE" k="measured">The counted 0.054 as a constant.<eff>As above.</eff></v>
+  <v n="scenarios" k="code">The four scenarios and their per-lane rates.<eff>This list is what the batch runs. Edited by <code>LoadABACScenarioPreset</code>, which marks the scene changed so Save writes it.</eff></v>
+</vartable>
+<h3 id="vars-def">ScenarioDef and ScenarioAggregate</h3>
+<vartable for="ScenarioDef">
+  <v n="name" k="code">Scenario name; also hashed into the seed.<eff>Renaming a scenario changes every seed in it, so its runs are no longer comparable with older batches.</eff></v>
+  <v n="laneRates" k="code">Mean interval per lane.<eff>A lane missing here falls back to <code>low</code> (7 s).</eff></v>
+</vartable>
+<vartable for="ScenarioAggregate">
+  <v n="name" k="code">Scenario these results belong to.<eff>On-screen summary only.</eff></v>
+  <v n="fixedWait" k="code">Mean wait of each Fixed run.<eff>On-screen summary; the report uses the CSVs.</eff></v>
+  <v n="adaptiveWait" k="code">Mean wait of each Adaptive run.<eff>As above.</eff></v>
+  <v n="fixedMax" k="code">Worst wait of each Fixed run.<eff>As above.</eff></v>
+  <v n="adaptiveMax" k="code">Worst wait of each Adaptive run.<eff>As above.</eff></v>
+  <v n="fixedCleared" k="code">Cars cleared per Fixed run.<eff>As above.</eff></v>
+  <v n="adaptiveCleared" k="code">Cars cleared per Adaptive run.<eff>As above.</eff></v>
+  <v n="fixedStarvation" k="code">Starvation events, Fixed (always 0: Fixed has no such rule).<eff>As above.</eff></v>
+  <v n="adaptiveStarvation" k="code">Starvation events, Adaptive (each episode counted twice).<eff>As above.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">08</span>Known issues and decisions</h2>
+<ul class="issues">
+  <li><b class="tag">Decision 18 Sep</b>ABACEvent rescaled to A 6.5 / Ax 3.2 / B 4 / Bx 8 / CB 8 / CA 2.5. Every lane sits at v/c 0.92-1.09 except Bx, kept as the bottleneck at 1.80. EveningPeak was left as it was.<span class="src">Comment, lines 544-552; <code>SODA_BASELINE</code> §8.16</span></li>
+  <li><b class="tag">Decision 10 Sep</b>Night dropped from the batch: its rates were pure assumption and there is no night-time problem to solve. It remains as test case T12.<span class="src">Comment, lines 585-586</span></li>
+  <li class="fixed"><b class="tag">Fixed 18 Sep</b>Context-menu presets did not mark the scene changed, so Save wrote nothing and the scene kept its old values. <code>MarkDirty</code> fixes it here; the two controllers' presets are still without it.<span class="src">Comment, lines 556-565</span></li>
+  <li class="open"><b class="tag">Open</b><code>StopBatchRun</code> restores the time scale but not <code>vSyncCount</code>, the frame rate or the hidden panels. No effect on any result.<span class="src"><code>SODA_BASELINE</code> §8.11</span></li>
+  <li><b class="tag">Caveat</b>MiddayNormal is hypothetical for Fixed: the real signal flashes amber 09:00-15:00.<span class="src">Comment, lines 553-554</span></li>
+</ul>

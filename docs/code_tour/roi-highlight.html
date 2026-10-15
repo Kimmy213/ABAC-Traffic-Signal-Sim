@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RoiHighlight · ABAC Code Tour</title>
+<meta name="description" content="Draws the green tracking box around a car while it is inside a detection zone.">
+<link rel="stylesheet" href="assets/style.css?v=8dd8fc09">
+<script>try{var t=localStorage.getItem("tour-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body data-prev="roi-zone.html" data-next="fixed-controller.html" data-hub="index.html">
+<div class="frame">
+<aside class="side">
+<a class="brand" href="index.html"><b>ABAC Code Tour</b><span>Unity digital twin · 19 files</span></a>
+<button class="menu-btn" id="menu-btn" type="button" aria-expanded="false">Files</button>
+<nav aria-label="Files">
+<ul><li><a href="index.html">How the files work together</a></li></ul>
+<h4><i style="background:var(--l-junction)"></i>Junction model</h4><ul>
+<li><a href="intersection-config.html">IntersectionConfig<small>407</small></a></li>
+<li><a href="traffic-light.html">TrafficLight<small>93</small></a></li>
+</ul>
+<h4><i style="background:var(--l-traffic)"></i>Traffic</h4><ul>
+<li><a href="car-spawner.html">CarSpawner<small>452</small></a></li>
+<li><a href="car-agent.html">CarAgent<small>988</small></a></li>
+<li><a href="test-case-library.html">TestCaseLibrary<small>521</small></a></li>
+<li><a href="custom-test-case.html">CustomTestCase<small>498</small></a></li>
+</ul>
+<h4><i style="background:var(--l-sensing)"></i>Sensing</h4><ul>
+<li><a href="roi-zone.html">ROIZone<small>212</small></a></li>
+<li><a href="roi-highlight.html" aria-current="page">RoiHighlight<small>56</small></a></li>
+</ul>
+<h4><i style="background:var(--l-control)"></i>Control</h4><ul>
+<li><a href="fixed-controller.html">FixedController<small>284</small></a></li>
+<li><a href="adaptive-controller.html">AdaptiveController<small>1304</small></a></li>
+</ul>
+<h4><i style="background:var(--l-experiment)"></i>Experiment</h4><ul>
+<li><a href="scenario-manager.html">ScenarioManager<small>645</small></a></li>
+<li><a href="data-logger.html">DataLogger<small>327</small></a></li>
+</ul>
+<h4><i style="background:var(--l-ui)"></i>Runtime UI</h4><ul>
+<li><a href="simulation-control-panel.html">SimulationControlPanel<small>895</small></a></li>
+<li><a href="batch-run-panel.html">BatchRunPanel<small>499</small></a></li>
+<li><a href="camera-director.html">CameraDirector<small>214</small></a></li>
+<li><a href="ui-theme.html">UITheme<small>300</small></a></li>
+</ul>
+<h4><i style="background:var(--l-editor)"></i>Editor tools</h4><ul>
+<li><a href="abac-scene-builder.html">ABACSceneBuilder<small>988</small></a></li>
+<li><a href="car-prefab-builder.html">CarPrefabBuilder<small>354</small></a></li>
+<li><a href="scene-parameter-audit.html">SceneParameterAudit<small>104</small></a></li>
+</ul>
+</nav><div class="tools"><button id="theme-btn" type="button">Theme</button></div>
+</aside>
+<main class="main" id="main">
+<header class="file-head"><p class="path">Assets/Scripts/RoiHighlight.cs</p><h1>RoiHighlight</h1><div class="badges"><span class="badge layer" style="background:var(--l-sensing)">Sensing</span><span class="badge">56 lines</span><span class="badge">Runtime</span></div><p class="lede">Draws the green tracking box around a car while it is inside a detection zone.</p><div class="deps"><div><b>Uses</b><span class="muted">none</span></div><div><b>Used by</b><a href="roi-zone.html" title="EnterZone / ExitZone">ROIZone</a> <a href="camera-director.html" title="ShowAll toggle">CameraDirector</a> <a href="car-prefab-builder.html" title="boxRoot">CarPrefabBuilder</a></div></div><nav class="toc" id="toc" aria-label="On this page"><b>On this page</b></nav></header>
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">A display aid with one job: draw a green wireframe box around every car while it is inside a detection zone. That shows an audience, frame by frame, what the camera counts, the same question the computer-vision half of the project answers from drone footage. It changes nothing in the simulation.</p>
+<ul class="resp">
+  <li>A global switch, <code>ShowAll</code>, off by default. Press <kbd>B</kbd> or the camera bar's button to turn it on.</li>
+  <li>A per-car counter of the zones the car is in, raised and lowered by <a href="roi-zone.html"><code>ROIZone</code></a>.</li>
+</ul>
+<h2 id="code"><span class="n">02</span>The whole file</h2>
+<figure class="code"><figcaption><span>RoiHighlight</span><span class="loc">RoiHighlight.cs : 13-55</span></figcaption><pre class="cs"><span class="ln" data-n="13">public class RoiHighlight : MonoBehaviour</span><span class="ln" data-n="14">{</span><span class="ln" data-n="15">    /// &lt;summary&gt;Global switch — off by default so a normal run looks clean.&lt;/summary&gt;</span><span class="ln hl" data-n="16">    public static bool ShowAll = false;</span><span class="ln" data-n="17"></span><span class="ln" data-n="18">    [Tooltip(&quot;The wireframe outline, created automatically by ABAC &gt; Rebuild Car Prefab&quot;)]</span><span class="ln" data-n="19">    public GameObject boxRoot;</span><span class="ln" data-n="20"></span><span class="ln" data-n="21">    [Tooltip(&quot;Legacy single-renderer box — only set on prefabs built before the outline change&quot;)]</span><span class="ln" data-n="22">    public Renderer box;</span><span class="ln" data-n="23"></span><span class="ln" data-n="24">    private int insideCount = 0;</span><span class="ln" data-n="25"></span><span class="ln" data-n="26">    void OnEnable()  { Refresh(); }</span><span class="ln" data-n="27"></span><span class="ln" data-n="28">    /// &lt;summary&gt;Called by ROIZone when this vehicle enters a detection zone.&lt;/summary&gt;</span><span class="ln" data-n="29">    public void EnterZone()</span><span class="ln" data-n="30">    {</span><span class="ln hl" data-n="31">        insideCount++;</span><span class="ln" data-n="32">        Refresh();</span><span class="ln" data-n="33">    }</span><span class="ln" data-n="34"></span><span class="ln" data-n="35">    /// &lt;summary&gt;Called by ROIZone when this vehicle leaves a detection zone.&lt;/summary&gt;</span><span class="ln" data-n="36">    public void ExitZone()</span><span class="ln" data-n="37">    {</span><span class="ln hl" data-n="38">        insideCount--;</span><span class="ln hl" data-n="39">        if (insideCount &lt; 0) insideCount = 0;</span><span class="ln" data-n="40">        Refresh();</span><span class="ln" data-n="41">    }</span><span class="ln" data-n="42"></span><span class="ln" data-n="43">    void Update()</span><span class="ln" data-n="44">    {</span><span class="ln" data-n="45">        // The global switch can flip at any time, so keep the outline in sync.</span><span class="ln" data-n="46">        // Cheap: one bool compare per vehicle per frame.</span><span class="ln" data-n="47">        Refresh();</span><span class="ln" data-n="48">    }</span><span class="ln" data-n="49"></span><span class="ln" data-n="50">    void Refresh()</span><span class="ln" data-n="51">    {</span><span class="ln hl" data-n="52">        bool want = ShowAll &amp;&amp; insideCount &gt; 0;</span><span class="ln hl" data-n="53">        if (boxRoot != null &amp;&amp; boxRoot.activeSelf != want) boxRoot.SetActive(want);</span><span class="ln hl" data-n="54">        if (box != null &amp;&amp; box.enabled != want) box.enabled = want;</span><span class="ln" data-n="55">    }</span></pre></figure>
+<p class="prose">The box is a counter, not a flag, so a car on the boundary between two zones stays boxed until it has left both. <code>Update</code> re-checks the global switch every frame: one comparison per car.</p>
+<p class="prose">The box itself is built by <a href="car-prefab-builder.html#wirebox"><code>CarPrefabBuilder</code></a> as twelve thin opaque bars. A translucent solid box was tried first, but in a stopped queue the boxes blended into one green mass and the cars could no longer be counted by eye.</p>
+
+<h2 id="variables"><span class="n">03</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>Car.prefab</code>.</p>
+<div class="vt-wrap"><table class="vt"><colgroup><col class="c-f"><col class="c-d"><col class="c-s"><col class="c-m"><col class="c-e"></colgroup><thead><tr><th>Field</th><th>Code default</th><th>Saved value</th><th>What it means</th><th>What happens if you change it</th></tr></thead><tbody><tr id="v-RoiHighlight-ShowAll"><td class="vn"><a href="#v-RoiHighlight-ShowAll">ShowAll</a><small>bool static · line 16</small></td><td class="val">false</td><td class="val"><span class="same">static - not serialised</span></td><td>Global on/off for every box.</td><td class="eff"><span class="kind code">from the code</span>Display only. Static, so one switch covers every car.</td></tr><tr id="v-RoiHighlight-boxRoot"><td class="vn"><a href="#v-RoiHighlight-boxRoot">boxRoot</a><small>GameObject · line 19</small></td><td class="val"><span class="same">type default</span></td><td class="val"><small>Car.prefab</small> <span class="">set</span></td><td>The wireframe outline, created by <i>Rebuild Car Prefab</i>.</td><td class="eff"><span class="kind code">from the code</span>Display only.</td></tr><tr id="v-RoiHighlight-box"><td class="vn"><a href="#v-RoiHighlight-box">box</a><small>Renderer · line 22</small></td><td class="val"><span class="same">type default</span></td><td class="val"><small>Car.prefab</small> <span class="">none</span></td><td>The old single-renderer box, kept for prefabs built before the outline. Empty on the current prefab.</td><td class="eff"><span class="kind code">from the code</span>Display only.</td></tr></tbody></table></div>
+
+<nav class="pager" aria-label="Files"><a class="prev" href="roi-zone.html"><small>&larr; Previous</small><b>ROIZone</b></a><a class="next" href="fixed-controller.html"><small>Next &rarr;</small><b>FixedController</b></a></nav>
+<p class="keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous / next section &nbsp;·&nbsp; <kbd>[</kbd> <kbd>]</kbd> previous / next file &nbsp;·&nbsp; <kbd>h</kbd> overview</p>
+</main>
+</div>
+<script src="assets/data.js?v=e6903af6"></script>
+<script src="assets/app.js?v=dbefb208"></script>
+<script src="assets/widgets.js?v=b35d7078"></script>
+</body>
+</html>

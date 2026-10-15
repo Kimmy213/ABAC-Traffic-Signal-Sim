@@ -1,0 +1,197 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">SODA (Sampled-Observation Demand-Adaptive) is the controller the project proposes. It may use only what a camera without a tracker can give it: <b>a count of vehicles in each detection zone, once a second</b>. From that it decides which lanes get green next and for how long. Everything it remembers between readings is eight numbers: two per signal head.</p>
+<ul class="resp">
+  <li><b>Watch</b>: every <code>snapshotInterval</code> (1 s), read the four heads' counts and note when each head went from empty to occupied (<code>queueStart</code>).</li>
+  <li><b>Decide</b>: when there is demand, answer four questions: is anyone starving (Q1), who queued first (Q2), who can go with them (Q3), and how long (Q4).</li>
+  <li><b>Act</b>: turn lights yellow, red and green through <code>TrafficLight.SetState</code>, then end the green early on gap-out, anti-starvation or max green.</li>
+  <li><b>Report</b>: hand every phase to <code>DataLogger</code> and keep the counters the summary CSV prints.</li>
+</ul>
+<p class="prose">The file opens by stating exactly what changed from the earlier controller, and what did not:</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="5-25" expect="/// &lt;summary&gt;" hl="15-17,23-24" caption="The class header: why SODA was rewritten"/>
+
+<h3 id="outline">Outline of the file</h3>
+<div class="outline">
+  <section><h5>Lifecycle</h5><ul><li><a href="#heads">Awake</a></li><li><a href="#heads">BuildHeads</a></li><li><a href="#round">Start</a></li><li><a href="#logging">ForceStop</a></li><li><a href="#logging">RestartCycle</a></li></ul></section>
+  <section><h5>Eyes</h5><ul><li><a href="#snapshot">CountOf</a></li><li><a href="#snapshot">SnapshotLoop</a></li><li><a href="#snapshot">Snapshot</a></li><li><a href="#snapshot">WaitOf</a></li></ul></section>
+  <section><h5>The round</h5><ul><li><a href="#round">RunSoda</a></li><li><a href="#round">CollectPhase</a></li><li><a href="#serve">ServeOnePhase</a></li><li><a href="#round">CloseGroup</a></li><li><a href="#round">WaitForNextSnapshot(OrDeadline)</a></li></ul></section>
+  <section><h5>Decision helpers</h5><ul><li><a href="#q1q2">FindStarvingHead</a></li><li><a href="#q1q2">ChooseLeaderByQueueStart</a></li><li><a href="#q1q2">CompareHeads</a></li><li><a href="#q3">BuildCompatibleGroup</a></li><li><a href="#q3">AddPhysicallyLinkedSignals</a></li><li><a href="#q4">CalculateGreenDuration</a></li></ul></section>
+  <section><h5>Ending a green</h5><ul><li><a href="#interrupts">GreenPhaseWithInterrupts</a></li><li><a href="#reset">ResetQueueStartFor</a></li><li><a href="#round">CountdownPhase</a></li></ul></section>
+  <section><h5>Guards and records</h5><ul><li><a href="#measured">LoadMeasuredPreset</a></li><li><a href="#measured">EnforceMeasuredParameters</a></li><li><a href="#logging">LogPhaseTrace</a></li><li><a href="#logging">CountTieBreaks</a></li></ul></section>
+  <section><h5>Decision Inspector (display)</h5><ul><li><a href="#logging">TraceDecisionInputs, TraceBegin ...</a></li><li><a href="#logging">OnGUI, DrawDecisionPanel</a></li></ul></section>
+</div>
+
+<h3 id="trace">Watch it run: the acceptance traces</h3>
+<p class="prose"><code>SODA_BASELINE.md</code> §5 fixes the counts the controller reads and writes down every decision it must make. These traces are the acceptance tests, and <code>Tests/soda.py</code> reproduces them. Four of the five are here (S5 is a single-phase check of idle green, covered in <a href="#logging">section 10</a>). Step through one to see the three states, the eight numbers and the four questions together. S4 is the busy case that matters for the result.</p>
+<figure class="fig">
+  <div data-widget="sodaTrace"></div>
+  <figcaption>When every head reads empty again, SERVE closes the group (yellow, all-red) and returns to ALL_RED_IDLE. The traces were written on a 2 s snapshot grid. The code now reads every 1 s; Itim reports the traces replay unchanged at 1 s, because they fix the readings rather than generate them (<code>SODA_BASELINE</code> §8.13). On the bars, the amber mark is the 40.5 s cut threshold and the red mark the 42.75 s lead threshold.</figcaption>
+</figure>
+
+<h2 id="heads"><span class="n">02</span>Signal heads: the unit of control</h2>
+<p class="prose">SODA does not control lanes; it controls <b>lamps</b>. A2 and A deliberately share one <code>TrafficLight</code> object, so the junction's five signalised lanes collapse into four heads. Each head carries only the two numbers below, plus the lists it was built from.</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="110-126" expect="One head = one physical signal lamp" hl="123,125" caption="SignalHead: the whole memory of the controller is queueStart and lastCount, times four"/>
+<p class="prose"><code>BuildHeads</code> runs in <code>Awake</code>. It walks the signalised lanes from <code>IntersectionConfig</code> and puts lanes that point at the same light into one head. It also collects each head's zones and gives it a priority from the junction's original phase order:</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="243-276" expect="public void BuildHeads()" hl="254,258,264,270" caption="BuildHeads: grouping by physical light, with no lane names hard-coded"/>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="136-141" expect="This tie-break decides more than who leads" hl="141" caption="ORIGINAL_SEQUENCE: the tie-break, and why it is biased against Bx"/>
+
+<h2 id="snapshot"><span class="n">03</span>Eyes: the snapshot</h2>
+<p class="prose">A head's count is the sum of <code>GetSampledCount()</code> over its zones. That is the one <a href="roi-zone.html"><code>ROIZone</code></a> method a tracker-free camera can supply; a test (<code>SodaTest</code>) checks that this file never calls the three that need a tracker.</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="480-494" expect="int CountOf(SignalHead h)" caption="CountOf and the one timer in the file"/>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="500-533" expect="public void Snapshot()" hl="509,511,529-530" caption="Snapshot: rising edge sets the clock, an empty reading clears it, and the gap-out streak advances"/>
+<div class="callout"><p><b>One clock.</b> Every decision waits for <code>snapshotIndex</code> to change (<code>WaitForNextSnapshot</code>), so nothing reads the zones faster or slower than the data arrives. The only other timer is the COLLECT ceiling, a timeout that looks at no data.</p></div>
+<p class="prose">Because all four heads are stamped inside one <code>Snapshot()</code> call, two heads whose first cars arrive in the same second get exactly the same <code>queueStart</code>. Ties are routine, which is why <code>ORIGINAL_SEQUENCE</code> exists. In batch v5 the tie-break ran in 812 (Morning), 388 (Midday), 2,041 (Evening) and 1,878 (ABACEvent) phases, summed over 27 runs. Bx was the head left out in 305, 60, 665 and 596 of them (<code>TieBreaksApplied</code> and <code>TieBreaksExcludingBx</code> in <code>summary_all_runs.csv</code>; the counters also include the 120 s warm-up).</p>
+
+<h2 id="round"><span class="n">04</span>The round: ALL-RED, COLLECT, SERVE</h2>
+<p class="prose"><code>RunSoda</code> is the main loop, started in <code>Start</code> and again by <code>RestartCycle</code>. The real signal goes all-red when the junction is empty, and so does SODA; it does not rest in green.</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="557-586" expect="IEnumerator RunSoda()" hl="573,576,580-584" caption="RunSoda: idle until demand, collect once, then serve until empty"/>
+<p class="prose">COLLECT is the only place demand is allowed to build up before a decision. The 7 s is a ceiling; the code leaves early when two heads have cars, or when any head has three:</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="593-617" expect="IEnumerator CollectPhase()" hl="609" caption="CollectPhase: two early exits and a timeout"/>
+<p class="prose">Under heavy traffic the junction never empties, so after the first COLLECT, SERVE simply repeats. In batch v5, COLLECT ran only once per run (27 times in 27 runs) in EveningPeak and ABACEvent, 65 times in MorningPeak and 108 times in MiddayNormal (<code>CollectCount</code>).</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="804-813" expect="IEnumerator CloseGroup(List&lt;int&gt; group)" caption="CloseGroup: the way back to all-red when the junction empties"/>
+
+<h2 id="serve"><span class="n">05</span>SERVE: one phase, four questions</h2>
+<p class="prose"><code>ServeOnePhase</code> runs once per phase. It takes a fresh reading at the moment of decision, then closes out the phase that just ended. That reset must come <i>before</i> the questions; the comment explains what went wrong when it came after.</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="619-640" expect="IEnumerator ServeOnePhase()" hl="624,638" caption="ServeOnePhase, part 1: fresh reading, then the end-of-phase reset"/>
+
+<h3 id="q1q2">Q1 starvation and Q2 leader</h3>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="642-677" expect="// ===== Q1: is anyone close to starving?" hl="644,659,672-677" caption="ServeOnePhase, part 2: Q1 and Q2"/>
+<p class="prose">Q1 and Q2 both rank heads with one comparison: oldest <code>queueStart</code> first, and on an exact tie the original order A → B → Bx → CB. Time decides <i>who</i> goes. The vehicle count is not consulted here; the comment on <code>ChooseLeaderByQueueStart</code> explains that ranking by count would let H_A win every time and Bx would never get green.</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="940-986" expect="public SignalHead FindStarvingHead" hl="942,949,954,972,983-985" caption="FindStarvingHead, ChooseLeaderByQueueStart and CompareHeads"/>
+
+<h3 id="q3">Q3 the group</h3>
+<p class="prose">The leader seeds a group. Every other head with at least <code>minDemandToJoinGroup</code> cars is tried in the same oldest-first order and joins if it conflicts with nobody already in the group. A2 is then forced in beside A, because it is the same lamp. Heads with no cars are skipped for the whole phase; the comment calls this the single largest source of the win over Fixed.</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="1028-1059" expect="List&lt;int&gt; BuildCompatibleGroup(int leader)" hl="1039,1042,1048,1055" caption="BuildCompatibleGroup"/>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="679-726" expect="// ===== Q3: who else can go at the same time?" hl="691,695-704,708-711" caption="ServeOnePhase, part 3: only the lanes that must stop are given yellow and all-red"/>
+<p class="prose">Clearance is paid only by lanes leaving the group. In S4 phase 2, B stays green from phase 1 into phase 2 while A goes yellow.</p>
+
+<div class="whatif">
+  <h4>Try it: Q1 to Q4 on your own numbers</h4>
+  <p>Set the count in each zone and when each head's queue began, then read the decision. The rules are a line-for-line port of the methods above, run with the code's constants. The four buttons load the decision points of traces S2 and S4.</p>
+  <div data-widget="sodaPlayground"></div>
+</div>
+
+<h2 id="q4"><span class="n">06</span>Q4: how long a green</h2>
+<p class="prose">G is computed <b>after</b> the clearance, at the moment green opens, from a fresh count. Each lane in the group needs <code>startupLostTime + D × saturationHeadway</code> seconds to discharge D cars. The lanes run in parallel, so the phase is sized by the longest need, then held between <code>gMin</code> and <code>gMax</code>.</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="1082-1097" expect="/// &lt;summary&gt;" hl="1093,1096" caption="CalculateGreenDuration"/>
+<div class="whatif">
+  <h4>What if: change the green-time constants</h4>
+  <p>Both constants were measured by Itim from 39 headways on lane B, morning footage of 14 July 2026: 2.95 s startup lost time and 2.31 s per car (sd 0.81). The textbook HCM values are 2.0 and 2.0 (<code>SODA_BASELINE</code> §4.4). The thin grey line stays at the code's values for comparison.</p>
+  <div data-widget="gformula"></div>
+</div>
+<p class="prose small muted">Check against the baseline's response table: D = 4 gives 12.19 s, D = 10 gives 26.05 s, and from D = 19 every phase gets 45 s.</p>
+
+<h2 id="interrupts"><span class="n">07</span>Ending a green: three interrupts</h2>
+<p class="prose">G is a ceiling, not a promise. Every frame of the green, <code>GreenPhaseWithInterrupts</code> checks three ways to stop sooner:</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="839-888" expect="IEnumerator GreenPhaseWithInterrupts" hl="852,862,872,874" caption="GreenPhaseWithInterrupts"/>
+<div class="tw"><table class="plain">
+  <thead><tr><th>Interrupt</th><th>Fires when</th><th>Batch v5: share of Adaptive phases ending this way</th></tr></thead>
+  <tbody>
+    <tr><td>Gap-out</td><td>the whole group read zero on <code>gapOutSnapshots</code> (2) readings in a row</td><td class="num">Morning 18.3% · Midday 45.3% · Evening 1.4% · ABACEvent 0.7%</td></tr>
+    <tr><td>Anti-starvation</td><td>green has run ≥ 20 s and a head outside has waited ≥ 0.90 × 45 = 40.5 s</td><td class="num">Morning 0.0% · Midday 0.5% · Evening 92.6% · ABACEvent 91.3%</td></tr>
+    <tr><td>Max green</td><td>the same group has been green 90 s and a head outside has cars</td><td class="num">0 phases in all four scenarios</td></tr>
+    <tr><td>(none)</td><td>G ran out: <code>EndReason = completed</code></td><td class="num">Morning 81.7% · Midday 54.2% · Evening 6.0% · ABACEvent 8.0%</td></tr>
+  </tbody>
+</table></div>
+<p class="prose small muted">Computed for this page from the <code>EndReason</code> column of every <code>SimulationResults/batch_v5/phases_Adaptive_*.csv</code> (27 runs per scenario).</p>
+
+<div class="whatif">
+  <h4>What if: gap-out sensitivity</h4>
+  <p>Click a reading to change it. Gap-out needs the whole group to read zero on consecutive snapshots. <code>SodaTest</code> §2 checks that readings 3, 0, 2 do not fire and 3, 0, 0 do. Because the rule counts <i>readings</i>, moving <code>snapshotInterval</code> from 2 s to 1 s on 14 Sep also halved the confirmation window from 4 s to 2 s. Itim accepted that knowingly.</p>
+  <div data-widget="gapout"></div>
+</div>
+
+<div class="whatif">
+  <h4>What if: the anti-starvation floor</h4>
+  <p>In EveningPeak and ABACEvent every lane is waiting, so some head always crosses 40.5 s. The cut then fires the moment it is allowed to. In batch v5, 98% of those starvation cuts came within 21 s of green opening, so the 20 s floor, not the formula, set the length of almost every green in those two scenarios. That is why SODA does not beat Fixed there (Evening +6.3% wait, p = 0.08). Move the sliders to see when a cut lands.</p>
+  <div data-widget="starvation"></div>
+  <p class="small muted">A comparison of 20, 30 and 40 s floors has not been run, so the effect of changing it on the wait is unknown.</p>
+</div>
+
+<h2 id="reset"><span class="n">08</span>The reset that keeps it fair</h2>
+<p class="prose">When a head's green ends and it still has cars, its <code>queueStart</code> restarts at now. Without that, a head that never empties would keep its original timestamp, win Q2 forever and lock every other head out. The tests show it: in a 10-phase run with no head ever emptying, the four heads were served 3, 2, 3 and 2 times; with the reset removed, Bx took all 10 (<code>SodaTest</code> §1).</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="815-835" expect="/// &lt;summary&gt;" hl="828-833" caption="ResetQueueStartFor"/>
+<div class="callout warn"><p><b>Consequence for how SODA is described.</b> Under saturation, <code>queueStart</code> comes from the reset rule, not from when cars arrived. The service order is then round-robin weighted by demand, not first-come first-served (<code>SODA_BASELINE</code> §3.4, limitation L2). In v5 the reset fired 3,219 to 3,372 times per 27 runs in the three busy scenarios (<code>QueueStartResets</code>).</p></div>
+
+<h2 id="measured"><span class="n">09</span>Guarding the measured values</h2>
+<p class="prose">The two measured constants are <code>const</code>, so the scene cannot overwrite them. The public fields that use them can be overwritten, so <code>Awake</code> checks them first:</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="57-71" expect="// ===== Measured reference values" hl="63-64" caption="The single source of truth"/>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="345-364" expect="public bool EnforceMeasuredParameters()" hl="349-355" caption="EnforceMeasuredParameters: correct and complain"/>
+<p class="prose">Every summary row records the values actually used. All 216 rows of batch v5 show <code>StartupLostTime = 2.95</code>, <code>SaturationHeadway = 2.31</code> and <code>SnapshotInterval = 1.0</code>.</p>
+
+<h2 id="logging"><span class="n">10</span>Records and the Decision Inspector</h2>
+<p class="prose">At the end of every green, <code>LogPhaseTrace</code> sends one row to <a href="data-logger.html"><code>DataLogger</code></a>: the group, G given, time used, why it ended, and when each lane first read empty. The last of these exposes <i>idle green</i>, a lane held green with nothing left to serve (trace S5).</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="897-923" expect="void LogPhaseTrace(float greenGiven)" hl="910-911" caption="LogPhaseTrace"/>
+<p class="prose"><code>ForceStop</code> is how <code>ScenarioManager</code> and the control panel switch controllers. Since 11 Sep it also clears the SODA counters. Before that, 107 of 108 Fixed rows in a batch carried the previous Adaptive run's values.</p>
+<excerpt file="Assets/Scripts/AdaptiveController.cs" lines="289-308" expect="public void ForceStop()" hl="301-304" caption="ForceStop"/>
+<p class="prose">The Decision Inspector (press <kbd>D</kbd> in Play mode) draws the queue and Q1-Q4 for the latest phase, filled in by <code>TraceDecisionInputs</code>, <code>TraceOption</code> and <code>TraceVerdict</code>. It changes no state. <code>ScenarioManager</code> switches it off during a batch.</p>
+
+<h2 id="variables"><span class="n">11</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController). The scene and the code agree on every field of this component.</p>
+<vartable for="AdaptiveController">
+  <vgroup>References</vgroup>
+  <v n="config" k="code">The junction description: lanes, lights, zones, conflicts. Found by <code>FindFirstObjectByType</code> in <code>Awake</code> if empty.<eff>Without it <code>Awake</code> logs an error and the controller never starts.</eff></v>
+  <vgroup>Eyes: sampled observation</vgroup>
+  <v n="snapshotInterval" k="measured">Seconds between readings of the four counts. Also the controller's only clock.<eff>Changed from 2 s to 1 s on 14 Sep (Itim). In Itim's point-queue model over 30 paired seeds, 1 s cut mean wait by 0.42 s (MorningPeak) and 1.60 s (MiddayNormal) against 2 s. Batches v1 and v2 ran at 2 s. A shorter interval also shortens the gap-out window, because that is counted in readings.</eff><cpl><code>gapOutSnapshots</code> (window = readings × interval); the 1×/5×/10× speed check was done at 2 s and not repeated at 1 s (<code>SODA_BASELINE</code> §8.14).</cpl></v>
+  <v n="collectWindow" k="code">Longest COLLECT may wait for demand to build before the first decision of a round.<eff>Only matters on a quiet junction. One car on an empty junction waits the full window (S1: 7 s of a 24 s round). Shorter means quicker service but decisions on fewer cars. At peak, COLLECT runs about once per run.</eff></v>
+  <v n="earlyExitHeadCount" k="code">COLLECT ends as soon as this many heads have cars.<eff>Raise it and two queues waiting together no longer start a phase early; they wait for the ceiling.</eff><cpl>Tuned in the v1.0 spec; no field basis.</cpl></v>
+  <v n="earlyExitDemand" k="code">COLLECT ends as soon as any one head has this many cars.<eff>S3: four cars on Bx end COLLECT at once and the round takes 19.19 s, against 24 s for a single car.</eff></v>
+  <vgroup>Green time (Q4)</vgroup>
+  <v n="gMin" k="code">Shortest green SODA gives.<eff>Any phase needing less is raised to it: up to D = 2 every phase gets 8 s. Raising it lengthens light-traffic phases; lowering it below 5.26 s would let a one-car phase end sooner.</eff></v>
+  <v n="gMax" k="code">Longest green from the formula.<eff>From D = 19 every phase gets exactly 45 s. A higher cap serves long queues in one go, but the anti-starvation cut can still end the phase after 20 s.</eff></v>
+  <v n="yellowDuration" k="measured">Amber before a lane goes red. From Itim's stage table of the real signal.<eff>Every lane leaving the group pays it, so it is part of the 5 s clearance cost of each group change.</eff><cpl>Same 3 s in <code>FixedController</code>, so both controllers pay the same clearance.</cpl></v>
+  <v n="allRedDuration" k="measured">All-red after the amber, before the next group opens.<eff>As above: yellow + all-red = 5 s per change.</eff><cpl><code>FixedController.allRedDuration</code>.</cpl></v>
+  <v n="startupLostTime" k="measured">Time lost when a queue starts moving: the fixed part of G. Measured 2.95 s (HCM default 2.0).<eff>Adds once to every phase. Set to HCM 2.0, D = 4 gives 11.24 s instead of 12.19 s. <code>Awake</code> puts 2.95 back unless <code>useMeasuredParameters</code> is off.</eff><cpl><code>MEASURED_STARTUP_LOST_TIME</code>; <code>GeometryTest</code> §9 and <code>SceneAuditTest</code> check 2.95.</cpl></v>
+  <v n="saturationHeadway" k="measured">Seconds per car once the queue is moving. Measured 2.31 s/veh (sd 0.81), HCM default 2.0.<eff>Scales G with the queue: each car adds this much. At 2.0, D = 10 gets 22.95 s instead of 26.05 s.</eff><cpl>The cars are tuned to the same figure: <a href="car-agent.html#v-CarAgent-desiredTimeHeadway"><code>CarAgent.desiredTimeHeadway</code></a> = 1.9 makes a queue discharge at 2.28 s/veh, so the controller's assumption matches the simulated traffic.</cpl></v>
+  <v n="MEASURED_STARTUP_LOST_TIME" k="measured">The measured 2.95 s, as a constant the scene cannot override.<eff>Changing it changes every Adaptive green and fails <code>GeometryTest</code> §9 until the tests are updated.</eff></v>
+  <v n="MEASURED_SATURATION_HEADWAY" k="measured">The measured 2.31 s/veh, as a constant.<eff>As above.</eff></v>
+  <v n="useMeasuredParameters" k="code">Guard switch for the two measured values.<eff>On: a drifted scene value is corrected in <code>Awake</code> with an error. Off: the scene's values are used, which the tooltip reserves for a deliberate HCM-against-measured comparison.</eff></v>
+  <v n="maxContinuousGreen" k="measured">Longest one group may stay green across phases while another head has cars.<eff>Never fired in batch v5 (0 phases with <code>EndReason = max-green</code>): the 45 s cap and the 20 s anti-starvation cut always ended greens first. Lowering it far enough would make it fire.</eff></v>
+  <vgroup>Concurrent phase (Q3)</vgroup>
+  <v n="enableConcurrentPhases" k="unknown">Combine non-conflicting heads into one green.<eff>Off: the leader goes alone (A2 still joins A). {A, A2, B} and {B, Bx} could no longer share a green. This has not been run.</eff></v>
+  <v n="minDemandToJoinGroup" k="unknown">Cars a head needs before it may join the leader's group.<eff>Raising it keeps lightly-loaded heads out of a green they could have shared. Not run.</eff></v>
+  <vgroup>Gap-out</vgroup>
+  <v n="enableGapOut" k="unknown">End a green early when the whole group is empty.<eff>In v5 gap-out ended 45.3% of Midday and 18.3% of Morning phases. Switched off, those phases would run to G; the effect on wait was not run.</eff></v>
+  <v n="gapOutSnapshots" k="code">Consecutive all-zero readings needed to end a green.<eff>1: a single missed detection ends a phase with cars still waiting (the tooltip's reason for 2). 3: the window grows to 3 s at the current interval.</eff><cpl><code>snapshotInterval</code>.</cpl></v>
+  <vgroup>Anti-starvation</vgroup>
+  <v n="maxWaitTime" k="unknown">The longest acceptable wait for a head (LOS D criterion). Both thresholds are fractions of it: 42.75 s to lead, 40.5 s to cut.<eff>Raising it lets each green run longer before a cut, in the two scenarios where the cut decides almost every phase. The effect on wait has not been run.</eff><cpl><code>ROIZone</code>'s on-screen bar uses 45 s as its red mark (<code>WaitCritical</code>).</cpl></v>
+  <v n="minGreenBeforeInterrupt" k="measured">The anti-starvation cut may not end a green before this. 20 s clears about 7.4 cars.<eff>In v5, 92.6% of Evening and 91.3% of ABACEvent phases were ended by the cut, 98% of them within 21 s: in practice this sets the green length there. A 20/30/40 s comparison has not been run.</eff></v>
+  <v n="starvationSelectThreshold" k="code">Fraction of <code>maxWaitTime</code> at which a head becomes the next leader regardless of order (Q1).<eff>0.95 × 45 = 42.75 s. Lower: the override fires sooner and more often.</eff></v>
+  <v n="starvationInterruptThreshold" k="code">Fraction of <code>maxWaitTime</code> at which a waiting head cuts the current green.<eff>0.90 × 45 = 40.5 s. Kept below the select threshold, so the green is cut slightly before the head is overdue.</eff></v>
+  <vgroup>Display</vgroup>
+  <v n="showDebugGUI" k="code">Status card and head cards on the right of the screen.<eff>Display only. <code>SimulationControlPanel</code> turns it off at start when <code>hideLegacyDebugGUI</code> is set.</eff></v>
+  <v n="verboseLog" k="code">Extra console lines for every phase and gap-out.<eff>Display only; slows long runs.</eff></v>
+  <v n="showDecisionPanel" k="code">The Decision Inspector panel.<eff>Display only. The phase number still advances when it is off (fixed 11 Sep).</eff></v>
+  <v n="decisionPanelKey" k="code">Key that shows or hides the Decision Inspector.<eff>Read before any early return in <code>OnGUI</code>, so the panel can always be brought back.</eff></v>
+  <v n="ORIGINAL_SEQUENCE" k="measured">Tie-break order when two heads have exactly the same <code>queueStart</code>: the junction's existing phase order.<eff>Agreed with Itim on 10 Sep (Option A). It systematically leaves Bx out of groups when A ties with it. In v5, Bx was excluded by a tie in 305 to 665 phases per scenario (27 runs). The bias works against SODA's Bx result, so it cannot inflate it.</eff></v>
+</vartable>
+<h3 id="vars-head">SignalHead</h3>
+<vartable for="SignalHead">
+  <v n="name" k="code">"H_" + the first lane's name: H_A, H_B, H_Bx, H_CB.<eff>Must match <code>ORIGINAL_SEQUENCE</code>, or the head gets a priority after the four known heads and a warning.</eff></v>
+  <v n="priority" k="code">Position in <code>ORIGINAL_SEQUENCE</code>.<eff>Decides exact ties at Q1, Q2 and Q3.</eff></v>
+  <v n="signals" k="code">Signal indices on this lamp: H_A has A and A2.<eff>Built from the scene's wiring, so pointing A2 at its own light would make a fifth head.</eff></v>
+  <v n="rois" k="code">Zones summed into this head's count: H_A has ROI_A and ROI_Ax.<eff>H_A's count therefore includes Ax cars that do not need its green (limitation L4).</eff></v>
+  <v n="queueStart" k="code">When this head last went from empty to occupied, or last finished a green with cars still waiting. Infinity when empty.<eff>The key to Q1 and Q2. See <a href="#reset">the reset</a>.</eff></v>
+  <v n="lastCount" k="code">Count at the most recent snapshot.<eff>Used for the rising edge, eligibility (count &gt; 0) and COLLECT's early exits.</eff></v>
+</vartable>
+<h3 id="vars-trace">TraceStep (Decision Inspector)</h3>
+<vartable for="TraceStep">
+  <v n="id" k="code">Q1 to Q4.<eff>Display only.</eff></v>
+  <v n="title" k="code">Heading shown for the step.<eff>Display only.</eff></v>
+  <v n="options" k="code">The options weighed, up to 8 lines.<eff>Display only.</eff></v>
+  <v n="verdict" k="code">One-line outcome of the step.<eff>Display only.</eff></v>
+  <v n="resolved" k="code">Whether the step has a verdict this phase.<eff>Display only.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">12</span>Known issues and decisions</h2>
+<ul class="issues">
+  <li class="fixed"><b class="tag">Fixed 11 Sep</b>Heads that stayed in the group kept a stale <code>queueStart</code> and won Q1 and Q2 indefinitely. In EveningPeak Rep17, H_B stayed in the group for 24 phases (365.5 s), H_CB was never served and CB cars waited up to 344 s. The reset now covers continuing heads too.<span class="src">Comment above line 714; <code>QueueClockTest</code>; <code>SODA_BASELINE</code> §8.7</span></li>
+  <li class="fixed"><b class="tag">Fixed 14 Sep</b>The end-of-phase reset ran after Q1/Q2, so a head just served could win Q2 again, or trigger a starvation override for itself. Moved before the questions, matching <code>soda.py</code>. 30 of 11,670 phases in batch v2 had a green long enough to hit this.<span class="src">Comment at lines 627-637</span></li>
+  <li class="fixed"><b class="tag">Fixed 10 Sep</b><code>FindStarvingHead</code> used <code>&gt;=</code>, which made the last head win a tie, the opposite of Q2 and of <code>soda.py</code>. It now uses <code>CompareHeads</code>.<span class="src"><code>SODA_BASELINE</code> §8.3; <code>SodaTest</code> §9</span></li>
+  <li class="fixed"><b class="tag">Fixed 11 Sep</b><code>ForceStop</code> did not clear the counters, and the phase number stayed at 0 while the panel was hidden.<span class="src"><code>SODA_BASELINE</code> §8.8</span></li>
+  <li><b class="tag">Decision 14 Sep</b><code>snapshotInterval</code> 2 s → 1 s (Itim). The gap-out window halves to 2 s as a known consequence.<span class="src">Comment at lines 35-38</span></li>
+  <li><b class="tag">Removed</b>The counting window: it asked COLLECT's question a second time, so one vehicle waited 11 s. Rest-in-green and per-vehicle tracking were also removed; the real signal has neither.<span class="src"><code>SODA_BASELINE</code> §6</span></li>
+  <li class="open"><b class="tag">Open</b>Idle green: a lane that empties early stays green until the whole group is empty (S5: 16.05 s for {B = 10, Bx = 3}). A per-lane gap-out was agreed as future work.<span class="src"><code>SODA_BASELINE</code> §8.4, limitation L6</span></li>
+  <li class="open"><b class="tag">Open</b>One starvation episode is counted twice (the cut and the override). Divide <code>StarvationEvents</code> by two when reporting episodes.<span class="src">Limitation L13</span></li>
+  <li class="open"><b class="tag">Open</b><code>LoadMeasuredPreset</code> is a context-menu preset without <code>EditorUtility.SetDirty</code>, so Save may not write it. <code>ScenarioManager</code>'s presets were fixed; this one is in the signal system and has been left alone.<span class="src">Comment on <code>ScenarioManager.MarkDirty</code></span></li>
+  <li class="open"><b class="tag">Open</b><code>Tests/soda.py</code> in this repository still samples at 2 s.<span class="src"><code>SODA_BASELINE</code> §8.13</span></li>
+</ul>

@@ -352,6 +352,9 @@ public static class TestCasePresets
         // ---------- Compare-101 : one real cycle from the overhead clip ----------
         list.Add(Compare101());
 
+        // ---------- ForeverTest : Poisson with no time limit, runs until Stop is pressed ----------
+        list.Add(Forever());
+
         return list;
     }
 
@@ -471,6 +474,21 @@ public static class TestCasePresets
             parts.Add($"{names[i]} {n}");
         }
         return $"~{total} cars in {seconds:0}s   " + string.Join(" \u00B7 ", parts);
+    }
+
+    /// <summary>
+    /// ForeverTest - steady random traffic that never ends, for leaving the sim running on a screen.
+    /// suggestedDuration 0 = no time limit, and a Poisson run never triggers the road-cleared stop,
+    /// so it runs until Stop is pressed. A 13.2 s is the combined A+A2 rate (272 veh/h), split by
+    /// A2_SHARE like every other Poisson case.
+    /// </summary>
+    static TestCase Forever()
+    {
+        TestCase tc = Poisson("ForeverTest", 13.2f, 14.9f, 14.9f, 18.9f, 13.3f, 13.3f);
+        tc.suggestedDuration = 0f;
+        tc.description = "Runs until Stop   " + RateSummary(3600f,
+            tc.GetInterval("A", 0f), tc.GetInterval("A2", 0f), 14.9f, 14.9f, 18.9f, 13.3f, 13.3f);
+        return tc;
     }
 
     static TestCase Poisson(string name,

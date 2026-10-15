@@ -1,0 +1,32 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">A window (press <kbd>N</kbd>) for building a test case during Play, without the Inspector and without recompiling. The result is an ordinary <code>TestCase</code>, so it runs through exactly the same path as T1-T13. There is no second code path to keep in step.</p>
+<excerpt file="Assets/Scripts/CustomTestCase.cs" lines="4-13" expect="/// &lt;summary&gt;" caption="The class header"/>
+<ul class="resp">
+  <li><b>Scripted</b>: either a total split by percentages, or a count per lane; cars a constant gap apart, or at random gaps from a range with a seed.</li>
+  <li><b>Poisson</b>: a mean interval per lane, shown in veh/h as well, since field counts are quoted that way.</li>
+  <li><b>Driver mix</b>, applied to every spawner. <b>Run this now</b> or <b>Add to list</b>.</li>
+</ul>
+
+<h2 id="split"><span class="n">02</span>Splitting a total without losing cars</h2>
+<p class="prose">Rounding each lane's share separately can miss the total that was asked for. The code uses the largest-remainder method instead: round every lane down, then give the cars left over to the lanes with the largest fractions.</p>
+<excerpt file="Assets/Scripts/CustomTestCase.cs" lines="85-132" expect="/// &lt;summary&gt;" hl="120-125,127-129" caption="ResolveCounts"/>
+<div class="whatif">
+  <h4>Try it: largest remainder</h4>
+  <p>A port of <code>ResolveCounts</code>. Shares need not add to 100; they are normalised. Try 40 cars over three equal lanes: plain rounding gives 39, and the method gives 40.</p>
+  <div data-widget="largestRemainder"></div>
+</div>
+
+<h2 id="build"><span class="n">03</span>Turning the settings into a case</h2>
+<excerpt file="Assets/Scripts/CustomTestCase.cs" lines="142-204" expect="/// &lt;summary&gt;Turn the current settings" hl="168,178-179,191,195-199" caption="Build"/>
+<p class="prose">Random gaps are made as one burst per car, so <code>CarSpawner</code> needs no new mode. Each lane's draws come from its own generator, seeded with <code>gapSeed × 7919 + StableHash(lane)</code>: the same seed always gives the same cars, and Unity's global <code>Random</code> is never touched.</p>
+<excerpt file="Assets/Scripts/CustomTestCase.cs" lines="225-237" expect="/// &lt;summary&gt;Apply the driver-behaviour mix" caption="ApplyDriverMix"/>
+<div class="callout warn"><p>The driver mix is written into every spawner and stays there after the case. If a custom run changes it, later runs in the same Play session use the new mix until Play is restarted.</p></div>
+
+<h2 id="variables"><span class="n">04</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController). The case being edited is held in private fields and starts from defaults every Play: 8 cars and 2 s per lane, Poisson 7 s, mix 25 / 60.</p>
+<vartable for="CustomTestCase">
+  <v n="config" k="code">The junction, for the list of lanes. Found automatically.<eff>Without it the window has no lanes.</eff></v>
+  <v n="controlPanel" k="code">Where the built case is sent to run. Found automatically.<eff>Without it "Run this now" only reports the panel is missing.</eff></v>
+  <v n="showPanel" k="code">Window open.<eff>Display only.</eff></v>
+  <v n="toggleKey" k="code">Key that opens and closes the window: N (110).<eff>Display only.</eff></v>
+</vartable>

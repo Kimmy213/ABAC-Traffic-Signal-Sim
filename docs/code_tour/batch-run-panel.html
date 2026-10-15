@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BatchRunPanel · ABAC Code Tour</title>
+<meta name="description" content="The batch progress screen and the end-of-batch summary; it reads ScenarioManager and controls nothing else.">
+<link rel="stylesheet" href="assets/style.css?v=8dd8fc09">
+<script>try{var t=localStorage.getItem("tour-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body data-prev="simulation-control-panel.html" data-next="camera-director.html" data-hub="index.html">
+<div class="frame">
+<aside class="side">
+<a class="brand" href="index.html"><b>ABAC Code Tour</b><span>Unity digital twin · 19 files</span></a>
+<button class="menu-btn" id="menu-btn" type="button" aria-expanded="false">Files</button>
+<nav aria-label="Files">
+<ul><li><a href="index.html">How the files work together</a></li></ul>
+<h4><i style="background:var(--l-junction)"></i>Junction model</h4><ul>
+<li><a href="intersection-config.html">IntersectionConfig<small>407</small></a></li>
+<li><a href="traffic-light.html">TrafficLight<small>93</small></a></li>
+</ul>
+<h4><i style="background:var(--l-traffic)"></i>Traffic</h4><ul>
+<li><a href="car-spawner.html">CarSpawner<small>452</small></a></li>
+<li><a href="car-agent.html">CarAgent<small>988</small></a></li>
+<li><a href="test-case-library.html">TestCaseLibrary<small>521</small></a></li>
+<li><a href="custom-test-case.html">CustomTestCase<small>498</small></a></li>
+</ul>
+<h4><i style="background:var(--l-sensing)"></i>Sensing</h4><ul>
+<li><a href="roi-zone.html">ROIZone<small>212</small></a></li>
+<li><a href="roi-highlight.html">RoiHighlight<small>56</small></a></li>
+</ul>
+<h4><i style="background:var(--l-control)"></i>Control</h4><ul>
+<li><a href="fixed-controller.html">FixedController<small>284</small></a></li>
+<li><a href="adaptive-controller.html">AdaptiveController<small>1304</small></a></li>
+</ul>
+<h4><i style="background:var(--l-experiment)"></i>Experiment</h4><ul>
+<li><a href="scenario-manager.html">ScenarioManager<small>645</small></a></li>
+<li><a href="data-logger.html">DataLogger<small>327</small></a></li>
+</ul>
+<h4><i style="background:var(--l-ui)"></i>Runtime UI</h4><ul>
+<li><a href="simulation-control-panel.html">SimulationControlPanel<small>895</small></a></li>
+<li><a href="batch-run-panel.html" aria-current="page">BatchRunPanel<small>499</small></a></li>
+<li><a href="camera-director.html">CameraDirector<small>214</small></a></li>
+<li><a href="ui-theme.html">UITheme<small>300</small></a></li>
+</ul>
+<h4><i style="background:var(--l-editor)"></i>Editor tools</h4><ul>
+<li><a href="abac-scene-builder.html">ABACSceneBuilder<small>988</small></a></li>
+<li><a href="car-prefab-builder.html">CarPrefabBuilder<small>354</small></a></li>
+<li><a href="scene-parameter-audit.html">SceneParameterAudit<small>104</small></a></li>
+</ul>
+</nav><div class="tools"><button id="theme-btn" type="button">Theme</button></div>
+</aside>
+<main class="main" id="main">
+<header class="file-head"><p class="path">Assets/Scripts/BatchRunPanel.cs</p><h1>BatchRunPanel</h1><div class="badges"><span class="badge layer" style="background:var(--l-ui)">Runtime UI</span><span class="badge">499 lines</span><span class="badge">Runtime</span></div><p class="lede">The batch progress screen and the end-of-batch summary; it reads ScenarioManager and controls nothing else.</p><div class="deps"><div><b>Uses</b><a href="scenario-manager.html" title="progress, ETA, results">ScenarioManager</a></div><div><b>Used by</b><a href="abac-scene-builder.html" title="wiring">ABACSceneBuilder</a></div></div><nav class="toc" id="toc" aria-label="On this page"><b>On this page</b></nav></header>
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The screen you watch during an 11-hour batch. It appears on the right when a batch starts and shows a full-screen summary when it ends. It only <i>reads</i> <a href="scenario-manager.html"><code>ScenarioManager</code></a>; the one thing it controls is the Stop button.</p>
+<ul class="resp">
+  <li><b>Side panel</b>: progress, elapsed and remaining time, speed, the run in flight, and a Fixed-against-Adaptive table per scenario.</li>
+  <li><b>Summary</b>: three headline cards and a bar per scenario, with a button that saves a text summary to <code>SimulationResults/</code>.</li>
+</ul>
+<figure class="code"><figcaption><span>OnGUI: draw only while running or just finished</span><span class="loc">BatchRunPanel.cs : 131-155</span></figcaption><pre class="cs"><span class="ln" data-n="131">void OnGUI()</span><span class="ln" data-n="132">{</span><span class="ln" data-n="133">    if (scenarioManager == null) return;</span><span class="ln" data-n="134"></span><span class="ln hl" data-n="135">    bool running = scenarioManager.IsBatchRunning;</span><span class="ln hl" data-n="136">    bool finished = scenarioManager.BatchFinished &amp;&amp; !summaryDismissed;</span><span class="ln hl" data-n="137"></span><span class="ln hl" data-n="138">    if (!running &amp;&amp; !finished) { summaryDismissed = false; return; }</span><span class="ln" data-n="139">    if (!stylesReady) BuildStyles();</span><span class="ln" data-n="140"></span><span class="ln" data-n="141">    UITheme.Begin();</span><span class="ln" data-n="142"></span><span class="ln" data-n="143">    Matrix4x4 old = GUI.matrix;</span><span class="ln" data-n="144">    if (!Mathf.Approximately(uiScale, 1f))</span><span class="ln" data-n="145">        GUIUtility.ScaleAroundPivot(new Vector2(uiScale, uiScale), Vector2.zero);</span><span class="ln" data-n="146"></span><span class="ln" data-n="147">    float sw = Screen.width / Mathf.Max(0.1f, uiScale);</span><span class="ln" data-n="148">    float sh = Screen.height / Mathf.Max(0.1f, uiScale);</span><span class="ln" data-n="149"></span><span class="ln hl" data-n="150">    if (running) DrawSidePanel(sw, sh);</span><span class="ln hl" data-n="151">    if (finished &amp;&amp; showSummaryOnFinish) DrawSummaryOverlay(sw, sh);</span><span class="ln" data-n="152"></span><span class="ln" data-n="153">    GUI.matrix = old;</span><span class="ln" data-n="154">    UITheme.End();</span><span class="ln" data-n="155">}</span></pre></figure>
+<p class="prose">Before the first run finishes, the remaining time is the theoretical one (1,920 simulated s ÷ 10 per run). After that it uses measured run times, so the number may jump once, and the panel says so:</p>
+<figure class="code"><figcaption><span>Timing rows</span><span class="loc">BatchRunPanel.cs : 188-198</span></figcaption><pre class="cs"><span class="ln" data-n="188">// ---- timing ----</span><span class="ln" data-n="189">Row(&quot;Elapsed&quot;, FormatDuration(sm.ElapsedRealtime));</span><span class="ln" data-n="190">Row(&quot;Remaining&quot;, FormatDuration(sm.EstimatedRemaining));</span><span class="ln" data-n="191"></span><span class="ln" data-n="192">// Before the first run finishes this is derived from timeScale alone; afterwards it</span><span class="ln" data-n="193">// switches to measured time, so the number may jump once. Say so, to avoid confusion.</span><span class="ln" data-n="194">if (sm.CompletedRuns == 0)</span><span class="ln" data-n="195">    GUILayout.Label(&quot;(rough estimate until the first run finishes)&quot;, sDim);</span><span class="ln" data-n="196"></span><span class="ln" data-n="197">Row(&quot;Sim speed&quot;, $&quot;{Time.timeScale:0.#}x&quot;);</span><span class="ln" data-n="198">GUILayout.Space(8);</span></pre></figure>
+<figure class="code"><figcaption><span>SaveSummaryFile</span><span class="loc">BatchRunPanel.cs : 458-483</span></figcaption><pre class="cs"><span class="ln" data-n="458">void SaveSummaryFile()</span><span class="ln" data-n="459">{</span><span class="ln" data-n="460">    var sm = scenarioManager;</span><span class="ln" data-n="461">    float fW, aW, pct;</span><span class="ln" data-n="462">    sm.GetOverall(out fW, out aW, out pct);</span><span class="ln" data-n="463"></span><span class="ln" data-n="464">    var sb = new StringBuilder();</span><span class="ln" data-n="465">    sb.AppendLine(&quot;ABAC TRAFFIC SIGNAL SIMULATION \u2014 Batch Run Summary&quot;);</span><span class="ln" data-n="466">    sb.AppendLine($&quot;Saved {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}&quot;);</span><span class="ln" data-n="467">    sb.AppendLine($&quot;Runs: {sm.CompletedRuns} / {sm.TotalRuns}&quot;);</span><span class="ln" data-n="468">    sb.AppendLine($&quot;Wall-clock: {FormatDuration(sm.ElapsedRealtime)}&quot;);</span><span class="ln" data-n="469">    sb.AppendLine();</span><span class="ln" data-n="470">    sb.AppendLine($&quot;{&quot;Scenario&quot;,-16}{&quot;Pairs&quot;,6}{&quot;Fixed&quot;,10}{&quot;Adaptive&quot;,11}{&quot;Impr%&quot;,9}{&quot;MaxFixed&quot;,11}{&quot;MaxAdapt&quot;,11}&quot;);</span><span class="ln" data-n="471">    sb.AppendLine(new string(&#x27;-&#x27;, 74));</span><span class="ln" data-n="472"></span><span class="ln" data-n="473">    foreach (var r in sm.Results)</span><span class="ln" data-n="474">    {</span><span class="ln" data-n="475">        if (!r.HasBoth) continue;</span><span class="ln" data-n="476">        sb.AppendLine($&quot;{r.name,-16}{r.PairCount,5}{r.FixedAvgWait,10:F2}{r.AdaptiveAvgWait,11:F2}&quot; +</span><span class="ln" data-n="477">                      $&quot;{r.ImprovementPercent,8:F1}%{r.FixedMaxWait,11:F2}{r.AdaptiveMaxWait,11:F2}&quot;);</span><span class="ln" data-n="478">    }</span><span class="ln" data-n="479">    sb.AppendLine(new string(&#x27;-&#x27;, 74));</span><span class="ln" data-n="480">    sb.AppendLine($&quot;{&quot;ALL SCENARIOS&quot;,-16}{&quot;&quot;,6}{fW,10:F2}{aW,11:F2}{pct,8:F1}%&quot;);</span><span class="ln" data-n="481">    sb.AppendLine();</span><span class="ln" data-n="482">    sb.AppendLine(&quot;Note: figures are mean waiting time per vehicle, in seconds.&quot;);</span><span class="ln" data-n="483">    sb.AppendLine(&quot;For significance testing, run Analysis/analyze_results.py against the CSV output.&quot;);</span></pre></figure>
+<p class="prose">The saved summary itself says it: these are means for watching, and significance comes from <code>Analysis/analyze_results.py</code> run on the CSV files. The palette (blue for Fixed, orange for Adaptive) is defined at the top of this file and not taken from <a href="ui-theme.html"><code>UITheme</code></a>.</p>
+
+<h2 id="variables"><span class="n">02</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController).</p>
+<div class="vt-wrap"><table class="vt"><colgroup><col class="c-f"><col class="c-d"><col class="c-s"><col class="c-m"><col class="c-e"></colgroup><thead><tr><th>Field</th><th>Code default</th><th>Saved value</th><th>What it means</th><th>What happens if you change it</th></tr></thead><tbody><tr id="v-BatchRunPanel-scenarioManager"><td class="vn"><a href="#v-BatchRunPanel-scenarioManager">scenarioManager</a><small>ScenarioManager · line 18</small></td><td class="val"><span class="same">type default</span></td><td class="val"><span class="">set</span></td><td>Where all figures come from. Found automatically.</td><td class="eff"><span class="kind code">from the code</span>Without it the panel never appears.</td></tr><tr id="v-BatchRunPanel-panelWidth"><td class="vn"><a href="#v-BatchRunPanel-panelWidth">panelWidth</a><small>float · line 22</small></td><td class="val">400</td><td class="val"><span class="">400</span></td><td>Width of the side panel, px.</td><td class="eff"><span class="kind code">from the code</span>Display only.</td></tr><tr id="v-BatchRunPanel-uiScale"><td class="vn"><a href="#v-BatchRunPanel-uiScale">uiScale</a><small>float · line 23</small></td><td class="val">1</td><td class="val"><span class="">1</span></td><td>Scale for high-DPI screens.</td><td class="eff"><span class="kind code">from the code</span>Display only.</td></tr><tr id="v-BatchRunPanel-showSummaryOnFinish"><td class="vn"><a href="#v-BatchRunPanel-showSummaryOnFinish">showSummaryOnFinish</a><small>bool · line 26</small></td><td class="val">true</td><td class="val"><span class="">1</span></td><td>Show the full-screen summary at the end.</td><td class="eff"><span class="kind code">from the code</span>Display only; results are written either way.</td></tr></tbody></table></div>
+
+<nav class="pager" aria-label="Files"><a class="prev" href="simulation-control-panel.html"><small>&larr; Previous</small><b>SimulationControlPanel</b></a><a class="next" href="camera-director.html"><small>Next &rarr;</small><b>CameraDirector</b></a></nav>
+<p class="keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous / next section &nbsp;·&nbsp; <kbd>[</kbd> <kbd>]</kbd> previous / next file &nbsp;·&nbsp; <kbd>h</kbd> overview</p>
+</main>
+</div>
+<script src="assets/data.js?v=e6903af6"></script>
+<script src="assets/app.js?v=dbefb208"></script>
+<script src="assets/widgets.js?v=b35d7078"></script>
+</body>
+</html>

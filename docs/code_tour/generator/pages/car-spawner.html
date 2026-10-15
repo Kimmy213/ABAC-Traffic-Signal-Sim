@@ -1,0 +1,93 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">One spawner per lane, seven in the scene. Each releases cars at its lane's start point and hands every new car the settings of its lane. The most important design rule is that a spawner's random numbers never depend on traffic. Fixed and Adaptive can then be fed exactly the same cars, which is what makes the paired t-test valid.</p>
+<ul class="resp">
+  <li><b>Arrive</b>: in Poisson mode at random gaps around <code>meanArrivalInterval</code>; in Scripted mode by a fixed schedule of bursts.</li>
+  <li><b>Draw</b> every random value (driver type, passing) at the moment of arrival, from the lane's own <code>System.Random</code>.</li>
+  <li><b>Place</b> the car when the spawn point is clear; otherwise hold it in a queue, never drop it.</li>
+  <li><b>Configure</b> the new <code>CarAgent</code> and register it with the lane's light.</li>
+  <li><b>Remove</b> the car once it has driven far enough or finished its path.</li>
+</ul>
+<div class="outline">
+  <section><h5>Control</h5><ul><li><a href="#control">SetSeed, ResetSpawnCount</a></li><li><a href="#control">UsePoisson, UseSchedule, SetStandingQueue</a></li><li><a href="#control">RestartSpawning, ClearAllCars, Start</a></li></ul></section>
+  <section><h5>Arrivals</h5><ul><li><a href="#arrivals">SpawnLoop</a></li><li><a href="#arrivals">PoissonSpawnLoop</a></li><li><a href="#arrivals">ScriptedSpawnLoop</a></li><li><a href="#arrivals">RandomDriverType</a></li></ul></section>
+  <section><h5>Placement</h5><ul><li><a href="#pending">SpawnCar, TryReleasePending, PendingReleaseLoop</a></li><li><a href="#placecar">PlaceCar, ApplyCarMaterial</a></li><li><a href="#standing">PlaceStandingQueue</a></li><li><a href="#placecar">DespawnWhenFar</a></li></ul></section>
+</div>
+
+<h2 id="rng"><span class="n">02</span>A random stream per lane</h2>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="86-105" expect="// ===== Per-lane RNG =====" hl="90,93-94" caption="The lane's own random stream, and the queue of cars waiting to be placed"/>
+<p class="prose">Unity's global <code>Random</code> would interleave draws between the seven spawners in an order set by frame timing. <code>IntersectionConfig.ResetAllLanes</code> seeds each spawner from the run seed plus a hash of the lane name, so lane B's cars are the same whatever happens in lane A.</p>
+
+<h2 id="arrivals"><span class="n">03</span>Arrivals: Poisson or scripted</h2>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="216-260" expect="// ===== Scheduled release" hl="254-255,258" caption="ScriptedSpawnLoop and PoissonSpawnLoop"/>
+<p class="prose">A Poisson process has exponentially distributed gaps: gap = −ln(1 − u) × mean, where u is uniform on 0-1. A batch always uses Poisson; the control panel's scripted cases use schedules, so a scripted run is identical every time.</p>
+<div class="whatif">
+  <h4>What if: change the arrival rate or the driver mix</h4>
+  <p>The gap formula and the driver roll are the code's. The random numbers here come from a small generator in the page, not from .NET's <code>System.Random</code>, so the dots show the rule, not the cars of any particular run.</p>
+  <div data-widget="arrivals"></div>
+</div>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="425-431" expect="CarAgent.DriverType RandomDriverType()" caption="RandomDriverType: one roll against the cumulative percentages"/>
+
+<h2 id="pending"><span class="n">04</span>Never drop a car</h2>
+<p class="prose">When a queue backs up to the spawn point, a new car cannot be placed. Discarding it would quietly cut demand exactly when traffic is heaviest, and make both controllers look better than they are. So arrivals wait in <code>pending</code>, and every random value is drawn on arrival, never on release:</p>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="262-296" expect="/// &lt;summary&gt;" hl="271,273,276,292" caption="SpawnCar and TryReleasePending"/>
+<p class="prose small muted">The counter <code>delayedArrivals</code> records how often this happened. Under the old ABACEvent rates, queues reached the spawn points and the spawners could release nothing further; ten runs of batch v3 gridlocked that way (<code>SODA_BASELINE</code> §8.16).</p>
+
+<h2 id="placecar"><span class="n">05</span>Placing and configuring a car</h2>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="340-370" expect="void PlaceCar(" hl="347-360,366" caption="PlaceCar: every lane setting is copied onto the car before its Start runs"/>
+<p class="prose">This is why most of <a href="car-agent.html#variables"><code>CarAgent</code>'s fields</a> are "set at spawn": the prefab's own values are overwritten here. The car is then watched twice a second and removed when it is <code>despawnDistance</code> from the spawn point or has finished its path:</p>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="433-450" expect="IEnumerator DespawnWhenFar" caption="DespawnWhenFar"/>
+
+<h2 id="standing"><span class="n">06</span>Cars already waiting at second 0</h2>
+<p class="prose">Compare-101 starts from a clip in which cars are already standing at a red. <code>PlaceStandingQueue</code> puts them nose-to-tail at the stop line, at rest:</p>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="298-338" expect="/// &lt;summary&gt;" hl="318,324-326,335" caption="PlaceStandingQueue"/>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="156-174" expect="// Start() ordering" hl="170" caption="RestartSpawning: the standing queue goes in before the schedule starts"/>
+
+<h2 id="control"><span class="n">07</span>Switching mode</h2>
+<excerpt file="Assets/Scripts/CarSpawner.cs" lines="107-143" expect="public void SetSeed(int seed)" caption="SetSeed, UsePoisson, UseSchedule"/>
+
+<h2 id="variables"><span class="n">08</span>Every variable</h2>
+<p class="prose">Saved values are read from the seven spawners in <code>SampleScene.unity</code>. Most differ per lane on purpose: <code>ABACSceneBuilder</code> writes each lane's direction, path, light and colour. <code>meanArrivalInterval</code> in the scene does not matter for results, because <code>UsePoisson</code> overwrites it at the start of every run.</p>
+<vartable for="CarSpawner">
+  <vgroup>Where and what</vgroup>
+  <v n="carPrefab" k="code">The car to instantiate: <code>Car.prefab</code>, rebuilt by <code>CarPrefabBuilder</code>.<eff>Every lane uses the same prefab.</eff></v>
+  <v n="spawnPoint" k="code">Where cars appear: 200 m from the junction (A2: 220 m, in lane A).<eff>Further away: longer drive-in, more room before queues reach it.</eff></v>
+  <v n="spawnRotationY" k="code">Heading of new cars, degrees: 90 east, −90 west, 180 south.<eff>Wrong value: cars drive the wrong way.</eff></v>
+  <v n="laneName" k="code">The lane, copied onto every car as <code>assignedLane</code>.<eff>Must match <code>IntersectionConfig</code> and the zone, or the lane's waits are filed under the wrong name.</eff></v>
+  <v n="carMaterial" k="code">Body colour for this lane's cars (A, B or C group).<eff>Display only.</eff></v>
+  <vgroup>Lane settings handed to each car</vgroup>
+  <v n="stopLineTarget" k="code">The lane's stop line. Empty for CA.<eff>See <code>CarAgent.stopLineTarget</code>.</eff></v>
+  <v n="assignedLight" k="code">The light the lane obeys (Ax: the Bx light).<eff>Cars are registered with it at spawn.</eff></v>
+  <v n="lightIsInverted" k="code">Yielding lane: set only on Ax.<eff>Ax stops while Bx is green or yellow. <code>ABACSceneBuilder.ValidateScene</code> rejects it on a signalised lane.</eff></v>
+  <v n="pathWaypoints" k="code">The turning path. Empty for A and B.<eff>See <code>CarAgent.pathWaypoints</code>.</eff></v>
+  <v n="steerRate" k="code">Copied to each car: 55°/s in every lane.<eff>See <code>CarAgent.steerRate</code>.</eff></v>
+  <v n="turnRadius" k="code">Copied to each car: 7 m in every lane.<eff>See <code>CarAgent.turnRadius</code>.</eff></v>
+  <v n="steerBeforeStopLine" k="code">Set only on A2.<eff>Turns on the lane change into the shared lane.</eff></v>
+  <v n="steerStartDistance" k="code">12 m on A2.<eff>How close to the merge point the lane change may start.</eff></v>
+  <vgroup>Arrivals</vgroup>
+  <v n="arrivalMode" k="code">Poisson or Scripted. Set at the start of every run.<eff>Batch runs are always Poisson.</eff></v>
+  <v n="meanArrivalInterval" k="code">Mean seconds between cars in Poisson mode.<eff>Halving it doubles the lane's demand. The batch values come from <a href="scenario-manager.html#scenarios">the scenario table</a>, applied by <code>UsePoisson</code>, so the value saved here is replaced before any car arrives.</eff></v>
+  <v n="schedule" k="code">Bursts for Scripted mode.<eff>Filled from the selected test case.</eff></v>
+  <v n="aggressivePercent" k="code">Share of Aggressive drivers, %.<eff>More aggressive drivers mean shorter reaction times and more cars running the amber. The batch uses 25 everywhere.</eff><cpl><code>CustomTestCase</code> can change it for every spawner at runtime.</cpl></v>
+  <v n="normalPercent" k="code">Share of Normal drivers, %. Cautious is what is left.<eff>The discharge calibration (<code>HeadwayTest</code>) was done with the 25 / 60 / 15 mix.</eff></v>
+  <vgroup>Shoulder passing (off)</vgroup>
+  <v n="laneBypassChance" k="code">Chance a car may pass on the shoulder. 0 in every lane.<eff>Off. The approach has only two rows and no shoulder (checked on site), and the shared-lane share was calibrated without passing.</eff></v>
+  <v n="bypassLateralOffset" k="code">Shoulder offset for a passing car.<eff>Unused while passing is off.</eff></v>
+  <vgroup>Safety and clean-up</vgroup>
+  <v n="spawnClearRadius" k="code">No new car is placed while any car is within this radius of the spawn point, m.<eff>Smaller than a car length plus margin: cars dropped on top of each other. Larger: more arrivals held in <code>pending</code>.</eff></v>
+  <v n="pendingRetryInterval" k="code">How often held arrivals are retried, s.<eff>Longer: held cars come out later than they could.</eff></v>
+  <v n="despawnDistance" k="code">Cars are removed this far from the spawn point, m. 300 in the scene.<eff>Too short and cars vanish before crossing the junction; the scene's 300 m clears it for every lane.</eff><cpl><code>ABACSceneBuilder.DESPAWN</code>; the code default of 80 is never used.</cpl></v>
+  <vgroup>Counters</vgroup>
+  <v n="totalSpawned" k="code">Cars placed since the last reset.<eff>A counter, reset by <code>ResetSpawnCount</code>; summed into the summary's <code>TotalSpawned</code>.</eff></v>
+  <v n="delayedArrivals" k="code">Arrivals that could not be placed at once.<eff>A counter. High values mean queues reach the spawn point.</eff></v>
+</vartable>
+<h3 id="vars-pending">PendingArrival</h3>
+<vartable for="PendingArrival">
+  <v n="driver" k="code">Driver type drawn on arrival.<eff>Drawn even if the car has to wait, so the random sequence never depends on congestion.</eff></v>
+  <v n="bypass" k="code">Shoulder-passing draw.<eff>Always false while <code>laneBypassChance</code> is 0.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">09</span>Known issues</h2>
+<ul class="issues">
+  <li class="fixed"><b class="tag">Fixed</b>The control panel could call <code>RestartSpawning</code> before <code>Start</code> ran, stacking two spawn loops and twice the cars. <code>spawnStarted</code> now prevents it.<span class="src">Comment, lines 156-158</span></li>
+  <li class="open"><b class="tag">Open</b>A car released at full speed behind a queue that has backed up to the spawn point brakes very hard at once. It happens off screen, within 25 m of a spawn point.<span class="src"><code>Unity_BASELINE</code> §5.2</span></li>
+</ul>

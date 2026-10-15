@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SceneParameterAudit · ABAC Code Tour</title>
+<meta name="description" content="Menu ABAC &gt; Verify Scene Against Code: lists every field where the scene overrides the code.">
+<link rel="stylesheet" href="assets/style.css?v=8dd8fc09">
+<script>try{var t=localStorage.getItem("tour-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body data-prev="car-prefab-builder.html" data-next="" data-hub="index.html">
+<div class="frame">
+<aside class="side">
+<a class="brand" href="index.html"><b>ABAC Code Tour</b><span>Unity digital twin · 19 files</span></a>
+<button class="menu-btn" id="menu-btn" type="button" aria-expanded="false">Files</button>
+<nav aria-label="Files">
+<ul><li><a href="index.html">How the files work together</a></li></ul>
+<h4><i style="background:var(--l-junction)"></i>Junction model</h4><ul>
+<li><a href="intersection-config.html">IntersectionConfig<small>407</small></a></li>
+<li><a href="traffic-light.html">TrafficLight<small>93</small></a></li>
+</ul>
+<h4><i style="background:var(--l-traffic)"></i>Traffic</h4><ul>
+<li><a href="car-spawner.html">CarSpawner<small>452</small></a></li>
+<li><a href="car-agent.html">CarAgent<small>988</small></a></li>
+<li><a href="test-case-library.html">TestCaseLibrary<small>521</small></a></li>
+<li><a href="custom-test-case.html">CustomTestCase<small>498</small></a></li>
+</ul>
+<h4><i style="background:var(--l-sensing)"></i>Sensing</h4><ul>
+<li><a href="roi-zone.html">ROIZone<small>212</small></a></li>
+<li><a href="roi-highlight.html">RoiHighlight<small>56</small></a></li>
+</ul>
+<h4><i style="background:var(--l-control)"></i>Control</h4><ul>
+<li><a href="fixed-controller.html">FixedController<small>284</small></a></li>
+<li><a href="adaptive-controller.html">AdaptiveController<small>1304</small></a></li>
+</ul>
+<h4><i style="background:var(--l-experiment)"></i>Experiment</h4><ul>
+<li><a href="scenario-manager.html">ScenarioManager<small>645</small></a></li>
+<li><a href="data-logger.html">DataLogger<small>327</small></a></li>
+</ul>
+<h4><i style="background:var(--l-ui)"></i>Runtime UI</h4><ul>
+<li><a href="simulation-control-panel.html">SimulationControlPanel<small>895</small></a></li>
+<li><a href="batch-run-panel.html">BatchRunPanel<small>499</small></a></li>
+<li><a href="camera-director.html">CameraDirector<small>214</small></a></li>
+<li><a href="ui-theme.html">UITheme<small>300</small></a></li>
+</ul>
+<h4><i style="background:var(--l-editor)"></i>Editor tools</h4><ul>
+<li><a href="abac-scene-builder.html">ABACSceneBuilder<small>988</small></a></li>
+<li><a href="car-prefab-builder.html">CarPrefabBuilder<small>354</small></a></li>
+<li><a href="scene-parameter-audit.html" aria-current="page">SceneParameterAudit<small>104</small></a></li>
+</ul>
+</nav><div class="tools"><button id="theme-btn" type="button">Theme</button></div>
+</aside>
+<main class="main" id="main">
+<header class="file-head"><p class="path">Assets/Editor/SceneParameterAudit.cs</p><h1>SceneParameterAudit</h1><div class="badges"><span class="badge layer" style="background:var(--l-editor)">Editor tools</span><span class="badge">104 lines</span><span class="badge">Editor only</span></div><p class="lede">Menu ABAC > Verify Scene Against Code: lists every field where the scene overrides the code.</p><div class="deps"><div><b>Uses</b><a href="adaptive-controller.html" title="compares scene against code">AdaptiveController</a> <a href="scenario-manager.html" title="compares scene against code">ScenarioManager</a> <a href="fixed-controller.html" title="compares scene against code">FixedController</a></div><div><b>Used by</b><span class="muted">none</span></div></div><nav class="toc" id="toc" aria-label="On this page"><b>On this page</b></nav></header>
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">Menu <i>ABAC &gt; Verify Scene Against Code</i>. It answers one question: does the scene still hold the values the code intends? The problem it guards against is described on <a href="index.html#scene">the overview page</a>. The scene saves every public field and overrides the code on load, and that once left a batch running on stale values.</p>
+<figure class="code"><figcaption><span>Why it exists</span><span class="loc">SceneParameterAudit.cs : 8-21</span></figcaption><pre class="cs"><span class="ln" data-n="8">/// &lt;summary&gt;</span><span class="ln" data-n="9">/// Menu: ABAC &gt; Verify Scene Against Code</span><span class="ln" data-n="10">///</span><span class="ln" data-n="11">/// Why this exists (Ratchanon spotted it):</span><span class="ln" data-n="12">///   Unity writes the value of every public field into SampleScene.unity when a component is</span><span class="ln" data-n="13">///   placed in the scene, and on load those values always override the defaults in the .cs file.</span><span class="ln" data-n="14">///   So editing the script alone has no effect on a component already in the scene.</span><span class="ln" data-n="15">///   It once left the scene stuck on startupLostTime=1 / saturationHeadway=2.5 / countingWindow=8</span><span class="ln" data-n="16">///   and repetitionsPerScenario=1 (a batch of 10 runs instead of 270) / simulationSpeed=2 / a2Share=0.18.</span><span class="ln" data-n="17">///</span><span class="ln" data-n="18">/// How the check works: create one throwaway component (= the defaults the code intends), then</span><span class="ln" data-n="19">/// compare every scalar field against the one in the scene by reflection.</span><span class="ln" data-n="20">/// That covers all fields, not only the known ones, so the next drift gets caught too.</span><span class="ln" data-n="21">/// &lt;/summary&gt;</span></pre></figure>
+
+<h2 id="how"><span class="n">02</span>How it checks</h2>
+<p class="prose">A <code>MonoBehaviour</code> cannot be created with <code>new</code>, so the audit adds a throwaway copy of the component to a hidden object. That copy carries the code's defaults. Reflection then compares every public number and switch with the one in the scene. Because it walks every field rather than a list of known ones, the next drift is caught too.</p>
+<figure class="code"><figcaption><span>AuditType</span><span class="loc">SceneParameterAudit.cs : 59-102</span></figcaption><pre class="cs"><span class="ln" data-n="59">static int AuditType&lt;T&gt;(StringBuilder report) where T : MonoBehaviour</span><span class="ln" data-n="60">{</span><span class="ln" data-n="61">    T live = Object.FindFirstObjectByType&lt;T&gt;();</span><span class="ln" data-n="62">    if (live == null)</span><span class="ln" data-n="63">    {</span><span class="ln" data-n="64">        report.AppendLine($&quot;{typeof(T).Name}: not found in the scene&quot;);</span><span class="ln" data-n="65">        return 0;</span><span class="ln" data-n="66">    }</span><span class="ln" data-n="67"></span><span class="ln" data-n="68">    // Throwaway component used to read the defaults the code intends (a MonoBehaviour cannot be newed)</span><span class="ln hl" data-n="69">    GameObject probe = new GameObject(&quot;~AuditProbe&quot;) { hideFlags = HideFlags.HideAndDontSave };</span><span class="ln hl" data-n="70">    T fresh = probe.AddComponent&lt;T&gt;();</span><span class="ln" data-n="71"></span><span class="ln" data-n="72">    int drift = 0;</span><span class="ln" data-n="73">    try</span><span class="ln" data-n="74">    {</span><span class="ln hl" data-n="75">        foreach (FieldInfo f in typeof(T).GetFields(BindingFlags.Public | BindingFlags.Instance))</span><span class="ln" data-n="76">        {</span><span class="ln" data-n="77">            if (Allowed.Contains(f.Name)) continue;</span><span class="ln" data-n="78"></span><span class="ln hl" data-n="79">            object a = f.GetValue(live), b = f.GetValue(fresh);</span><span class="ln" data-n="80">            if (a == null || b == null) continue;</span><span class="ln" data-n="81"></span><span class="ln" data-n="82">            bool same;</span><span class="ln hl" data-n="83">            if      (a is float) same = Mathf.Abs((float)a - (float)b) &lt; 0.0005f;</span><span class="ln hl" data-n="84">            else if (a is int)   same = (int)a == (int)b;</span><span class="ln hl" data-n="85">            else if (a is bool)  same = (bool)a == (bool)b;</span><span class="ln" data-n="86">            else continue;                                  // reference / list - skip</span><span class="ln" data-n="87"></span><span class="ln" data-n="88">            if (!same)</span><span class="ln" data-n="89">            {</span><span class="ln" data-n="90">                drift++;</span><span class="ln hl" data-n="91">                report.AppendLine($&quot;{typeof(T).Name}.{f.Name}: scene = {a}  but code = {b}&quot;);</span><span class="ln" data-n="92">            }</span><span class="ln" data-n="93">        }</span><span class="ln" data-n="94">    }</span><span class="ln" data-n="95">    finally</span><span class="ln" data-n="96">    {</span><span class="ln" data-n="97">        Object.DestroyImmediate(probe);</span><span class="ln" data-n="98">    }</span><span class="ln" data-n="99"></span><span class="ln" data-n="100">    if (drift == 0) report.AppendLine($&quot;{typeof(T).Name}: ✓&quot;);</span><span class="ln" data-n="101">    return drift;</span><span class="ln" data-n="102">}</span></pre></figure>
+<figure class="code"><figcaption><span>What it checks, and what it lets differ</span><span class="loc">SceneParameterAudit.cs : 24-38</span></figcaption><pre class="cs"><span class="ln" data-n="24">/// &lt;summary&gt;Fields allowed to differ from the default on purpose (not drift)&lt;/summary&gt;</span><span class="ln" data-n="25">static readonly HashSet&lt;string&gt; Allowed = new HashSet&lt;string&gt;</span><span class="ln" data-n="26">{</span><span class="ln hl" data-n="27">    &quot;showDebugGUI&quot;, &quot;verboseLog&quot;, &quot;showPanel&quot;, &quot;controllerType&quot;, &quot;scenarioName&quot;,</span><span class="ln" data-n="28">};</span><span class="ln" data-n="29"></span><span class="ln" data-n="30">[MenuItem(&quot;ABAC/Verify Scene Against Code&quot;, false, 3)]</span><span class="ln" data-n="31">public static void Verify()</span><span class="ln" data-n="32">{</span><span class="ln" data-n="33">    var report = new StringBuilder();</span><span class="ln" data-n="34">    int drift = 0;</span><span class="ln" data-n="35"></span><span class="ln hl" data-n="36">    drift += AuditType&lt;AdaptiveController&gt;(report);</span><span class="ln hl" data-n="37">    drift += AuditType&lt;ScenarioManager&gt;(report);</span><span class="ln hl" data-n="38">    drift += AuditType&lt;FixedController&gt;(report);</span></pre></figure>
+<p class="prose">It audits <code>AdaptiveController</code>, <code>ScenarioManager</code> and <code>FixedController</code>, the three whose numbers decide results. Lists and references are skipped. It allows five fields to differ on purpose: the debug switches, the panel switch and the logger's run labels.</p>
+<div class="cols">
+  <div><h3>Inside Unity</h3><p>This menu item, on the open scene, with a dialog that says how to fix any drift.</p></div>
+  <div><h3>Outside Unity</h3><p><code>Tests/SceneAuditTest.cs</code> reads <code>SampleScene.unity</code> as text in the test suite. It also checks values this audit skips, such as the scenario rates.</p></div>
+</div>
+<p class="prose">As of this build the scene agrees with the code on every audited field. This tour's variable tables run the same comparison over every component, and the only differences they show are per-lane spawner and zone settings that <code>ABACSceneBuilder</code> sets on purpose.</p>
+
+<h2 id="variables"><span class="n">03</span>Variables</h2>
+<p class="prose">None that can be set: the class is static, and its one field, the <code>Allowed</code> set above, is private.</p>
+
+<nav class="pager" aria-label="Files"><a class="prev" href="car-prefab-builder.html"><small>&larr; Previous</small><b>CarPrefabBuilder</b></a></nav>
+<p class="keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous / next section &nbsp;·&nbsp; <kbd>[</kbd> <kbd>]</kbd> previous / next file &nbsp;·&nbsp; <kbd>h</kbd> overview</p>
+</main>
+</div>
+<script src="assets/data.js?v=e6903af6"></script>
+<script src="assets/app.js?v=dbefb208"></script>
+<script src="assets/widgets.js?v=b35d7078"></script>
+</body>
+</html>

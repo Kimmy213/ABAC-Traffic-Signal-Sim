@@ -43,15 +43,33 @@ namespace UnityEngine
         public override string ToString() => $"({x:F2}, {y:F2}, {z:F2})";
     }
 
+    // 24 Sep 2026: yaw only (degrees about +Y, Unity convention: 0 = +Z, 90 = +X). Every car drives on
+    //    the flat XZ plane, so this is enough to run turning and lane changes through the real CarAgent.
+    //    Before this, RotateTowards returned its input and no test could see a car change heading.
     public struct Quaternion
     {
-        public static Quaternion Euler(float x, float y, float z) => new Quaternion();
-        public static Quaternion Euler(Vector3 v) => new Quaternion();
-        public static Quaternion LookRotation(Vector3 f, Vector3 u) => new Quaternion();
-        public static Quaternion RotateTowards(Quaternion a, Quaternion b, float t) => a;
+        public float yaw;
+        public static Quaternion Euler(float x, float y, float z) => new Quaternion { yaw = y };
+        public static Quaternion Euler(Vector3 v) => new Quaternion { yaw = v.y };
+        public static Quaternion LookRotation(Vector3 f, Vector3 u) =>
+            new Quaternion { yaw = (float)(Math.Atan2(f.x, f.z) * 180.0 / Math.PI) };
+        public static Quaternion RotateTowards(Quaternion a, Quaternion b, float maxDegrees)
+        {
+            float d = DeltaYaw(a.yaw, b.yaw);
+            if (Math.Abs(d) <= maxDegrees) return b;
+            return new Quaternion { yaw = a.yaw + Math.Sign(d) * maxDegrees };
+        }
+        /// <summary>Signed shortest turn from a to b, in degrees (-180, 180]</summary>
+        public static float DeltaYaw(float a, float b)
+        {
+            float d = (b - a) % 360f;
+            if (d > 180f) d -= 360f;
+            if (d <= -180f) d += 360f;
+            return d;
+        }
         public static Quaternion identity => new Quaternion();
         public static Quaternion Slerp(Quaternion a, Quaternion b, float t) => a;
-        public static Quaternion operator *(Quaternion a, Quaternion b) => a;
+        public static Quaternion operator *(Quaternion a, Quaternion b) => new Quaternion { yaw = a.yaw + b.yaw };
     }
 
     public struct Color
@@ -171,8 +189,23 @@ namespace UnityEngine
     }
     public class Transform : Component
     {
-        public Vector3 position, forward, localScale;
-        public Quaternion rotation;
+        public Vector3 position, localScale;
+        // forward and rotation are two views of one yaw, as in Unity: setting either one updates the other.
+        private float yawDeg;
+        public Quaternion rotation
+        {
+            get { return new Quaternion { yaw = yawDeg }; }
+            set { yawDeg = value.yaw; }
+        }
+        public Vector3 forward
+        {
+            get
+            {
+                double r = yawDeg * Math.PI / 180.0;
+                return new Vector3((float)Math.Sin(r), 0f, (float)Math.Cos(r));
+            }
+            set { yawDeg = (float)(Math.Atan2(value.x, value.z) * 180.0 / Math.PI); }
+        }
         public Matrix4x4 localToWorldMatrix;
         public Transform parent;
         public int childCount => 0;

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TrafficLight · ABAC Code Tour</title>
+<meta name="description" content="One signal lamp: holds red, yellow or green, repaints itself and tells every car registered to it.">
+<link rel="stylesheet" href="assets/style.css?v=8dd8fc09">
+<script>try{var t=localStorage.getItem("tour-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body data-prev="intersection-config.html" data-next="car-spawner.html" data-hub="index.html">
+<div class="frame">
+<aside class="side">
+<a class="brand" href="index.html"><b>ABAC Code Tour</b><span>Unity digital twin · 19 files</span></a>
+<button class="menu-btn" id="menu-btn" type="button" aria-expanded="false">Files</button>
+<nav aria-label="Files">
+<ul><li><a href="index.html">How the files work together</a></li></ul>
+<h4><i style="background:var(--l-junction)"></i>Junction model</h4><ul>
+<li><a href="intersection-config.html">IntersectionConfig<small>407</small></a></li>
+<li><a href="traffic-light.html" aria-current="page">TrafficLight<small>93</small></a></li>
+</ul>
+<h4><i style="background:var(--l-traffic)"></i>Traffic</h4><ul>
+<li><a href="car-spawner.html">CarSpawner<small>452</small></a></li>
+<li><a href="car-agent.html">CarAgent<small>988</small></a></li>
+<li><a href="test-case-library.html">TestCaseLibrary<small>521</small></a></li>
+<li><a href="custom-test-case.html">CustomTestCase<small>498</small></a></li>
+</ul>
+<h4><i style="background:var(--l-sensing)"></i>Sensing</h4><ul>
+<li><a href="roi-zone.html">ROIZone<small>212</small></a></li>
+<li><a href="roi-highlight.html">RoiHighlight<small>56</small></a></li>
+</ul>
+<h4><i style="background:var(--l-control)"></i>Control</h4><ul>
+<li><a href="fixed-controller.html">FixedController<small>284</small></a></li>
+<li><a href="adaptive-controller.html">AdaptiveController<small>1304</small></a></li>
+</ul>
+<h4><i style="background:var(--l-experiment)"></i>Experiment</h4><ul>
+<li><a href="scenario-manager.html">ScenarioManager<small>645</small></a></li>
+<li><a href="data-logger.html">DataLogger<small>327</small></a></li>
+</ul>
+<h4><i style="background:var(--l-ui)"></i>Runtime UI</h4><ul>
+<li><a href="simulation-control-panel.html">SimulationControlPanel<small>895</small></a></li>
+<li><a href="batch-run-panel.html">BatchRunPanel<small>499</small></a></li>
+<li><a href="camera-director.html">CameraDirector<small>214</small></a></li>
+<li><a href="ui-theme.html">UITheme<small>300</small></a></li>
+</ul>
+<h4><i style="background:var(--l-editor)"></i>Editor tools</h4><ul>
+<li><a href="abac-scene-builder.html">ABACSceneBuilder<small>988</small></a></li>
+<li><a href="car-prefab-builder.html">CarPrefabBuilder<small>354</small></a></li>
+<li><a href="scene-parameter-audit.html">SceneParameterAudit<small>104</small></a></li>
+</ul>
+</nav><div class="tools"><button id="theme-btn" type="button">Theme</button></div>
+</aside>
+<main class="main" id="main">
+<header class="file-head"><p class="path">Assets/Scripts/TrafficLight.cs</p><h1>TrafficLight</h1><div class="badges"><span class="badge layer" style="background:var(--l-junction)">Junction model</span><span class="badge">93 lines</span><span class="badge">Runtime</span></div><p class="lede">One signal lamp: holds red, yellow or green, repaints itself and tells every car registered to it.</p><div class="deps"><div><b>Uses</b><a href="car-agent.html" title="pushes every state change to registered cars">CarAgent</a></div><div><b>Used by</b><a href="car-spawner.html" title="registers each new car with its lane&#x27;s light">CarSpawner</a> <a href="car-agent.html" title="polls currentState every step">CarAgent</a> <a href="adaptive-controller.html" title="SetState red / yellow / green">AdaptiveController</a> <a href="fixed-controller.html" title="SetState red / yellow / green">FixedController</a> <a href="intersection-config.html" title="ClearRegistrations">IntersectionConfig</a> <a href="abac-scene-builder.html" title="four lights">ABACSceneBuilder</a></div></div><nav class="toc" id="toc" aria-label="On this page"><b>On this page</b></nav></header>
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The smallest runtime component, and the only path from a controller's decision to the cars. A controller calls <code>SetState</code>. The light repaints itself and tells every car registered with it. Cars also read <code>currentState</code> every step, so the two routes back each other up.</p>
+<ul class="resp">
+  <li><b>Hold</b> one of three states: Red, Yellow, Green.</li>
+  <li><b>Show</b> it by swapping the lamp's material.</li>
+  <li><b>Tell</b> the registered cars, newest state first to newcomers.</li>
+</ul>
+<figure class="fig"><div class="canvas">
+  <svg viewBox="0 0 900 250" width="900" role="img" aria-label="How a state change reaches the cars">
+    <g font-size="13">
+      <rect x="20" y="30" width="180" height="56" rx="8" fill="var(--paper)" stroke="var(--l-control)" stroke-width="2"/>
+      <text x="110" y="54" text-anchor="middle" font-weight="700">Fixed / Adaptive</text>
+      <text x="110" y="73" text-anchor="middle" font-family="var(--f-mono)" font-size="11">SetState(Green)</text>
+      <rect x="300" y="30" width="200" height="56" rx="8" fill="var(--paper)" stroke="var(--l-junction)" stroke-width="2"/>
+      <text x="400" y="54" text-anchor="middle" font-weight="700">TrafficLight</text>
+      <text x="400" y="73" text-anchor="middle" font-family="var(--f-mono)" font-size="11">UpdateVisual · NotifyCars</text>
+      <rect x="610" y="30" width="270" height="56" rx="8" fill="var(--paper)" stroke="var(--l-traffic)" stroke-width="2"/>
+      <text x="745" y="54" text-anchor="middle" font-weight="700">every registered CarAgent</text>
+      <text x="745" y="73" text-anchor="middle" font-family="var(--f-mono)" font-size="11">OnLightStateChanged(state)</text>
+      <path d="M200 58 L292 58" stroke="var(--ink2)" stroke-width="2"/><path d="M286 52 L294 58 L286 64" fill="none" stroke="var(--ink2)" stroke-width="2"/>
+      <path d="M500 58 L602 58" stroke="var(--ink2)" stroke-width="2"/><path d="M596 52 L604 58 L596 64" fill="none" stroke="var(--ink2)" stroke-width="2"/>
+      <text x="551" y="48" text-anchor="middle" font-size="11" fill="var(--muted)">push</text>
+      <path d="M745 92 C745 170 400 170 400 92" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 4"/>
+      <path d="M394 100 L400 90 L406 100" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      <text x="572" y="160" text-anchor="middle" font-size="11" fill="var(--accent)">poll: each 0.02 s step, SyncLightState reads currentState</text>
+      <rect x="300" y="190" width="200" height="44" rx="8" fill="var(--paper)" stroke="var(--l-traffic)" stroke-width="2"/>
+      <text x="400" y="217" text-anchor="middle" font-family="var(--f-mono)" font-size="11">CarSpawner.PlaceCar</text>
+      <path d="M400 190 L400 96" stroke="var(--ink2)" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <text x="410" y="140" font-size="11" fill="var(--muted)">RegisterCar: added, and</text>
+      <text x="410" y="154" font-size="11" fill="var(--muted)">told the current state at once</text>
+    </g>
+  </svg>
+</div>
+<figcaption>Push and poll give the same answer. If a registration is lost, for example to <code>ClearRegistrations</code> at the start of a batch run, the poll still finds the green.</figcaption></figure>
+
+<h2 id="code"><span class="n">02</span>The whole file</h2>
+<p class="prose">At 93 lines it fits on one screen, so here it is in parts:</p>
+<figure class="code"><figcaption><span>State, materials and SetState</span><span class="loc">TrafficLight.cs : 4-34</span></figcaption><pre class="cs"><span class="ln" data-n="4">public class TrafficLight : MonoBehaviour</span><span class="ln" data-n="5">{</span><span class="ln" data-n="6">    public enum LightState { Red, Yellow, Green }</span><span class="ln" data-n="7"></span><span class="ln" data-n="8">    [Header(&quot;Identity (match IntersectionConfig so logs are easy to read)&quot;)]</span><span class="ln" data-n="9">    public string laneName = &quot;A&quot;;</span><span class="ln" data-n="10"></span><span class="ln" data-n="11">    [Header(&quot;Current State&quot;)]</span><span class="ln" data-n="12">    public LightState currentState = LightState.Red;</span><span class="ln" data-n="13"></span><span class="ln" data-n="14">    [Header(&quot;Materials (assign in the Inspector)&quot;)]</span><span class="ln" data-n="15">    public Material redMat;</span><span class="ln" data-n="16">    public Material yellowMat;</span><span class="ln" data-n="17">    public Material greenMat;</span><span class="ln" data-n="18"></span><span class="ln" data-n="19">    private Renderer rend;</span><span class="ln" data-n="20"></span><span class="ln" data-n="21">    public List&lt;CarAgent&gt; assignedCars = new List&lt;CarAgent&gt;();</span><span class="ln" data-n="22"></span><span class="ln" data-n="23">    void Start()</span><span class="ln" data-n="24">    {</span><span class="ln" data-n="25">        rend = GetComponent&lt;Renderer&gt;();</span><span class="ln" data-n="26">        UpdateVisual();</span><span class="ln" data-n="27">    }</span><span class="ln" data-n="28"></span><span class="ln hl" data-n="29">    public void SetState(LightState newState)</span><span class="ln hl" data-n="30">    {</span><span class="ln hl" data-n="31">        currentState = newState;</span><span class="ln hl" data-n="32">        UpdateVisual();</span><span class="ln hl" data-n="33">        NotifyCars();</span><span class="ln hl" data-n="34">    }</span></pre></figure>
+<figure class="code"><figcaption><span>Repaint, notify, register</span><span class="loc">TrafficLight.cs : 36-74</span></figcaption><pre class="cs"><span class="ln" data-n="36">void UpdateVisual()</span><span class="ln" data-n="37">{</span><span class="ln" data-n="38">    if (rend == null) return;</span><span class="ln" data-n="39"></span><span class="ln" data-n="40">    switch (currentState)</span><span class="ln" data-n="41">    {</span><span class="ln" data-n="42">        case LightState.Red: rend.material = redMat; break;</span><span class="ln" data-n="43">        case LightState.Yellow: rend.material = yellowMat; break;</span><span class="ln" data-n="44">        case LightState.Green: rend.material = greenMat; break;</span><span class="ln" data-n="45">    }</span><span class="ln" data-n="46">}</span><span class="ln" data-n="47"></span><span class="ln" data-n="48">void NotifyCars()</span><span class="ln" data-n="49">{</span><span class="ln" data-n="50">    // Iterate backwards so destroyed cars can be removed from the list safely.</span><span class="ln hl" data-n="51">    for (int i = assignedCars.Count - 1; i &gt;= 0; i--)</span><span class="ln hl" data-n="52">    {</span><span class="ln hl" data-n="53">        if (assignedCars[i] == null) { assignedCars.RemoveAt(i); continue; }</span><span class="ln hl" data-n="54">        assignedCars[i].OnLightStateChanged(currentState);</span><span class="ln hl" data-n="55">    }</span><span class="ln" data-n="56">}</span><span class="ln" data-n="57"></span><span class="ln" data-n="58">/// &lt;summary&gt;Clears every registered car - called at the start of each run in a batch.&lt;/summary&gt;</span><span class="ln" data-n="59">public void ClearRegistrations()</span><span class="ln" data-n="60">{</span><span class="ln" data-n="61">    assignedCars.Clear();</span><span class="ln" data-n="62">}</span><span class="ln" data-n="63"></span><span class="ln hl" data-n="64">public void RegisterCar(CarAgent car)</span><span class="ln hl" data-n="65">{</span><span class="ln hl" data-n="66">    if (!assignedCars.Contains(car)) assignedCars.Add(car);</span><span class="ln hl" data-n="67">    // Push the current state to a car as soon as it registers, rather than making it wait for the next change.</span><span class="ln hl" data-n="68">    car.OnLightStateChanged(currentState);</span><span class="ln hl" data-n="69">}</span><span class="ln" data-n="70"></span><span class="ln" data-n="71">public void UnregisterCar(CarAgent car)</span><span class="ln" data-n="72">{</span><span class="ln" data-n="73">    assignedCars.Remove(car);</span><span class="ln" data-n="74">}</span></pre></figure>
+<p class="prose"><code>NotifyCars</code> walks the list backwards, so cars that were destroyed can be removed while it walks. <code>RegisterCar</code> pushes the current state straight away, so a car spawned during a green does not wait for the next change. The three <code>TEST:</code> context-menu entries (lines 76-93) set a state by hand in Play mode.</p>
+<div class="callout"><p><b>One light, two lanes.</b> Lanes A and A2 point at the same <code>TrafficLight</code> object (<code>Light_A</code>). That shared object is what makes <a href="adaptive-controller.html#heads">SODA's <code>BuildHeads</code></a> merge them into one head, and what makes <a href="fixed-controller.html">Fixed</a> switch them together.</p></div>
+
+<h2 id="variables"><span class="n">03</span>Every variable</h2>
+<p class="prose">Saved values are read from the four lights in <code>SampleScene.unity</code>: Light_A, Light_B, Light_Bx and Light_CB.</p>
+<div class="vt-wrap"><table class="vt"><colgroup><col class="c-f"><col class="c-d"><col class="c-s"><col class="c-m"><col class="c-e"></colgroup><thead><tr><th>Field</th><th>Code default</th><th>Saved value</th><th>What it means</th><th>What happens if you change it</th></tr></thead><tbody><tr id="v-TrafficLight-laneName"><td class="vn"><a href="#v-TrafficLight-laneName">laneName</a><small>string · line 9</small></td><td class="val">&quot;A&quot;</td><td class="val">A <span class="">A</span><br>B <span class="">B</span><br>Bx <span class="">Bx</span><br>CB <span class="">CB</span></td><td>Name for logs and display, matched to <code>IntersectionConfig</code>.</td><td class="eff"><span class="kind code">from the code</span>No effect on logic: lanes find their light through <code>ApproachLane.trafficLight</code>, not by name.</td></tr><tr id="v-TrafficLight-currentState"><td class="vn"><a href="#v-TrafficLight-currentState">currentState</a><small>LightState · line 12</small></td><td class="val">LightState.Red</td><td class="val"><small>all 4</small> <span class="">0</span></td><td>Red, Yellow or Green now. Saved as 0 (Red).</td><td class="eff"><span class="kind code">from the code</span>Every light starts red; the controllers set the rest. Cars poll this field.</td></tr><tr id="v-TrafficLight-redMat"><td class="vn"><a href="#v-TrafficLight-redMat">redMat</a><small>Material · line 15</small></td><td class="val"><span class="same">type default</span></td><td class="val"><small>all 4</small> <span class="">set</span></td><td>Material shown at red.</td><td class="eff"><span class="kind code">from the code</span>Display only.</td></tr><tr id="v-TrafficLight-yellowMat"><td class="vn"><a href="#v-TrafficLight-yellowMat">yellowMat</a><small>Material · line 16</small></td><td class="val"><span class="same">type default</span></td><td class="val"><small>all 4</small> <span class="">set</span></td><td>Material shown at yellow.</td><td class="eff"><span class="kind code">from the code</span>Display only.</td></tr><tr id="v-TrafficLight-greenMat"><td class="vn"><a href="#v-TrafficLight-greenMat">greenMat</a><small>Material · line 17</small></td><td class="val"><span class="same">type default</span></td><td class="val"><small>all 4</small> <span class="">set</span></td><td>Material shown at green.</td><td class="eff"><span class="kind code">from the code</span>Display only.</td></tr><tr id="v-TrafficLight-assignedCars"><td class="vn"><a href="#v-TrafficLight-assignedCars">assignedCars</a><small>List&lt;CarAgent&gt; · line 21</small></td><td class="val">new List&lt;CarAgent&gt;()</td><td class="val"><small>all 4</small> <span class="">list of 0</span></td><td>Cars to notify on each change. Filled at runtime by <code>RegisterCar</code>; empty in the scene.</td><td class="eff"><span class="kind code">from the code</span>Cleared at the start of each batch run by <code>IntersectionConfig.ResetAllLanes</code>.</td></tr></tbody></table></div>
+
+<h2 id="issues"><span class="n">04</span>Known issues</h2>
+<ul class="issues">
+  <li class="fixed"><b class="tag">Fixed</b>Cars used to rely on the push alone. A lost registration left a car waiting at a green forever, with its whole queue behind it. <code>CarAgent.SyncLightState</code> now polls as well.<span class="src">Comment in <code>CarAgent.cs</code>, lines 277-280</span></li>
+</ul>
+
+<nav class="pager" aria-label="Files"><a class="prev" href="intersection-config.html"><small>&larr; Previous</small><b>IntersectionConfig</b></a><a class="next" href="car-spawner.html"><small>Next &rarr;</small><b>CarSpawner</b></a></nav>
+<p class="keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> previous / next section &nbsp;·&nbsp; <kbd>[</kbd> <kbd>]</kbd> previous / next file &nbsp;·&nbsp; <kbd>h</kbd> overview</p>
+</main>
+</div>
+<script src="assets/data.js?v=e6903af6"></script>
+<script src="assets/app.js?v=dbefb208"></script>
+<script src="assets/widgets.js?v=b35d7078"></script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The on-screen control panel, and the way into a single run. It is what you use in a live demonstration: pick a test case, switch Fixed and Adaptive while the junction runs, speed time up, and watch every lane's queue and clock. It also starts and stops the batch.</p>
+<ul class="resp">
+  <li><b>Run</b>: start, pause, resume, stop, restart, with a run state of Idle, Running, Paused or Finished.</li>
+  <li><b>Choose</b> a test case, or run one built in the custom-case window.</li>
+  <li><b>Switch</b> controller mid-run without clearing the road.</li>
+  <li><b>Show</b> the lane table: signal, queue, oldest car, and SODA's queue clock.</li>
+  <li><b>Time</b> a scripted case until the road is empty, and compare Fixed with Adaptive on it.</li>
+</ul>
+<excerpt file="Assets/Scripts/SimulationControlPanel.cs" lines="5-15" expect="/// &lt;summary&gt;" caption="The class header"/>
+<div class="outline">
+  <section><h5>Lifecycle</h5><ul><li><a href="#lifecycle">Awake, Start, Update, OnDisable</a></li></ul></section>
+  <section><h5>Run control</h5><ul><li><a href="#run">StartRun</a></li><li><a href="#run">PauseRun, ResumeRun, TogglePause</a></li><li><a href="#run">StopRun, RestartRun, RunCustomCase</a></li><li><a href="#switch">ApplyController, SetSpeed</a></li></ul></section>
+  <section><h5>Drawing</h5><ul><li><a href="#keys">OnGUI, HandleHotkeys</a></li><li><a href="#lanes">DrawLaneTable, HeadForLane</a></li><li><a href="#run">DrawClearance, DrawStats</a></li></ul></section>
+</div>
+
+<h2 id="lifecycle"><span class="n">02</span>Start-up</h2>
+<excerpt file="Assets/Scripts/SimulationControlPanel.cs" lines="77-99" expect="void Awake()" hl="85,91,93" caption="Awake and Start"/>
+<p class="prose">The test-case list is saved in the scene, and <code>Awake</code> builds it from code only when it is empty. The saved scene holds an empty list, so every Play starts with the current <code>TestCasePresets</code>. The <i>Reload</i> button exists for the case where it is not empty.</p>
+
+<h2 id="run"><span class="n">03</span>Starting and ending a run</h2>
+<excerpt file="Assets/Scripts/SimulationControlPanel.cs" lines="147-188" expect="/// &lt;summary&gt;Starts a new run" hl="164,167-169,179" caption="StartRun"/>
+<p class="prose">Seeds: a Poisson case uses <code>randomSeed</code> (12345 unless changed), so the same seed replays the same traffic; a scripted case uses the fixed 20260820. Scripted runs end themselves:</p>
+<excerpt file="Assets/Scripts/SimulationControlPanel.cs" lines="101-127" expect="void Update()" hl="110-117" caption="Update: stop the clock when every scheduled car is released and the road is empty"/>
+<p class="prose">The clearance time is stored per controller for the selected case, and the panel prints which was faster and by how much. That makes a scripted case a quick head-to-head on identical cars.</p>
+
+<h2 id="switch"><span class="n">04</span>Switching controller mid-run</h2>
+<excerpt file="Assets/Scripts/SimulationControlPanel.cs" lines="277-301" expect="/// &lt;summary&gt;Switches signal system" hl="283-291" caption="ApplyController"/>
+<p class="prose">Both controllers are always stopped first; with both running, two groups could hold green at once. <code>ScenarioManager.RunSingleExperiment</code> uses the same three steps.</p>
+
+<h2 id="lanes"><span class="n">05</span>The lane table: two different clocks</h2>
+<p class="prose">The table shows two waits per lane. They differ on purpose, and the difference explains how SODA decides:</p>
+<ul class="resp">
+  <li><b>Oldest car</b>: <code>ROIZone.GetLongestWaitTime</code>, the real wait of the oldest car. Simulation ground truth; a tracker-free camera cannot know it.</li>
+  <li><b>Queue clock</b>: <code>now − queueStart</code> of the lane's signal head, the number SODA's Q1 and Q2 actually use. It belongs to the lane, not to a car, and restarts each time the head is served.</li>
+</ul>
+<excerpt file="Assets/Scripts/SimulationControlPanel.cs" lines="740-763" expect="// ---- signal head queue clock" caption="The queue-clock column"/>
+
+<h2 id="keys"><span class="n">06</span>Keys</h2>
+<excerpt file="Assets/Scripts/SimulationControlPanel.cs" lines="391-410" expect="void HandleHotkeys()" caption="HandleHotkeys"/>
+<div class="tw"><table class="plain">
+  <thead><tr><th>Key</th><th>Does</th><th>Key</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>Space</kbd></td><td>play / pause</td><td><kbd>1</kbd>-<kbd>5</kbd></td><td>speed 1, 2, 5, 10, 20×</td></tr>
+    <tr><td><kbd>R</kbd></td><td>restart</td><td><kbd>D</kbd></td><td>SODA Decision Inspector</td></tr>
+    <tr><td><kbd>F</kbd> / <kbd>G</kbd></td><td>Fixed / Adaptive</td><td><kbd>[</kbd> <kbd>]</kbd> <kbd>V</kbd> <kbd>C</kbd> <kbd>B</kbd></td><td>camera shots, follow, overview, detection boxes</td></tr>
+    <tr><td><kbd>H</kbd></td><td>hide / show this panel</td><td><kbd>N</kbd></td><td>custom test-case window</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="variables"><span class="n">07</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController).</p>
+<vartable for="SimulationControlPanel">
+  <v n="config" k="code">The junction. Found automatically.<eff>Without it nothing can start.</eff></v>
+  <v n="fixedController" k="code">Found automatically.<eff>Needed to switch controllers.</eff></v>
+  <v n="adaptiveController" k="code">Found automatically.<eff>Needed to switch controllers and for the queue-clock column.</eff></v>
+  <v n="dataLogger" k="code">Found automatically.<eff>Statistics and export.</eff></v>
+  <v n="scenarioManager" k="code">Found automatically.<eff>Start/stop batch; a manual run is refused while a batch runs.</eff></v>
+  <v n="testCases" k="code">The case list. Empty in the scene, so built from code at <code>Awake</code>.<eff>If it were saved non-empty, new cases added in code would not appear until <i>Reload</i>.</eff></v>
+  <v n="selectedTestCase" k="code">Index of the case to run.<eff>0 = T1 at Play.</eff></v>
+  <v n="autoStartOnPlay" k="code">Start running as soon as Play is pressed.<eff>Off: Play waits for the ▶ button.</eff></v>
+  <v n="startController" k="code">Controller used when a run starts: 1 = Adaptive in the scene.<eff>Updated whenever you switch.</eff></v>
+  <v n="randomSeed" k="code">Seed for Poisson cases.<eff>Same seed, same traffic; the <i>Reroll</i> button picks a new one.</eff></v>
+  <v n="showPanel" k="code">Panel visible.<eff>Display only.</eff></v>
+  <v n="uiScale" k="code">Panel size for high-DPI screens.<eff>Display only.</eff></v>
+  <v n="hideLegacyDebugGUI" k="code">Hide the per-lane and controller cards while the panel is open.<eff>Display only. The Decision Inspector is kept separate, so it can still be shown.</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">08</span>Known issues</h2>
+<ul class="issues">
+  <li><b class="tag">Decision</b>The test-case list and lane table are not drawn during a batch. Unity crashed on 10 Sep inside this window's layout (a scroll view in a scroll view with word-wrapped labels), and a batch runs unattended for hours. No effect on results.<span class="src">Comment, lines 484-491</span></li>
+</ul>

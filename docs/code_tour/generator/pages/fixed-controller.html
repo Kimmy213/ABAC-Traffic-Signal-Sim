@@ -1,0 +1,72 @@
+<h2 id="big-picture"><span class="n">01</span>Big picture</h2>
+<p class="prose">The baseline every result is measured against. It replays the junction's real fixed-time plan, three phases in a fixed order with fixed greens, and never looks at traffic. It must reproduce the real junction's problem, or the comparison with SODA means nothing.</p>
+<ul class="resp">
+  <li><b>Resolve</b> the phase plan's lane names to signal indices once, and refuse to open two conflicting lanes together.</li>
+  <li><b>Cycle</b>: green for each phase, then yellow and all-red only for the lanes the next phase does not keep.</li>
+  <li><b>Report</b> its cycle length (106 s) to the control panel and the console.</li>
+</ul>
+<excerpt file="Assets/Scripts/FixedController.cs" lines="5-11" expect="/// &lt;summary&gt;" caption="The class header"/>
+<div class="outline">
+  <section><h5>Setup</h5><ul><li><a href="#setup">Awake</a></li><li><a href="#setup">BuildPhaseCache</a></li><li><a href="#plan">LoadABACPreset</a></li></ul></section>
+  <section><h5>Running</h5><ul><li><a href="#cycle">Start</a></li><li><a href="#cycle">RunCycle</a></li><li><a href="#cycle">ForceStop, RestartCycle</a></li><li><a href="#cycle">SetAllRed, SetLanes, Except</a></li></ul></section>
+  <section><h5>Reporting</h5><ul><li><a href="#length">GetCycleLength</a></li><li><a href="#length">PrintCycleLength</a></li><li><a href="#variables">OnGUI</a></li></ul></section>
+</div>
+
+<h2 id="plan"><span class="n">02</span>The plan: three phases, four signals</h2>
+<p class="prose">The plan comes from Kimmy timing the real signal on site, checked by Itim against video and against his stage table. It lives in <code>LoadABACPreset</code>, and the same three phases are saved in the scene:</p>
+<excerpt file="Assets/Scripts/FixedController.cs" lines="221-263" expect="/// &lt;summary&gt;" hl="252-254" caption="LoadABACPreset: the measured plan and the timeline it produces"/>
+<div class="tw"><table class="plain">
+  <thead><tr><th>Phase</th><th>Green lanes</th><th>Green</th><th>Then</th></tr></thead>
+  <tbody>
+    <tr><td class="vn">P1 MainThrough</td><td>A, A2, B</td><td class="num">40 s</td><td>A and A2 go yellow + all-red; B stays green into P2</td></tr>
+    <tr><td class="vn">P2 EastRightTurn</td><td>B, Bx</td><td class="num">20 s</td><td>B and Bx go yellow + all-red together</td></tr>
+    <tr><td class="vn">P3 ABACExit</td><td>CB</td><td class="num">31 s</td><td>CB goes yellow + all-red</td></tr>
+  </tbody>
+</table></div>
+<p class="prose small muted">The scene holds exactly these three phases (read from <code>SampleScene.unity</code> at build time). The plan is deliberately left unbalanced: Bx runs at v/c 1.51 while A and B sit at 0.25. Moving 10 s from A to Bx would help, but then Fixed would no longer be the real junction (comment, lines 241-245).</p>
+
+<div class="whatif">
+  <h4>Watch one cycle, and change it</h4>
+  <p>Press Play to run the cycle on the junction plan. The timing is the one <code>RunCycle</code> produces. The sliders change the plan as if it were edited in the Inspector, and the cycle length follows <code>GetCycleLength</code>. Notice that B stays green straight through from P1 into P2, and that Ax may only turn while Bx is red.</p>
+  <div data-widget="fixedCycle"></div>
+</div>
+
+<h2 id="setup"><span class="n">03</span>Setup: names to indices, with a safety check</h2>
+<p class="prose">Phases name lanes as strings. <code>BuildPhaseCache</code> turns them into signal indices once. It also drops any lane that would conflict with another lane in the same phase, so a typo in the Inspector cannot open two crossing streams together.</p>
+<excerpt file="Assets/Scripts/FixedController.cs" lines="55-97" expect="void BuildPhaseCache()" hl="68,84,89" caption="BuildPhaseCache"/>
+
+<h2 id="cycle"><span class="n">04</span>The cycle</h2>
+<excerpt file="Assets/Scripts/FixedController.cs" lines="143-186" expect="IEnumerator RunCycle()" hl="157-159,168-170,175,179" caption="RunCycle: only dropping lanes get yellow and all-red"/>
+<p class="prose">This is the same "only the lanes that must stop" rule that <a href="adaptive-controller.html#q3">SODA's clearance</a> uses, with the same 3 s yellow and 2 s all-red. The two controllers therefore pay clearance the same way, and differ only in <i>when</i> they change and <i>what</i> they open.</p>
+<p class="prose">Both controllers sit on GameController and both start at Play. <code>ForceStop</code> and <code>RestartCycle</code> let <a href="scenario-manager.html"><code>ScenarioManager</code></a> and the control panel stop one and restart the other cleanly:</p>
+<excerpt file="Assets/Scripts/FixedController.cs" lines="99-122" expect="public void ForceStop()" hl="112" caption="ForceStop, RestartCycle and Start"/>
+
+<h2 id="length"><span class="n">05</span>Cycle length</h2>
+<excerpt file="Assets/Scripts/FixedController.cs" lines="198-212" expect="/// &lt;summary&gt;Total cycle length" hl="209" caption="GetCycleLength: an intergreen is counted only when a lane drops"/>
+<p class="prose">40 + 20 + 31 + 3 × (3 + 2) = <b>106 s</b>. <code>FixedCycleTest</code> checks this. The overhead clip measured the real cycle at 107.17 s (<code>TestCaseLibrary.Compare101</code>); the code keeps 106 s, for the reason in the first issue below.</p>
+
+<h2 id="variables"><span class="n">06</span>Every variable</h2>
+<p class="prose">Saved values are read from <code>SampleScene.unity</code> (GameController). The scene and the code agree on every field; the phase list holds the three phases above.</p>
+<vartable for="FixedController">
+  <v n="config" k="code">The junction description. Found automatically if empty.<eff>Without it the controller logs an error and never starts.</eff></v>
+  <v n="phases" k="code">The plan: phases in order, each with its green lanes and green time.<eff>Empty: <code>RunCycle</code> logs an error and stops. Any edit changes the baseline every result is compared with, so the plan is not to be changed.</eff><cpl>Saved in the scene; <code>LoadABACPreset</code> rewrites it.</cpl></v>
+  <v n="yellowDuration" k="measured">Amber for lanes leaving green. From Itim's stage table.<eff>Each of the three intergreens grows with it: 4 s would make the cycle 109 s.</eff><cpl><code>AdaptiveController.yellowDuration</code>, same value.</cpl></v>
+  <v n="allRedDuration" k="measured">All-red after the amber.<eff>As above: 3 s would make the cycle 109 s.</eff><cpl><code>AdaptiveController.allRedDuration</code>.</cpl></v>
+  <v n="showDebugGUI" k="code">Status card on the right.<eff>Display only.</eff></v>
+  <v n="verboseLog" k="code">One console line per phase.<eff>Display only.</eff></v>
+</vartable>
+<h3 id="vars-phase">FixedPhase</h3>
+<vartable for="FixedPhase">
+  <v n="phaseName" k="code">Name shown on screen and in the log.<eff>Display only.</eff></v>
+  <v n="greenLanes" k="code">Lane names that turn green in this phase.<eff>A name that is not a signalised lane is skipped with an error. A conflicting pair keeps the first lane and drops the second.</eff></v>
+  <v n="greenDuration" k="measured">Green time of the phase. Measured on site: 40 / 20 / 31 s.<eff>Changes the cycle by the same amount. Bx at 20 s runs at v/c 1.51; at 23 s, 1.21. Bx is over capacity either way (comment, lines 234-236).</eff></v>
+</vartable>
+
+<h2 id="issues"><span class="n">07</span>Known issues and decisions</h2>
+<ul class="issues">
+  <li class="open"><b class="tag">Do not change</b>On 15 Sep an <code>allRedOverride</code> field was added to <code>FixedPhase</code>, and the scene YAML edited by hand to stretch the cycle to the measured 107.17 s. In Unity every signal then stayed red and Fixed stopped working in every case. The out-of-Unity tests passed throughout, because they build controllers in code and never read the scene. The change was reverted; the signal system is not to be modified.<span class="src">Working session of 15 Sep 2026; the change was never committed, so it is not in the repository history</span></li>
+  <li><b class="tag">Decision</b>Bx = 20 s, not 21 or 23: a stopwatch gave exactly 20.0 s, while 23 s came from a different method.<span class="src">Comment, lines 234-236</span></li>
+  <li><b class="tag">Note</b>The confirmation dialog in <code>ABACSceneBuilder.BuildScene</code> still says "107s cycle ... B+Bx 21". The preset it calls produces 106 s with Bx at 20 s, and the log line after the build prints the real figure.<span class="src"><code>ABACSceneBuilder.cs</code> line 103 against <code>FixedController.cs</code> line 253</span></li>
+  <li class="open"><b class="tag">Open</b><code>LoadABACPreset</code> is a context-menu preset without <code>EditorUtility.SetDirty</code>, so Save may not write it. Left alone because it belongs to the signal system.<span class="src">Comment on <code>ScenarioManager.MarkDirty</code></span></li>
+  <li><b class="tag">Note</b>The real signal flashes amber from 09:00 to 15:00, so the MiddayNormal comparison (11:37-12:00) is against a plan that does not actually run then.<span class="src"><code>ScenarioManager.cs</code> comment, lines 553-554; <code>SODA_BASELINE</code> L12</span></li>
+</ul>
